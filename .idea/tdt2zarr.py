@@ -8,11 +8,10 @@ import tdt
 import zarr
 
 # %%
-home = Path.home()
-tank_path = home.joinpath(r"data/emgContusion/25-02-05_9877-1_testSubject_emgContusion")
+home = Path(r'D:\SynapseBK')
+tank_path = home.joinpath(r"emgContusion/25-02-05_9877-1_testSubject_emgContusion")
 block_path = tank_path.joinpath(r"00_baseline-contusion")
 test = tdt.read_block(str(block_path))
-
 # %%
 stream = "RawG"
 name = test.streams[stream].name
