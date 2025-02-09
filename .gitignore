@@ -1,3 +1,5 @@
+*.parquet
+*.json
 poetry.lock
 Cargo.lock
 *uv.lock
