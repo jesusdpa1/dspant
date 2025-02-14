@@ -9,9 +9,9 @@ import tdt
 
 # %%
 # Set up the paths
-home = Path(r"D:\SynapseBK")
-tank_path = home.joinpath(r"emgContusion/25-02-05_9877-1_testSubject_emgContusion")
-block_path = tank_path.joinpath(r"00_baseline-contusion")
+home = Path(r"E:/jpenalozaa/")
+tank_path = home.joinpath(r"emgContusion/25-02-12_9882-1_testSubject_emgContusion")
+block_path = tank_path.joinpath(r"16-49-56_stim")
 # %%
 # Read the block
 test = tdt.read_block(str(block_path))
@@ -115,7 +115,7 @@ def apply_notch_filter(chunk, notch_freq, fs, quality_factor=30):
 # %%
 # Stream name and file path
 stream = "RawG"
-file_path = f"{stream}.parquet"
+file_path = f"{stream}.ant/data_{stream}.parquet"
 
 # Memory-map the Parquet file
 with pa.memory_map(file_path, "r") as mmap:
@@ -129,9 +129,9 @@ with pa.memory_map(file_path, "r") as mmap:
 
 # %%
 # Set filter parameters
-lowcut = 1.0  # Lower cutoff for bandpass
-highcut = 30.0  # Upper cutoff for bandpass
-fs = 1000  # Sampling frequency (Hz)
+lowcut = 15  # Lower cutoff for bandpass
+highcut = 2000  # Upper cutoff for bandpass
+fs = int(float(metadata[b"fs"]))  # Sampling frequency (Hz)
 
 # Apply bandpass filter lazily (using Dask)
 filtered_array = dask_array.map_blocks(
@@ -146,7 +146,7 @@ filtered_array = dask_array.map_blocks(
 
 # Apply notch filter lazily (using Dask)
 notch_filtered_array = filtered_array.map_blocks(
-    apply_notch_filter, notch_freq=60, fs=fs, quality_factor=30, dtype=dask_array.dtype
+    apply_notch_filter, notch_freq=60, fs=fs, quality_factor=20, dtype=dask_array.dtype
 )
 
 # %%
@@ -160,7 +160,7 @@ notch_filtered_data = notch_filtered_array.compute()
 import matplotlib.pyplot as plt
 
 plt.plot(
-    notch_filtered_data[:1000000, 0]
+    notch_filtered_data[:10000, 0]
 )  # Plot the first 1000 samples of the notch-filtered signal
 plt.title("Notch Filtered Signal (60Hz)")
 plt.show()
