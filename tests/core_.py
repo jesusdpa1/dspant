@@ -1,52 +1,29 @@
 import json
 from functools import reduce
-from typing import Callable, List, Union
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Union
 
 import dask.array as da
 import pyarrow as pa
 import pyarrow.parquet as pq
-from pydantic import BaseModel, Field
+from metadata_classes import tdt_metadata
+from pydantic import BaseModel, Field, field_validator
+from rich import print
+from rich.console import Console
+from rich.table import Table
 
 
-class MetadataStream(BaseModel):
-    """Defines and validates the structure of metadata."""
+class CarpenterNode(BaseModel):
+    # this model doesn't require .parquet to be available only json
+    "Class used to load anything else that helps analyze the data: epocs, snips, scalars"
 
-    name: str
-    code: str
-    size: int
-    type_: str
-    type_str: str
-    ucf: str
-    fs: float
-    num_channels: int
-    dform: str
-    start_time: float
-    channel: list
-    data_shape: tuple  # (num_channels, samples)
-
-    @classmethod
-    def from_json(cls, json_path: str):
-        """Load metadata from a JSON file."""
-        with open(json_path, "r") as file:
-            metadata = json.load(file)
-        return cls(**metadata)
-
-    @classmethod
-    def from_dict(cls, metadata_dict: dict):
-        """Load metadata from a dictionary."""
-        return cls(**metadata_dict)
+    data_path: str = Field(..., gt=0, description="data location")
+    metadata_path: str = Field(default=...)
 
 
-class LarveNode(BaseModel):
-    """Strict data structure with validation"""
+class WorkerNode(AntNode):
+    "Class use to load streams: a stream is constitude by continuous time series"
 
-    fs: float = Field(..., gt=0, description="Sampling frequency in Hz")
-    number_of_channels: int = Field(..., gt=0, description="Number of channels")
-    number_of_samples: int = Field(..., gt=0, description="Number of samples")
-    data_shape: tuple = Field(..., gt=0, description="Data shape (channels, samples)")
-
-
-class AntNode:
     def __init__(
         self,
         name: str,
@@ -62,12 +39,6 @@ class AntNode:
         """
         # Initialize metadata from JSON file or dictionary
         self.metadata = None
-        if metadata:
-            self.metadata = (
-                MetadataStream.from_json(metadata)
-                if isinstance(metadata, str)
-                else MetadataStream.from_dict(metadata)
-            )
 
         # Initialize other attributes
         self.name = name
@@ -132,12 +103,3 @@ class AntNode:
         if not callable(func):
             raise TypeError("Postprocessing function must be callable")
         self.postprocessing_functions.append(func)
-
-    def summarize(self):
-        """Summarize the AntNode attributes."""
-        print(f"Node: {self.name}")
-        if self.metadata:
-            print(f"Sampling Frequency (fs): {self.metadata.fs} Hz")
-            print(f"Duration: {self.metadata.fs * self.metadata.size} seconds")
-        else:
-            print("No metadata available.")
