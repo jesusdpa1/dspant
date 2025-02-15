@@ -8,9 +8,9 @@ import pyarrow.parquet as pq
 import tdt
 
 # %% Set up paths
-home = Path(r"E:/jpenalozaa/")
-tank_path = home / "emgContusion/25-02-12_9882-1_testSubject_emgContusion"
-block_path = tank_path / "16-49-56_stim"
+home = Path().home()
+tank_path = home.joinpath("data/emgContusion/25-02-05_9877-1_testSubject_emgContusion")
+block_path = tank_path.joinpath("00_baseline-contusion")
 
 # %% Read the block
 test = tdt.read_block(str(block_path))
@@ -56,7 +56,7 @@ metadata_json = {
 }
 
 # %% Create the folder
-folder_name = f"{test.streams[stream].name}.ant"
+folder_name = f"../data/{test.streams[stream].name}.ant"
 folder_path = Path(folder_name)
 folder_path.mkdir(parents=True, exist_ok=True)
 

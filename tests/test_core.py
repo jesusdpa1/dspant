@@ -1,19 +1,124 @@
 # %%
 import json
-from functools import partial, reduce
+from enum import Enum, auto
+from functools import reduce
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import dask.array as da
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-from dask.array import Array
-from metadata_classes import tdt_metadata
 from pydantic import BaseModel, Field, field_validator
 from rich import print
 from rich.console import Console
 from rich.table import Table
-from scipy.signal import butter, filtfilt, sosfiltfilt
+from scipy.signal import butter, sosfiltfilt
+
+# %%
+
+
+class TKEOMethod(Enum):
+    """Enumeration of TKEO calculation methods"""
+
+    LI_2007 = auto()  # Li et al. 2007 (2 samples)
+    DEBURCHGRAVE_2008 = auto()  # Deburchgrave et al. 2008 (4 samples)
+    ORIGINAL = auto()  # Original Teager-Kaiser method
+
+
+class TKEO:
+    def __init__(self, tkeo_method: TKEOMethod):
+        self.tkeo_method = tkeo_method
+
+    def __call__(self, traces):
+        if self.tkeo_method == TKEOMethod.LI_2007:
+            # Li et al. 2007 method (2 samples)
+            return np.abs(traces[:-2] * (traces[1:-1] ** 2 - traces[:-2] * traces[2:]))
+
+        elif self.tkeo_method == TKEOMethod.DEBURCHGRAVE_2008:
+            # Deburchgrave et al. 2008 method (4 samples)
+            result = np.zeros_like(traces)
+            result[2:-2] = traces[2:-2] * (
+                traces[3:-1] ** 2 - traces[2:-2] * traces[4:]
+            )
+            return np.abs(result)
+
+        elif self.tkeo_method == TKEOMethod.ORIGINAL:
+            # Original Teager-Kaiser method
+            result = np.zeros_like(traces)
+            result[1:-1] = traces[1:-1] ** 2 - traces[:-2] * traces[2:]
+            return np.abs(result)
+
+
+class BaseButterFilter:
+    def __init__(self, order=4):
+        self.order = order
+
+    def __call__(self, chunk, fs):
+        raise NotImplementedError("Subclass must implement __call__")
+
+
+class BandPassFilter(BaseButterFilter):
+    def __init__(self, lowcut, highcut, order=4):
+        super().__init__(order)
+        self.lowcut = lowcut
+        self.highcut = highcut
+
+    def __call__(self, chunk, fs):
+        sos = butter(
+            self.order,
+            [self.lowcut / (0.5 * fs), self.highcut / (0.5 * fs)],
+            btype="bandpass",
+            analog=False,
+            output="sos",
+        )
+        return sosfiltfilt(sos, chunk, axis=0)
+
+
+class LowPassFilter(BaseButterFilter):
+    def __init__(self, cutoff, order=4):
+        super().__init__(order)
+        self.cutoff = cutoff
+
+    def __call__(self, chunk, fs):
+        sos = butter(
+            self.order,
+            self.cutoff / (0.5 * fs),
+            btype="lowpass",
+            analog=False,
+            output="sos",
+        )
+        return sosfiltfilt(sos, chunk, axis=0)
+
+
+class HighPassFilter(BaseButterFilter):
+    def __init__(self, cutoff, order=4):
+        super().__init__(order)
+        self.cutoff = cutoff
+
+    def __call__(self, chunk, fs):
+        sos = butter(
+            self.order,
+            self.cutoff / (0.5 * fs),
+            btype="highpass",
+            analog=False,
+            output="sos",
+        )
+        return sosfiltfilt(sos, chunk, axis=0)
+
+
+class NotchFilter(BaseButterFilter):
+    def __init__(self, notch_freq, q=30, order=4):
+        super().__init__(order)
+        self.notch_freq = notch_freq
+        self.q = q
+
+    def __call__(self, chunk, fs):
+        nyquist = 0.5 * fs
+        low = (self.notch_freq - 1) / nyquist
+        high = (self.notch_freq + 1) / nyquist
+        sos = butter(4, [low, high], btype="bandstop", output="sos")
+        return sosfiltfilt(sos, chunk, axis=0)
 
 
 class AntNode(BaseModel):
@@ -108,15 +213,12 @@ class WorkerNode(AntNode):
         Args:
             data_path: Path to the Parquet file.
             chunk_size: Dask array chunk size.
-            **kwargs: Additional keyword arguments passed to AntNode
+            **kwargs: Additional keyword arguments passed to AntNode.
         """
         super().__init__(data_path=data_path, **kwargs)
         self.chunk_size = chunk_size
         self.data = None
-        self.data_cache = None
         self.filters: List[Callable] = []  # List to store filter functions
-        self.preprocessing_functions: List[Callable] = []
-        self.postprocessing_functions: List[Callable] = []
 
     def load_data(self, force_reload: bool = False):
         """Memory-map the Parquet file into a Dask array."""
@@ -127,117 +229,112 @@ class WorkerNode(AntNode):
             parquet_path_str = str(self.parquet_path)
             with pa.memory_map(parquet_path_str, "r") as mmap:
                 table = pq.read_table(mmap)
-                self.data = da.from_array(table.to_pandas().values, chunks=100000)
+                self.data = da.from_array(
+                    table.to_pandas().values, chunks=self.chunk_size
+                )
         except Exception as e:
             raise RuntimeError(f"Failed to load data: {e}")
 
         return self.data
 
-    def apply_functions(self, data, functions: List[Callable]):
-        """Apply a sequence of functions to the data."""
-        return reduce(lambda x, func: func(x), functions, data)
-
-    def get_preprocessed(self, cache: bool = False):
-        """Apply preprocessing functions and return processed data."""
-        if self.data is None:
-            self.load_data()
-
-        processed = self.apply_functions(self.data, self.preprocessing_functions)
-        if cache:
-            self.data_cache = processed
-        return processed
-
-    def get_postprocessed(self):
-        """Apply postprocessing functions and return processed data."""
-        data_to_process = self.data_cache if self.data_cache else self.data
-        if data_to_process is None:
-            raise RuntimeError("No data available. Load or preprocess the data first.")
-        return self.apply_functions(data_to_process, self.postprocessing_functions)
-
-    def add_preprocessing(self, func: Callable):
-        """Add a preprocessing function to the pipeline."""
-        if not callable(func):
-            raise TypeError("Preprocessing function must be callable")
-        self.preprocessing_functions.append(func)
-
-    def add_postprocessing(self, func: Callable):
-        """Add a postprocessing function to the pipeline."""
-        if not callable(func):
-            raise TypeError("Postprocessing function must be callable")
-        self.postprocessing_functions.append(func)
-
     def apply_filters(self):
         """
-        Apply filter functions lazily using map_blocks, automatically adding fs (sampling rate) to each filter.
+        Apply filter functions lazily using map_overlap, ensuring the correct overlap calculation.
         """
         if not hasattr(self, "fs"):
             raise AttributeError("Sampling rate (fs) must be defined in the WorkerNode")
 
-        # Apply each filter function lazily using map_blocks
+        if not self.filters:
+            return self.data  # No filters to apply
+
+        # Simplified overlap calculation
+        min_f_low = min(f.lowcut for f in self.filters if hasattr(f, "lowcut"))
+        k = 5  # Number of cycles needed for stabilization
+        overlap_samples = int(k * self.fs / min_f_low)  # Simplified overlap calculation
+
+        data = self.data
         for func in self.filters:
-            data = self.data.map_blocks(
+            data = data.map_overlap(
                 func,
+                depth=(overlap_samples, 0),  # Apply overlap in the sample axis
+                boundary="reflect",
                 fs=int(self.fs),
-                dtype=self.data.dtype,
+                dtype=data.dtype,
             )
         return data
 
+    def apply_function(self):
+        """
+        Apply filters (if available) and then the TKEO function.
+        """
+        if not hasattr(self, "fs"):
+            raise AttributeError("Sampling rate (fs) must be defined in the WorkerNode")
 
-def bandpass_filter(data, lowcut: float, highcut: float, order: int = 4, fs=None):
-    """
-    Bandpass filter that dynamically accesses the sampling rate (fs).
+        data = self.data
+        if self.filters:
+            data = self.apply_filters()
 
-    Args:
-        data: Input data array
-        lowcut (float): Lower frequency cutoff in Hz
-        highcut (float): Higher frequency cutoff in Hz
-        order (int): Filter order
-        fs: Sampling rate (Hz)
+        if self.tkeo_func:
+            data = data.map_overlap(
+                self.tkeo_func,
+                depth=(2, 0)
+                if self.tkeo_func.tkeo_method == TKEOMethod.LI_2007
+                else (4, 0)
+                if self.tkeo_func.tkeo_method == TKEOMethod.DEBURCHGRAVE_2008
+                else (1, 0),
+                boundary="reflect",
+            )
 
-    Returns:
-        filtered_data: Filtered data array
-    """
-    if fs is None:
-        raise ValueError("Sampling rate (fs) must be provided")
-
-    # Compute the Nyquist frequency
-    nyquist = 0.5 * fs
-
-    # Normalize the cutoff frequencies by the Nyquist frequency
-    low = lowcut / nyquist
-    high = highcut / nyquist
-
-    # Create the second-order sections (SOS) representation of the filter
-    sos = butter(order, [low, high], btype="bandpass", output="sos")
-
-    # Apply the filter using sosfiltfilt
-    return sosfiltfilt(sos, data)
+        return data
 
 
 # %%
 
 folder_name = r"../data/RawG.ant"
 
-# Pass the folder_name as a keyword argument for 'data_path'
-test = AntNode(data_path=folder_name)
-test.load_metadata()
 # %%
-test.summarize()
-
-# %%
-data_ = WorkerNode(data_path=folder_name)
+data_ = WorkerNode(data_path=folder_name, chunk_size="auto")
 data_.load_metadata()
 data_.summarize()
 # %%
 data_.load_data()
 
 # %%
-my_filter = partial(bandpass_filter, lowcut=10, highcut=2000)
-# %%
-# Add filter to filters list
-data_.filters.append(my_filter)
+# Define filter parameters
+lowcut = 100.0  # Lower cutoff frequency in Hz
+highcut = 2000.0  # Upper cutoff frequency in Hz
+order = 4  # Filter order
+notch_freq = 60  # Notch frequency in Hz
 
-# Apply filters lazily using map_blocks
-filtered_data = data_.apply_filters()
-filtered_data.compute()
+# Create filter instances
+notch_filter = NotchFilter(notch_freq)
+butter_filter = BandPassFilter(lowcut, highcut, order)
+
+# Add filters to WorkerNode
+data_.filters.append(notch_filter)
+data_.filters.append(butter_filter)
+data_filtered = data_.apply_filters()
+# %%
+# Define TKEO parameters
+tkeo_method = TKEOMethod.DEBURCHGRAVE_2008
+# Create TKEO instance
+tkeo = TKEO(tkeo_method)
+
+# Add TKEO to WorkerNode
+data_.tkeo_func = tkeo
+
+# Apply filters and TKEO
+result = data_.apply_function()
+
+
+# %%
+import matplotlib.pyplot as plt
+
+# %%
+plt.plot(data_filtered[1000000:1100000, 1].compute())
+plt.plot(result[1000000:1100000, 1].compute() * 100000000)
+
+# %%
+# filtered_data.visualize(engine="cytoscape", optimize_graph=True)
+
 # %%
