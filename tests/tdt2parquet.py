@@ -108,7 +108,9 @@ class tdtStream(BaseModel):
 
         if save:
             if save_path.exists():
-                data_path = save_path / f"data_{save_path.name}.parquet"
+                # Use save_path.stem to strip the .ant extension
+                save_name = save_path.stem  # Strips the .ant extension
+                data_path = save_path / f"data_{save_name}.parquet"
                 pq.write_table(data_table, data_path, compression="snappy")
                 print(f"✅ Data saved to {data_path}")
             else:
@@ -158,7 +160,9 @@ class tdtStream(BaseModel):
 
         if save:
             if save_path.exists():
-                metadata_path = save_path / f"metadata_{save_path.name}.json"
+                # Use save_path.stem to strip the .ant extension
+                save_name = save_path.stem  # Strips the .ant extension
+                metadata_path = save_path / f"metadata_{save_name}.json"
                 with open(metadata_path, "w") as metadata_file:
                     json.dump(metadata, metadata_file, indent=4)
                 print(f"✅ Metadata saved to {metadata_path}")
@@ -188,10 +192,10 @@ class tdtEpoc(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    def data_to_parquet(self) -> pa.Table:
+    def data_to_parquet(self, save: bool = False, save_path: Path = None) -> pa.Table:
         """Converts TDT stream data into a PyArrow Table with embedded metadata."""
 
-        metadata_dict = self.metadata_to_dict()  # Correct function call
+        metadata_dict = self.metadata_to_dict(save, save_path)  # Correct function call
         base_metadata = metadata_dict["base"]
         other_metadata = metadata_dict["other"]
 
@@ -220,10 +224,29 @@ class tdtEpoc(BaseModel):
                 key.encode(): value.encode() for key, value in metadata_parquet.items()
             },
         )
+
+        if save and save_path:
+            # Add relative save path to metadata if provided and save is True
+            relative_path = save_path.relative_to(save_path.anchor)
+            metadata_parquet["save_path"] = str(relative_path)
+
+            # Strip the .ant extension from the filename
+            save_name = save_path.stem  # Strips the .ant extension
+
+            # Save Parquet data
+            if save_path.exists():
+                data_path = (
+                    save_path / f"data_{save_name}.parquet"
+                )  # Use stem for the name
+                pq.write_table(data_table, data_path, compression="snappy")
+                print(f"✅ Data saved to {data_path}")
+            else:
+                print("❌ Save path does not exist")
+
         return data_table
 
-    def metadata_to_dict(self):
-        """Returns metadata as a dictionary."""
+    def metadata_to_dict(self, save: bool = False, save_path: Path = None):
+        """Returns metadata as a dictionary, adds save path if save is True."""
 
         # Validate and collect attributes for base_metadata
         self.base_metadata = {
@@ -239,8 +262,8 @@ class tdtEpoc(BaseModel):
 
         self.other_metadata = {
             "name": str(self._validate_attribute(self.tdt_struct, "name")),
-            "onset": onset.any() if onset is not None else False,
-            "offset": offset.any() if offset is not None else False,
+            "onset": str(onset.any()) if onset is not None else str(False),
+            "offset": str(offset.any()) if offset is not None else str(False),
             "type": str(self._validate_attribute(self.tdt_struct, "type"))
             if self._validate_attribute(self.tdt_struct, "type") is not None
             else None,
@@ -253,11 +276,27 @@ class tdtEpoc(BaseModel):
             else None,
         }
 
-        return {
+        metadata = {
             "source": type(self.tdt_struct).__name__,
             "base": self.base_metadata,
             "other": self.other_metadata,
         }
+
+        if save and save_path:
+            # Add relative save path to metadata if save is True
+            relative_path = save_path.relative_to(save_path.anchor)
+            metadata["save_path"] = str(relative_path)
+
+            # Save metadata to JSON if save is True
+            if save_path.exists():
+                metadata_path = save_path / f"metadata_{save_path.stem}.json"
+                with open(metadata_path, "w") as metadata_file:
+                    json.dump(metadata, metadata_file, indent=4)
+                print(f"✅ Metadata saved to {metadata_path}")
+            else:
+                print("❌ Save path does not exist")
+
+        return metadata
 
     @field_validator("tdt_struct", mode="before")
     @classmethod
@@ -294,102 +333,19 @@ ls(tank_path)
 block_path = tank_path.joinpath("16-49-56_stim")
 working_location = drvPathCarpenter(base_path=block_path)
 
-
-# %%
-working_location.build_drv_directory(Path("../data"))
-
 # %% Read the block
 test = tdt.read_block(str(block_path))
 # %%
-working_location.build_recording_directory("RawG")
+working_location.build_drv_directory(Path("../data"))
+# %%
+stream_name = "RawG"
+working_location.build_recording_directory(stream_name)
 a = tdtStream(tdt_struct=test.streams.RawG)
 k, w = a.data_to_parquet(save=True, save_path=working_location.drv_sub_path)
 
 # %%
-b = tdtEpoc(tdt_struct=test.epocs.AmpA)
-b.data_to_parquet()
-
-# %%
-# Select the stream you're interested in
-tdt_type = "streams"
-stream = "RawG"
-
-# Extract relevant metadata from the stream
-source = "tdt"
-
-base_metadata = {
-    "name": test[tdt_type][stream].name,
-    "fs": float(
-        test[tdt_type][stream].fs
-    ),  # Ensure float for proper numerical representation
-    "number_of_samples": test[tdt_type][stream].data.shape[1],
-    "data_shape": test[tdt_type][stream].data.shape,
-    "channel_numbers": len(test[tdt_type][stream].channel),
-    "channel_names": [
-        str(ch) for ch in np.arange(test[tdt_type][stream].data.shape[0])
-    ],
-    "channel_types": [
-        str(test[tdt_type][stream].data[i, :].dtype)
-        for i in np.arange(test[tdt_type][stream].data.shape[0])
-    ],
-}
-
-other_metadata = {
-    "code": int(test[tdt_type][stream].code),  # Convert np.uint32 to int
-    "size": int(test[tdt_type][stream].size),
-    "type": int(test[tdt_type][stream].type),
-    "type_str": test[tdt_type][stream].type_str,
-    "ucf": str(test[tdt_type][stream].ucf),  # Keep bool as string for consistency
-    "dform": int(test[tdt_type][stream].dform),
-    "start_time": float(
-        test[tdt_type][stream].start_time
-    ),  # Convert np.float64 to float
-    "channel": [
-        str(ch) for ch in test[tdt_type][stream].channel
-    ],  # Convert to list of strings
-}
-# Combine into final JSON structure
-metadata_json = {
-    "source": source,
-    "base": base_metadata,
-    "other": other_metadata,
-}
-
-# %% Create the folder
-folder_name = f"../data/{test[tdt_type][stream].name}.ant"
-folder_path = Path(folder_name)
-folder_path.mkdir(parents=True, exist_ok=True)
-
-# Define file paths
-metadata_path = folder_path / f"{stream}_metadata.json"
-parquet_path = folder_path / f"{stream}_data.parquet"
-
-# Save metadata to JSON file
-with open(metadata_path, "w") as metadata_file:
-    json.dump(metadata_json, metadata_file, indent=4)
-
-# %% Prepare Parquet data
-data = test.streams[stream].data
-column_names = [str(i) for i in range(len(data))]  # Column names as string indices
-
-# Convert metadata for embedding in Parquet
-metadata_parquet = {
-    key: json.dumps(value) if isinstance(value, (list, dict)) else str(value)
-    for key, value in {**base_metadata, **other_metadata}.items()
-}
-
-# Create PyArrow Table with metadata
-data_table = pa.Table.from_arrays(
-    data,
-    names=column_names,
-    metadata={key.encode(): value.encode() for key, value in metadata_parquet.items()},
-)
-
-# Write Parquet file
-pq.write_table(data_table, parquet_path, compression="snappy")
-
-print(f"✅ Metadata saved to {metadata_path}")
-print(f"✅ Data saved to {parquet_path}")
-
-
+epoc_name = "AmpA"
+working_location.build_recording_directory(epoc_name)
+b = tdtEpoc(tdt_struct=test.epocs[epoc_name])
+b.data_to_parquet(save=True, save_path=working_location.drv_sub_path)
 # %%
