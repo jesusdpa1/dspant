@@ -287,7 +287,8 @@ class WorkerNode(AntNode):
 
         return data
 
-
+class CarpenterNode():
+    
 # %%
 
 folder_name = r"../data/RawG.ant"
