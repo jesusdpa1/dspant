@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
 
 import dask.array as da
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
+import torch
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rich.console import Console
 from rich.table import Table
@@ -275,78 +277,6 @@ class ProcessingFunction(Protocol):
     ) -> np.ndarray: ...
 
 
-class FilterProcessor(BaseProcessor):
-    """Filter processor implementation"""
-
-    def __init__(self, filter_func: ProcessingFunction, overlap_samples: int):
-        self.filter_func = filter_func
-        self._overlap_samples = overlap_samples
-
-    def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
-        return data.map_overlap(
-            self.filter_func,
-            depth=(self.overlap_samples, 0),
-            boundary="reflect",
-            fs=fs,
-            dtype=data.dtype,
-            **kwargs,
-        )
-
-    @property
-    def overlap_samples(self) -> int:
-        return self._overlap_samples
-
-
-class TKEOProcessor(BaseProcessor):
-    """TKEO processor implementation"""
-
-    def __init__(self, method: str = "standard"):
-        self.method = method
-        self._overlap_samples = 2 if method == "standard" else 4
-
-    def process(self, data: da.Array, **kwargs) -> da.Array:
-        if self.method == "standard":
-
-            def tkeo(x):
-                return x[1:-1] ** 2 - x[:-2] * x[2:]
-        else:
-
-            def tkeo(x):
-                return x[2:-2] ** 2 - x[:-4] * x[4:]
-
-        return data.map_overlap(
-            tkeo, depth=(self.overlap_samples, 0), boundary="reflect", dtype=data.dtype
-        )
-
-    @property
-    def overlap_samples(self) -> int:
-        return self._overlap_samples
-
-
-class NormalizationProcessor(BaseProcessor):
-    """Normalization processor implementation"""
-
-    def __init__(self, method: str = "zscore"):
-        self.method = method
-        self._overlap_samples = 0
-
-    def process(self, data: da.Array, **kwargs) -> da.Array:
-        if self.method == "zscore":
-            mean = data.mean()
-            std = data.std()
-            return (data - mean) / std
-        elif self.method == "minmax":
-            min_val = data.min()
-            max_val = data.max()
-            return (data - min_val) / (max_val - min_val)
-        else:
-            raise ValueError(f"Unknown normalization method: {self.method}")
-
-    @property
-    def overlap_samples(self) -> int:
-        return self._overlap_samples
-
-
 class ProcessingPipeline:
     """Class for managing a sequence of processors"""
 
@@ -495,6 +425,7 @@ class ProcessingNode:
         return self._processor_history.copy()
 
     def summarize(self):
+        # TODO Need modification
         """Print a summary of the processing configuration"""
         console = Console()
 
@@ -547,6 +478,169 @@ class ProcessingNode:
         console.print(table)
 
 
+class TKEOProcessor(BaseProcessor):
+    """TKEO processor implementation"""
+
+    def __init__(self, method: str = "standard"):
+        self.method = method
+        self._overlap_samples = 2 if method == "standard" else 4
+
+    def process(self, data: da.Array, **kwargs) -> da.Array:
+        if self.method == "standard":
+
+            def tkeo(x):
+                return x[1:-1] ** 2 - x[:-2] * x[2:]
+        else:
+
+            def tkeo(x):
+                return x[2:-2] ** 2 - x[:-4] * x[4:]
+
+        return data.map_overlap(
+            tkeo, depth=(self.overlap_samples, 0), boundary="reflect", dtype=data.dtype
+        )
+
+    @property
+    def overlap_samples(self) -> int:
+        return self._overlap_samples
+
+
+class FilterProcessor(BaseProcessor):
+    """Filter processor implementation"""
+
+    def __init__(self, filter_func: ProcessingFunction, overlap_samples: int):
+        self.filter_func = filter_func
+        self._overlap_samples = overlap_samples
+
+    def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
+        return data.map_overlap(
+            self.filter_func,
+            depth=(self.overlap_samples, 0),
+            boundary="reflect",
+            fs=fs,
+            dtype=data.dtype,
+            **kwargs,
+        )
+
+    @property
+    def overlap_samples(self) -> int:
+        return self._overlap_samples
+
+
+class NormalizationProcessor(BaseProcessor):
+    """Normalization processor implementation"""
+
+    def __init__(self, method: str = "zscore"):
+        self.method = method
+        self._overlap_samples = 0
+
+    def process(self, data: da.Array, **kwargs) -> da.Array:
+        if self.method == "zscore":
+            mean = data.mean()
+            std = data.std()
+            return (data - mean) / std
+        elif self.method == "minmax":
+            min_val = data.min()
+            max_val = data.max()
+            return (data - min_val) / (max_val - min_val)
+        else:
+            raise ValueError(f"Unknown normalization method: {self.method}")
+
+    @property
+    def overlap_samples(self) -> int:
+        return self._overlap_samples
+
+
+class StftProcessor(BaseProcessor):
+    """STFT processor implementation using PyTorch for large time-series Dask arrays."""
+
+    def __init__(
+        self, n_fft: int = 256, hop_length: Optional[int] = None, window: str = "hann"
+    ):
+        self.n_fft = n_fft
+        self.hop_length = hop_length if hop_length is not None else n_fft // 2
+        self.window = window
+        self._overlap_samples = n_fft - self.hop_length  # Overlap needed for continuity
+
+    def _stft_single_channel(self, data_np: np.ndarray) -> np.ndarray:
+        """Compute STFT for a single-channel NumPy array."""
+        if data_np.size == 0:
+            return np.empty(
+                (self.n_fft // 2 + 1, 0), dtype=np.float32
+            )  # Ensure non-empty output
+
+        data_tensor = torch.tensor(data_np, dtype=torch.float32)
+
+        # Create window function
+        window_tensor = (
+            torch.hann_window(self.n_fft)
+            if self.window == "hann"
+            else torch.ones(self.n_fft)
+        )
+
+        # Compute STFT
+        stft_result = torch.stft(
+            data_tensor,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            window=window_tensor,
+            return_complex=True,
+            center=True,  # Ensures symmetric padding
+            normalized=False,
+        )
+
+        return torch.abs(stft_result).numpy()  # Convert to magnitude spectrogram
+
+    def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
+        """Computes STFT for each channel using Dask with `map_overlap`."""
+
+        if data.ndim != 2:
+            raise ValueError(
+                f"Expected input shape (number of samples, number of channels), but got {data.shape}"
+            )
+
+        # Debugging chunk sizes before and after rechunking
+        print(f"Chunks before rechunk: {data.chunks}")
+        if data.chunks[0][0] < self.n_fft:
+            data = data.rechunk(
+                {0: self.n_fft}
+            )  # Ensures sufficient time samples in each block
+        print(f"Chunks after rechunk: {data.chunks}")
+
+        # Define depth for overlap (only time axis)
+        depth = {0: self._overlap_samples, 1: 0}  # Overlap only along time axis
+
+        # Apply STFT per channel
+        def process_block(block):
+            # Handle empty blocks by returning an empty array with proper shape
+            if block.size == 0:
+                return da.zeros(
+                    (self.n_fft // 2 + 1, 0, block.shape[1]), dtype=np.float32
+                )
+
+            # Apply STFT for each channel
+            stft_results = np.stack(
+                [
+                    self._stft_single_channel(block[:, ch])
+                    for ch in range(block.shape[1])
+                ],
+                axis=-1,
+            )
+            return da.from_array(stft_results, chunks=-1)
+
+        stft_results = data.map_overlap(
+            process_block,
+            depth=depth,
+            boundary="reflect",  # Reflects edge values to avoid artifacts
+            trim=False,  # Do not trim overlap to ensure correct output shape
+            dtype=np.float32,
+        )
+        return stft_results
+
+    @property
+    def overlap_samples(self) -> int:
+        return self._overlap_samples
+
+
 # Example filter functions that can be used with FilterProcessor
 def create_bandpass_filter(
     lowcut: float, highcut: float, order: int = 4
@@ -574,6 +668,24 @@ def create_notch_filter(
     return notch_filter
 
 
+def create_lowpass_filter(cutoff: float, order: int = 4) -> ProcessingFunction:
+    def lowpass_filter(chunk: np.ndarray, fs: float) -> np.ndarray:
+        nyquist = 0.5 * fs
+        sos = butter(order, cutoff / nyquist, btype="lowpass", output="sos")
+        return sosfiltfilt(sos, chunk, axis=0)
+
+    return lowpass_filter
+
+
+def create_highpass_filter(cutoff: float, order: int = 4) -> ProcessingFunction:
+    def highpass_filter(chunk: np.ndarray, fs: float) -> np.ndarray:
+        nyquist = 0.5 * fs
+        sos = butter(order, cutoff / nyquist, btype="highpass", output="sos")
+        return sosfiltfilt(sos, chunk, axis=0)
+
+    return highpass_filter
+
+
 # %%
 folder_name = (
     r"../data/25-02-12_9882-1_testSubject_emgContusion/drv_16-49-56_stim/RawG.ant"
@@ -590,24 +702,64 @@ stream.summarize()
 # Create processing node
 processor = ProcessingNode(stream)
 # %%
+notch = FilterProcessor(filter_func=create_notch_filter(60), overlap_samples=128)
+
+
 # Add some processors
 bandpass = FilterProcessor(
     create_bandpass_filter(lowcut=20, highcut=2000), overlap_samples=128
 )
+
+lowpass = FilterProcessor(filter_func=create_lowpass_filter(20), overlap_samples=128)
+
+
+processor.add_processor(notch)
 processor.add_processor(bandpass)
 # %%
+processor.summarize()
+filtered_data = processor.process()
+# %%
+
 tkeo = TKEOProcessor(method="standard")
 processor.add_processor(tkeo)
-
-# Print processing summary
+processor.add_processor(lowpass)
 processor.summarize()
+le_data = processor.process()
+# %%
+filter_to_plot = filtered_data[0:100000, 0].compute()
+le_data_to_plot = le_data[0:100000, 0].compute()
+# %%
+plt.plot(filter_to_plot)
+plt.plot(le_data_to_plot * 1000000)
 
 
 # %%
-
-processor.process()
-
+processor.remove_processor(0)
+stft_processor = StftProcessor()
+processor.add_processor(stft_processor)
 # %%
 processed_data = processor.process()
-partial_results = processed_data.compute()
+# %%
+a = processed_data[0:1000000, :].compute()
+
+# %%
+a[:]
+
+# %%
+chunk = processed_data[0:10, :].compute()  # Get a small slice
+print(chunk)
+# %%
+channel_idx = 1
+
+# Get the STFT data for the selected channel
+stft_channel_data = a[:, :, channel_idx].compute()
+
+# Plot the STFT data
+plt.imshow(stft_channel_data, origin="lower", cmap="inferno", aspect="auto")
+plt.xlabel("Time (frames)")
+plt.ylabel("Frequency (bins)")
+plt.title("STFT Channel {}".format(channel_idx))
+plt.colorbar()
+plt.show()
+
 # %%
