@@ -1,3 +1,9 @@
+"""
+first working prototype of the desire structure to load and process the data
+author: Jesus Penaloza
+
+"""
+
 # %%
 import json
 from abc import ABC, abstractmethod
@@ -10,18 +16,22 @@ import dask.array as da
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np
+import pendulum  # Replace datetime import
 import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
+from pendulum import DateTime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 from scipy.signal import butter, sosfiltfilt
 from torchaudio import functional, transforms
 
-
 # %%
+
+
 class BaseNode(BaseModel):
     """Base class for handling data paths and metadata"""
 
@@ -77,7 +87,7 @@ class EpocNode(BaseEpocNode):
         self.name = name or f"epoc_node_{id(self)}"
         self.data: Optional[pl.DataFrame] = None
         self._is_active = True
-        self._last_modified = datetime.now()
+        self._last_modified = pendulum.now()
         self._operation_history: List[str] = []
 
     @property
@@ -86,7 +96,7 @@ class EpocNode(BaseEpocNode):
         return self._is_active
 
     @property
-    def last_modified(self) -> datetime:
+    def last_modified(self) -> DateTime:
         """Get the last modification timestamp"""
         return self._last_modified
 
@@ -115,8 +125,10 @@ class EpocNode(BaseEpocNode):
 
         try:
             self.data = pl.read_parquet(str(self.parquet_path))
-            self._last_modified = datetime.now()
-            self._operation_history.append(f"Data loaded at {self._last_modified}")
+            self._last_modified = pendulum.now()
+            self._operation_history.append(
+                f"Data loaded at {self._last_modified.to_datetime_string()}"
+            )
             return self.data
         except Exception as e:
             raise RuntimeError(f"Failed to load epoch data: {e}")
@@ -130,14 +142,18 @@ class EpocNode(BaseEpocNode):
     def deactivate(self) -> None:
         """Deactivate the epoc node"""
         self._is_active = False
-        self._last_modified = datetime.now()
-        self._operation_history.append(f"Node deactivated at {self._last_modified}")
+        self._last_modified = pendulum.now()
+        self._operation_history.append(
+            f"Node deactivated at {self._last_modified.to_datetime_string()}"
+        )
 
     def reactivate(self) -> None:
         """Reactivate the epoc node"""
         self._is_active = True
-        self._last_modified = datetime.now()
-        self._operation_history.append(f"Node reactivated at {self._last_modified}")
+        self._last_modified = pendulum.now()
+        self._operation_history.append(
+            f"Node reactivated at {self._last_modified.to_datetime_string()}"
+        )
 
     def get_history(self) -> List[str]:
         """Get the operation history"""
@@ -147,16 +163,30 @@ class EpocNode(BaseEpocNode):
         """Print a comprehensive summary of the epoc node"""
         console = Console()
 
-        table = Table(title=f"Epoc Node Summary: {self.name}")
+        table = Table(
+            title=f"Epoc Node Summary: {self.name}",
+            show_header=True,
+            header_style="bold magenta",
+            border_style="blue",
+        )
         table.add_column("Attribute", justify="right", style="cyan")
-        table.add_column("Value", justify="left")
+        table.add_column("Value", justify="left", style="green")
 
         # Node status
         table.add_section()
-        table.add_row("Status", "Active" if self.is_active else "Inactive")
-        table.add_row("Last Modified", str(self.last_modified))
+        status_style = "green" if self.is_active else "red"
+        table.add_row(
+            "Status",
+            Text("Active" if self.is_active else "Inactive", style=status_style),
+        )
+        table.add_row("Last Modified", self._last_modified.to_datetime_string())
         table.add_row("Data Path", str(self.data_path))
-        table.add_row("Data Loaded", "Yes" if self.data is not None else "No")
+        table.add_row(
+            "Data Loaded",
+            Text("Yes", style="green")
+            if self.data is not None
+            else Text("No", style="red"),
+        )
 
         # Data information
         if self.data is not None:
@@ -175,7 +205,11 @@ class EpocNode(BaseEpocNode):
         # Recent history
         if self._operation_history:
             table.add_section()
-            table.add_row("Recent Operations", "\n".join(self._operation_history[-5:]))
+            formatted_history = "\n".join(
+                f"[dim]{i + 1}.[/dim] {entry}"
+                for i, entry in enumerate(reversed(self._operation_history[-5:]))
+            )
+            table.add_row("Recent Operations", formatted_history)
 
         console.print(table)
 
@@ -270,6 +304,14 @@ class BaseProcessor(ABC):
         """Return the number of samples needed for overlap"""
         pass
 
+    @property
+    def summary(self) -> Dict[str, Any]:
+        """
+        Return a dictionary containing processor configuration details
+        Override this in derived classes to provide specific details
+        """
+        return {"type": self.__class__.__name__, "overlap": self.overlap_samples}
+
 
 class ProcessingFunction(Protocol):
     """Protocol defining the interface for processing functions"""
@@ -305,7 +347,7 @@ class ProcessingNode:
         self.pipeline = ProcessingPipeline()
         self.name = name or f"processing_node_{id(self)}"
         self._is_active = True
-        self._last_modified = datetime.now()
+        self._last_modified = pendulum.now()  # Replace datetime.now()
         self._processor_history: List[str] = []
 
     @property
@@ -361,7 +403,7 @@ class ProcessingNode:
             else:
                 self.pipeline.processors.append(proc)
 
-            self._last_modified = datetime.now()
+            self._last_modified = pendulum.now()  # Replace datetime.now()
             self._processor_history.append(
                 f"Added {proc.__class__.__name__} at {self._last_modified}"
             )
@@ -373,7 +415,7 @@ class ProcessingNode:
 
         if 0 <= index < len(self.pipeline.processors):
             processor = self.pipeline.processors.pop(index)
-            self._last_modified = datetime.now()
+            self._last_modified = pendulum.now()  # Replace datetime.now()
             self._processor_history.append(
                 f"Removed {processor.__class__.__name__} at {self._last_modified}"
             )
@@ -386,7 +428,7 @@ class ProcessingNode:
             raise RuntimeError(f"Processing node '{self.name}' is not active")
 
         self.pipeline.processors.clear()
-        self._last_modified = datetime.now()
+        self._last_modified = pendulum.now()  # Replace datetime.now()
         self._processor_history.append(
             f"Cleared all processors at {self._last_modified}"
         )
@@ -394,13 +436,13 @@ class ProcessingNode:
     def deactivate(self) -> None:
         """Deactivate the processing node"""
         self._is_active = False
-        self._last_modified = datetime.now()
+        self._last_modified = pendulum.now()  # Replace datetime.now()
         self._processor_history.append(f"Node deactivated at {self._last_modified}")
 
     def reactivate(self) -> None:
         """Reactivate the processing node"""
         self._is_active = True
-        self._last_modified = datetime.now()
+        self._last_modified = pendulum.now()  # Replace datetime.now()
         self._processor_history.append(f"Node reactivated at {self._last_modified}")
 
     def can_overwrite(self) -> Tuple[bool, str]:
@@ -434,58 +476,115 @@ class ProcessingNode:
         """Get the processing history"""
         return self._processor_history.copy()
 
-    def summarize(self):
-        # TODO Need modification
-        """Print a summary of the processing configuration"""
+
+def summarize(self, show_history: bool = True, max_history: int = 5):
+    """
+    Print a detailed summary of the processing configuration
+
+    Args:
+        show_history (bool): Whether to show processing history
+        max_history (int): Maximum number of history entries to show
+    """
+    try:
         console = Console()
 
-        # Create main table
-        table = Table(title=f"Processing Node Summary: {self.name}")
-
-        # Add columns
-        table.add_column("Component", justify="right", style="cyan")
-        table.add_column("Details", justify="left")
-
-        # Node status information
-        table.add_section()
-        table.add_row("Status", "Active" if self.is_active else "Inactive")
-        table.add_row("Last Modified", str(self.last_modified))
-        table.add_row("Stream Node", str(self.stream_node.data_path))
-        table.add_row(
-            "Sampling Rate",
-            f"{self.stream_node.fs} Hz" if self.stream_node.fs else "Not set",
+        # Create main table with a border style
+        table = Table(
+            title=f"Processing Node Summary: {self.name}",
+            show_header=True,
+            header_style="bold magenta",
+            border_style="blue",
         )
 
-        # Processing Pipeline Information
+        # Add columns with improved styling
+        table.add_column("Component", justify="right", style="cyan", no_wrap=True)
+        table.add_column("Details", justify="left", style="green")
+
+        # Node status information with more details
+        table.add_section()
+        status_style = "green" if self.is_active else "red"
+        table.add_row(
+            "Status",
+            Text("Active" if self.is_active else "Inactive", style=status_style),
+        )
+        table.add_row("Name", self.name)
+        table.add_row("Last Modified", str(self.last_modified))
+
+        # Stream Node information
+        table.add_section()
+        table.add_row("Stream Node Path", str(self.stream_node.data_path))
+        table.add_row(
+            "Sampling Rate",
+            f"{self.stream_node.fs} Hz"
+            if self.stream_node.fs
+            else "[red]Not set[/red]",
+        )
+
+        # Add data shape if available
+        if hasattr(self.stream_node, "data_shape") and self.stream_node.data_shape:
+            table.add_row("Data Shape", str(self.stream_node.data_shape))
+
+        # Processing Pipeline Information with enhanced details
         if self.pipeline.processors:
             table.add_section()
-            table.add_row("Total Processors", str(len(self.pipeline.processors)))
+            table.add_row(
+                "Pipeline Status",
+                f"Active with {len(self.pipeline.processors)} processor(s)",
+            )
+
+            # Create a nested table for processors
+            processor_table = Table(show_header=True, box=box.SIMPLE)
+            processor_table.add_column("ID", justify="center", style="cyan")
+            processor_table.add_column("Type", style="green")
+            processor_table.add_column("Configuration", style="yellow")
+            processor_table.add_column("Overlap", justify="right")
 
             for i, processor in enumerate(self.pipeline.processors, 1):
-                processor_type = processor.__class__.__name__
-                details = []
+                # Get processor summary
+                proc_summary = processor.summary
 
-                # Add processor-specific details
-                if isinstance(processor, FilterProcessor):
-                    details.append(f"Filter function: {processor.filter_func.__name__}")
-                elif isinstance(processor, TKEOProcessor):
-                    details.append(f"Method: {processor.method}")
-                elif isinstance(processor, NormalizationProcessor):
-                    details.append(f"Method: {processor.method}")
+                # Format configuration details
+                config_details = []
+                for key, value in proc_summary.items():
+                    if key not in ["type", "overlap"] and value is not None:
+                        config_details.append(f"{key}: {value}")
 
-                details.append(f"Overlap: {processor.overlap_samples} samples")
-                table.add_row(
-                    f"Processor {i}", f"Type: {processor_type}\n" + "\n".join(details)
+                processor_table.add_row(
+                    str(i),
+                    proc_summary["type"],
+                    "\n".join(config_details) if config_details else "Default config",
+                    f"{proc_summary['overlap']} samples",
                 )
-        else:
-            table.add_row("Processors", "No processors configured")
 
-        # Add recent history
-        if self._processor_history:
+            table.add_row("Processors", processor_table)
+        else:
+            table.add_row(
+                "Pipeline Status", Text("No processors configured", style="red")
+            )
+
+        # Add processing history with timestamp formatting
+        if show_history and self._processor_history:
             table.add_section()
-            table.add_row("Recent History", "\n".join(self._processor_history[-5:]))
+            history_entries = self._processor_history[-max_history:]
+            formatted_history = "\n".join(
+                f"[dim]{i + 1}.[/dim] {entry}"
+                for i, entry in enumerate(reversed(history_entries))
+            )
+            table.add_row("Recent History", formatted_history)
+
+        # Add system resources information
+        if hasattr(self.stream_node, "data"):
+            table.add_section()
+            table.add_row(
+                "Memory Usage",
+                f"Chunks: {self.stream_node.data.chunks}\n"
+                f"Type: {self.stream_node.data.dtype}",
+            )
 
         console.print(table)
+
+    except Exception as e:
+        console.print(f"[red]Error generating summary: {str(e)}[/red]")
 
 
 class TKEOProcessor(BaseProcessor):
@@ -513,6 +612,14 @@ class TKEOProcessor(BaseProcessor):
     def overlap_samples(self) -> int:
         return self._overlap_samples
 
+    @property
+    def summary(self) -> Dict[str, Any]:
+        base_summary = super().summary
+        base_summary.update(
+            {"method": self.method, "window_size": getattr(self, "window_size", None)}
+        )
+        return base_summary
+
 
 class FilterProcessor(BaseProcessor):
     """Filter processor implementation"""
@@ -534,6 +641,17 @@ class FilterProcessor(BaseProcessor):
     @property
     def overlap_samples(self) -> int:
         return self._overlap_samples
+
+    @property
+    def summary(self) -> Dict[str, Any]:
+        base_summary = super().summary
+        base_summary.update(
+            {
+                "filter_function": self.filter_func.__name__,
+                "args": getattr(self, "filter_args", None),
+            }
+        )
+        return base_summary
 
 
 class NormalizationProcessor(BaseProcessor):
@@ -558,6 +676,14 @@ class NormalizationProcessor(BaseProcessor):
     @property
     def overlap_samples(self) -> int:
         return self._overlap_samples
+
+    @property
+    def summary(self) -> Dict[str, Any]:
+        base_summary = super().summary
+        base_summary.update(
+            {"method": self.method, "scale": getattr(self, "scale", None)}
+        )
+        return base_summary
 
 
 class SpectrogramProcessor(BaseProcessor):
