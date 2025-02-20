@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
 
 import dask.array as da
+import librosa
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -17,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rich.console import Console
 from rich.table import Table
 from scipy.signal import butter, sosfiltfilt
+from torchaudio import functional, transforms
 
 
 # %%
@@ -59,18 +61,6 @@ class BaseNode(BaseModel):
             setattr(self, key, value)
 
         self.metadata = metadata
-
-
-class BaseStreamNode(BaseNode):
-    """Base class for handling time-series data"""
-
-    name: Optional[str] = None
-    fs: Optional[float] = None
-    number_of_samples: Optional[int] = None
-    data_shape: Optional[List[int]] = None
-    channel_numbers: Optional[int] = None
-    channel_names: Optional[List[str]] = None
-    channel_types: Optional[List[str]] = None
 
 
 class BaseEpocNode(BaseNode):
@@ -188,6 +178,18 @@ class EpocNode(BaseEpocNode):
             table.add_row("Recent Operations", "\n".join(self._operation_history[-5:]))
 
         console.print(table)
+
+
+class BaseStreamNode(BaseNode):
+    """Base class for handling time-series data"""
+
+    name: Optional[str] = None
+    fs: Optional[float] = None
+    number_of_samples: Optional[int] = None
+    data_shape: Optional[List[int]] = None
+    channel_numbers: Optional[int] = None
+    channel_names: Optional[List[str]] = None
+    channel_types: Optional[List[str]] = None
 
 
 class StreamNode(BaseStreamNode):
@@ -335,26 +337,34 @@ class ProcessingNode:
         return status
 
     def add_processor(
-        self, processor: BaseProcessor, position: Optional[int] = None
+        self,
+        processor: Union[BaseProcessor, List[BaseProcessor]],
+        position: Optional[int] = None,
     ) -> None:
         """
-        Add a processor to the pipeline at the specified position
+        Add a processor or list of processors to the pipeline at the specified position
         If position is None, append to the end
         """
         if not self.is_active:
             raise RuntimeError(f"Processing node '{self.name}' is not active")
 
-        if position is not None:
-            if position < 0 or position > len(self.pipeline.processors):
-                raise ValueError(f"Invalid position: {position}")
-            self.pipeline.processors.insert(position, processor)
-        else:
-            self.pipeline.processors.append(processor)
+        # Convert single processor to a list for uniform handling
+        processors = processor if isinstance(processor, list) else [processor]
 
-        self._last_modified = datetime.now()
-        self._processor_history.append(
-            f"Added {processor.__class__.__name__} at {self._last_modified}"
-        )
+        for proc in processors:
+            if position is not None:
+                if position < 0 or position > len(self.pipeline.processors):
+                    raise ValueError(f"Invalid position: {position}")
+                self.pipeline.processors.insert(position, proc)
+                # Only increment position if it was specified to maintain relative order
+                position += 1
+            else:
+                self.pipeline.processors.append(proc)
+
+            self._last_modified = datetime.now()
+            self._processor_history.append(
+                f"Added {proc.__class__.__name__} at {self._last_modified}"
+            )
 
     def remove_processor(self, index: int) -> Optional[BaseProcessor]:
         """Remove a processor at the specified index"""
@@ -550,91 +560,275 @@ class NormalizationProcessor(BaseProcessor):
         return self._overlap_samples
 
 
-class StftProcessor(BaseProcessor):
-    """STFT processor implementation using PyTorch for large time-series Dask arrays."""
+class SpectrogramProcessor(BaseProcessor):
+    """this function seems to only work for computing the full stft regardless of the shape given, needs to be checked later"""
 
     def __init__(
-        self, n_fft: int = 256, hop_length: Optional[int] = None, window: str = "hann"
+        self,
+        n_fft: int = 400,
+        win_length: Optional[int] = None,
+        hop_length: Optional[int] = None,
+        pad: int = 0,
+        window_fn: Callable[[int], torch.Tensor] = torch.hann_window,
+        power: Optional[float] = 2.0,
+        normalized: bool = False,
+        wkwargs: Optional[dict] = None,
+        center: bool = True,
+        pad_mode: str = "reflect",
+        onesided: bool = True,
     ):
+        self.spectrogram = transforms.Spectrogram(
+            n_fft=n_fft,
+            win_length=win_length,
+            hop_length=hop_length,
+            pad=pad,
+            window_fn=window_fn,
+            power=power,
+            normalized=normalized,
+            wkwargs=wkwargs or {},
+            center=center,
+            pad_mode=pad_mode,
+            onesided=onesided,
+        )
+
         self.n_fft = n_fft
         self.hop_length = hop_length if hop_length is not None else n_fft // 2
-        self.window = window
-        self._overlap_samples = n_fft - self.hop_length  # Overlap needed for continuity
 
-    def _stft_single_channel(self, data_np: np.ndarray) -> np.ndarray:
-        """Compute STFT for a single-channel NumPy array."""
-        if data_np.size == 0:
-            return np.empty(
-                (self.n_fft // 2 + 1, 0), dtype=np.float32
-            )  # Ensure non-empty output
+        if center:
+            self._overlap_samples = n_fft
+        else:
+            self._overlap_samples = n_fft - self.hop_length
 
-        data_tensor = torch.tensor(data_np, dtype=torch.float32)
-
-        # Create window function
-        window_tensor = (
-            torch.hann_window(self.n_fft)
-            if self.window == "hann"
-            else torch.ones(self.n_fft)
-        )
-
-        # Compute STFT
-        stft_result = torch.stft(
-            data_tensor,
-            n_fft=self.n_fft,
-            hop_length=self.hop_length,
-            window=window_tensor,
-            return_complex=True,
-            center=True,  # Ensures symmetric padding
-            normalized=False,
-        )
-
-        return torch.abs(stft_result).numpy()  # Convert to magnitude spectrogram
-
-    def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
-        """Computes STFT for each channel using Dask with `map_overlap`."""
+    def process(
+        self, data: da.Array, fs: Optional[float] = None, **kwargs
+    ) -> np.ndarray:
+        if fs is None:
+            raise ValueError("Sampling frequency (fs) must be provided")
 
         if data.ndim != 2:
-            raise ValueError(
-                f"Expected input shape (number of samples, number of channels), but got {data.shape}"
-            )
+            raise ValueError(f"Expected 2D input, got shape {data.shape}")
 
-        # Debugging chunk sizes before and after rechunking
-        print(f"Chunks before rechunk: {data.chunks}")
-        if data.chunks[0][0] < self.n_fft:
-            data = data.rechunk(
-                {0: self.n_fft}
-            )  # Ensures sufficient time samples in each block
-        print(f"Chunks after rechunk: {data.chunks}")
+        def process_chunk(x: np.ndarray) -> np.ndarray:
+            x_torch = torch.from_numpy(x).float().T
+            spec = self.spectrogram(x_torch)
+            return np.moveaxis(spec.numpy(), 0, -1)
 
-        # Define depth for overlap (only time axis)
-        depth = {0: self._overlap_samples, 1: 0}  # Overlap only along time axis
-
-        # Apply STFT per channel
-        def process_block(block):
-            # Handle empty blocks by returning an empty array with proper shape
-            if block.size == 0:
-                return da.zeros(
-                    (self.n_fft // 2 + 1, 0, block.shape[1]), dtype=np.float32
-                )
-
-            # Apply STFT for each channel
-            stft_results = np.stack(
-                [
-                    self._stft_single_channel(block[:, ch])
-                    for ch in range(block.shape[1])
-                ],
-                axis=-1,
-            )
-            return da.from_array(stft_results, chunks=-1)
-
-        stft_results = data.map_overlap(
-            process_block,
-            depth=depth,
-            boundary="reflect",  # Reflects edge values to avoid artifacts
-            trim=False,  # Do not trim overlap to ensure correct output shape
+        result = data.map_overlap(
+            process_chunk,
+            depth={-2: self._overlap_samples},  # Using dict form like STFT
+            boundary="reflect",
             dtype=np.float32,
+            new_axis=-3,
         )
-        return stft_results
+
+        return result
+
+    @property
+    def overlap_samples(self) -> int:
+        return self._overlap_samples
+
+
+class LFCCProcessor(BaseProcessor):
+    def __init__(
+        self,
+        n_filter: int = 128,
+        n_lfcc: int = 40,
+        f_min: float = 0.0,
+        f_max: Optional[float] = None,
+        dct_type: int = 2,
+        norm: str = "ortho",
+        log_lf: bool = False,
+        speckwargs: Optional[dict] = None,
+    ):
+        # Store parameters for spectrogram computation
+        self.speckwargs = speckwargs or {
+            "n_fft": 400,
+            "hop_length": 200,
+            "power": 2.0,
+        }
+
+        # Initialize overlap samples based on spectrogram parameters
+        self.n_fft = self.speckwargs.get("n_fft", 400)
+        self.hop_length = self.speckwargs.get("hop_length", self.n_fft // 2)
+
+        if self.speckwargs.get("center", True):
+            self._overlap_samples = self.n_fft
+        else:
+            self._overlap_samples = self.n_fft - self.hop_length
+
+        # LFCC specific parameters
+        self.n_filter = n_filter
+        self.n_lfcc = n_lfcc
+        self.f_min = f_min
+        self.f_max = f_max
+        self.dct_type = dct_type
+        self.norm = norm
+        self.log_lf = log_lf
+
+        # LFCC transform will be initialized in process since it needs sampling rate
+        self.lfcc = None
+        self.freqs = None
+
+    def get_frequencies(self) -> Optional[np.ndarray]:
+        """Return the center frequencies of the linear filterbank"""
+        if self.lfcc is None:
+            return None
+        # The filterbank is linear, so we can compute the frequencies directly
+        f_max = self.f_max if self.f_max is not None else self.lfcc.sample_rate / 2
+        return np.linspace(self.f_min, f_max, self.n_filter)
+
+    def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
+        if fs is None:
+            raise ValueError("Sampling frequency (fs) must be provided")
+
+        if data.ndim != 2:
+            raise ValueError(f"Expected 2D input, got shape {data.shape}")
+
+        # Initialize LFCC transform with the sampling rate
+        self.lfcc = transforms.LFCC(
+            sample_rate=int(fs),  # LFCC requires integer sample rate
+            n_filter=self.n_filter,
+            n_lfcc=self.n_lfcc,
+            f_min=self.f_min,
+            f_max=self.f_max if self.f_max is not None else fs / 2,
+            dct_type=self.dct_type,
+            norm=self.norm,
+            log_lf=self.log_lf,
+            speckwargs=self.speckwargs,
+        )
+
+        # Store the frequencies once LFCC is initialized
+        self.freqs = self.get_frequencies()
+
+        def process_chunk(x: np.ndarray) -> np.ndarray:
+            x_torch = torch.from_numpy(x).float().T
+            lfcc_features = self.lfcc(x_torch)
+            return np.moveaxis(lfcc_features.numpy(), 0, -1)
+
+        result = data.map_overlap(
+            process_chunk,
+            depth={-2: self._overlap_samples},
+            boundary="reflect",
+            dtype=np.float32,
+            new_axis=-3,
+        )
+
+        if self.freqs is not None:
+            result.attrs = {"frequencies": self.freqs}
+
+        return result
+
+    @property
+    def overlap_samples(self) -> int:
+        return self._overlap_samples
+
+
+class MFCCProcessor(BaseProcessor):
+    def __init__(
+        self,
+        n_mfcc: int = 40,
+        dct_type: int = 2,
+        norm: str = "ortho",
+        log_mels: bool = False,
+        melkwargs: Optional[dict] = None,
+    ):
+        # Store mel spectrogram parameters
+        self.melkwargs = melkwargs or {
+            "n_fft": 400,
+            "hop_length": 200,
+            "n_mels": 128,
+            "power": 2.0,
+        }
+
+        # Initialize overlap samples based on mel spectrogram parameters
+        self.n_fft = self.melkwargs.get("n_fft", 400)
+        self.hop_length = self.melkwargs.get("hop_length", self.n_fft // 2)
+
+        if self.melkwargs.get("center", True):
+            self._overlap_samples = self.n_fft
+        else:
+            self._overlap_samples = self.n_fft - self.hop_length
+
+        # MFCC specific parameters
+        self.n_mfcc = n_mfcc
+        self.dct_type = dct_type
+        self.norm = norm
+        self.log_mels = log_mels
+
+        # MFCC transform will be initialized in process since it needs sampling rate
+        self.mfcc = None
+        self.mel_fbanks = None
+
+    def get_mel_filterbanks(self, fs) -> Optional[torch.Tensor]:
+        """Get mel filterbank matrix"""
+        print(fs)
+        if not fs:
+            return None
+
+        n_mels = self.melkwargs.get("n_mels", 128)
+        f_min = self.melkwargs.get("f_min", 0.0)
+
+        # Ensure f_max is not None by using fs/2 as default
+        f_max = self.melkwargs.get("f_max") or (fs / 2)
+
+        # Number of FFT bins
+        n_freqs = self.n_fft // 2 + 1
+
+        return functional.melscale_fbanks(
+            n_freqs=n_freqs,
+            f_min=f_min,
+            f_max=f_max,
+            n_mels=n_mels,
+            sample_rate=fs,
+            norm=self.melkwargs.get("norm", None),
+            mel_scale=self.melkwargs.get("mel_scale", "htk"),
+        )
+
+    def process(
+        self, data: da.Array, fs: Optional[float] = None, **kwargs
+    ) -> np.ndarray:
+        if fs is None:
+            raise ValueError("Sampling frequency (fs) must be provided")
+
+        if data.ndim != 2:
+            raise ValueError(f"Expected 2D input, got shape {data.shape}")
+
+        # Initialize MFCC transform with the sampling rate
+        self.mfcc = transforms.MFCC(
+            sample_rate=int(fs),  # MFCC requires integer sample rate
+            n_mfcc=self.n_mfcc,
+            dct_type=self.dct_type,
+            norm=self.norm,
+            log_mels=self.log_mels,
+            melkwargs=self.melkwargs,
+        )
+
+        # Get mel filterbanks
+        self.mel_fbanks = self.get_mel_filterbanks(fs)
+
+        def process_chunk(x: np.ndarray) -> np.ndarray:
+            x_torch = torch.from_numpy(x).float().T
+            mfcc_features = self.mfcc(x_torch)
+            return np.moveaxis(mfcc_features.numpy(), 0, -1)
+
+        result = data.map_overlap(
+            process_chunk,
+            depth={-2: self._overlap_samples},
+            boundary="reflect",
+            dtype=np.float32,
+            new_axis=-3,
+        )
+
+        # Store filterbank information as attributes
+        if self.mel_fbanks is not None:
+            mel_fbanks_np = self.mel_fbanks.numpy()
+            result.attrs = {
+                "mel_filterbanks": mel_fbanks_np,
+                "freq_bins": np.linspace(0, fs / 2, mel_fbanks_np.shape[1]),
+                "n_mels": mel_fbanks_np.shape[0],
+            }
+
+        return result
 
     @property
     def overlap_samples(self) -> int:
@@ -687,9 +881,7 @@ def create_highpass_filter(cutoff: float, order: int = 4) -> ProcessingFunction:
 
 
 # %%
-folder_name = (
-    r"../data/25-02-12_9882-1_testSubject_emgContusion/drv_16-49-56_stim/RawG.ant"
-)
+folder_name = r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion/RawG.ant"
 
 
 # %%
@@ -710,17 +902,29 @@ bandpass = FilterProcessor(
     create_bandpass_filter(lowcut=20, highcut=2000), overlap_samples=128
 )
 
-lowpass = FilterProcessor(filter_func=create_lowpass_filter(20), overlap_samples=128)
+spectrogram_processor = SpectrogramProcessor(
+    n_fft=400,  # Adjust based on your data characteristics
+    hop_length=200,  # Typically half of n_fft
+    center=True,
+)
 
+processor.add_processor([notch, bandpass])
+processor.summarize()
+# processor.add_processor(bandpass)
 
-processor.add_processor(notch)
-processor.add_processor(bandpass)
+# processor.add_processor(spectrogram_processor)
+# %%
+processed_data = processor.process()
+# %%
+# original = stream.data[0:1000000, 0].persist()
+a = processed_data.compute()
 # %%
 processor.summarize()
 filtered_data = processor.process()
 # %%
 
 tkeo = TKEOProcessor(method="standard")
+lowpass = FilterProcessor(filter_func=create_lowpass_filter(20), overlap_samples=128)
 processor.add_processor(tkeo)
 processor.add_processor(lowpass)
 processor.summarize()
@@ -734,32 +938,71 @@ plt.plot(le_data_to_plot * 1000000)
 
 
 # %%
-processor.remove_processor(0)
-stft_processor = StftProcessor()
-processor.add_processor(stft_processor)
+processor_stft = ProcessingNode(stream)
+processor_stft.summarize()
 # %%
-processed_data = processor.process()
+processor_stft.remove_processor(0)
+mfcc_processor = MFCCProcessor(
+    n_mfcc=40,
+    melkwargs={
+        "n_fft": 1024,
+        "hop_length": 512,
+        "n_mels": 128,  # Reduced from 128
+        "f_min": 0,
+        "f_max": None,  # Will default to fs/2
+    },
+)
+
+# spectogram_processor = LFCCProcessor(n_lfcc=70, n_filter=256)
+
+processor_stft.add_processor(mfcc_processor)
+
 # %%
-a = processed_data[0:1000000, :].compute()
+processed_data = processor_stft.process()
+# %%
+# original = stream.data[0:1000000, 0].persist()
+a = processed_data.compute()
 
 # %%
 a[:]
-
 # %%
-chunk = processed_data[0:10, :].compute()  # Get a small slice
-print(chunk)
-# %%
-channel_idx = 1
+channel = 0
+spec = a[:, 1000:2000, channel]
 
-# Get the STFT data for the selected channel
-stft_channel_data = a[:, :, channel_idx].compute()
+# Convert to dB scale
+spec_db = 10 * np.log10(spec + 1e-10)
 
-# Plot the STFT data
-plt.imshow(stft_channel_data, origin="lower", cmap="inferno", aspect="auto")
-plt.xlabel("Time (frames)")
-plt.ylabel("Frequency (bins)")
-plt.title("STFT Channel {}".format(channel_idx))
-plt.colorbar()
+plt.figure(figsize=(12, 6))
+plt.imshow(spec_db, aspect="auto", origin="lower")
+plt.colorbar(label="Power (dB)")
+plt.ylabel("Frequency bin")
+plt.xlabel("Time frame")
+plt.title(f"Spectrogram - Channel {channel}")
 plt.show()
+
+
+# %%
+
+
+def plot_spectrogram(specgram, title=None, ylabel="freq_bin", ax=None):
+    if ax is None:
+        _, ax = plt.subplots(1, 1)
+    if title is not None:
+        ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    ax.imshow(
+        librosa.power_to_db(specgram),
+        origin="lower",
+        aspect="auto",
+        interpolation="nearest",
+    )
+
+
+# %%
+
+channel = 0
+spec = a[:, 2000:2500, channel]
+
+plot_spectrogram(spec)
 
 # %%

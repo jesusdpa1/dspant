@@ -325,12 +325,12 @@ def ls(directory: Path):
         print(f"{i}. {entry.name} ({entry_type})")
 
 
-home = Path(r"E:\jpenalozaa")
-tank_path = home.joinpath(r"emgContusion\25-02-12_9882-1_testSubject_emgContusion")
+home = Path().home()  # r"E:\jpenalozaa")
+tank_path = home.joinpath(r"data/emgContusion/24-12-16_5503-1_testSubject_emgContusion")
 # %%
 ls(tank_path)
 # %%
-block_path = tank_path.joinpath("16-49-56_stim")
+block_path = tank_path.joinpath("01_baseline-contusion")
 working_location = drvPathCarpenter(base_path=block_path)
 
 # %% Read the block
