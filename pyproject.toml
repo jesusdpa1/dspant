@@ -21,6 +21,7 @@ dependencies = [
     "rich>=13.9.4",
     "scipy>=1.15.1",
     "seaborn>=0.13.2",
+    "ssqueezepy>=0.6.5",
     "tdt>=0.6.7",
     "zarr>=3.0.2",
 ]
