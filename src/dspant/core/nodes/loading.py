@@ -15,23 +15,29 @@ class BaseNode(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    @field_validator("data_path")
-    def validate_data_path(cls, value):
-        path_ = Path(value)
-        if not path_.suffix == ".ant":
-            raise ValueError("Data path must have a .ant extension")
-        return str(path_.resolve())
-
     def validate_files(self):
         """Ensure required data and metadata files exist"""
-        path_ = Path(self.data_path)
-        self.parquet_path = path_ / f"data_{path_.stem}.parquet"
-        self.metadata_path = path_ / f"metadata_{path_.stem}.json"
+        import glob
 
-        if not self.parquet_path.exists():
-            raise FileNotFoundError(f"Data file not found: {self.parquet_path}")
-        if not self.metadata_path.exists():
-            raise FileNotFoundError(f"Metadata file not found: {self.metadata_path}")
+        path_ = Path(self.data_path)
+
+        # Use glob to find matching files
+        data_pattern = str(path_ / f"data_{path_.stem}*.parquet")
+        metadata_pattern = str(path_ / f"metadata_{path_.stem}*.json")
+
+        data_files = glob.glob(data_pattern)
+        metadata_files = glob.glob(metadata_pattern)
+
+        if not data_files:
+            raise FileNotFoundError(f"No data file found matching: {data_pattern}")
+        if not metadata_files:
+            raise FileNotFoundError(
+                f"No metadata file found matching: {metadata_pattern}"
+            )
+
+        # Use the first matching file (or you could implement logic to choose a specific one)
+        self.parquet_path = data_files[0]
+        self.metadata_path = metadata_files[0]
 
     def load_metadata(self):
         """Load metadata from file"""
