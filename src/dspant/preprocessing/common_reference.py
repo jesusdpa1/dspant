@@ -2,13 +2,77 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 import dask.array as da
 import numpy as np
+from numba import jit, prange
 
 from ..core.nodes.stream_processing import BaseProcessor
 
 
+# JIT-compiled functions for reference calculation
+@jit(nopython=True)
+def _compute_channel_median(chunk):
+    """Compute median across channels (axis=1)"""
+    n_samples = chunk.shape[0]
+    n_channels = chunk.shape[1]
+    result = np.zeros(n_samples, dtype=np.float32)
+
+    for i in range(n_samples):
+        result[i] = np.median(chunk[i, :])
+
+    return result.reshape(-1, 1)  # Return as column vector
+
+
+@jit(nopython=True)
+def _compute_channel_mean(chunk):
+    """Compute mean across channels (axis=1)"""
+    return np.mean(chunk, axis=1, keepdims=True)
+
+
+@jit(nopython=True)
+def _apply_global_reference(chunk, shift):
+    """Apply global reference by subtracting shift from all channels"""
+    return chunk - shift
+
+
+@jit(nopython=True)
+def _apply_group_median_reference(chunk, group_channels):
+    """Apply median reference to a specific group of channels"""
+    # Extract the channels for this group
+    group_data = chunk[:, group_channels]
+
+    # Compute median for this group
+    n_samples = group_data.shape[0]
+    median = np.zeros(n_samples, dtype=np.float32)
+
+    for i in range(n_samples):
+        median[i] = np.median(group_data[i, :])
+
+    # Reshape median to column vector
+    median = median.reshape(-1, 1)
+
+    # Apply shift to group channels
+    result = group_data - median
+
+    return result, median
+
+
+@jit(nopython=True)
+def _apply_group_mean_reference(chunk, group_channels):
+    """Apply mean reference to a specific group of channels"""
+    # Extract the channels for this group
+    group_data = chunk[:, group_channels]
+
+    # Compute mean for this group
+    mean = np.mean(group_data, axis=1, keepdims=True)
+
+    # Apply shift to group channels
+    result = group_data - mean
+
+    return result, mean
+
+
 class CommonReferenceProcessor(BaseProcessor):
     """
-    Common Reference Processor implementation for dspAnt framework
+    Common Reference Processor implementation for dspAnt framework with JIT acceleration
 
     Re-references the signal traces by shifting values to a new reference.
     This can be useful for removing common noise across channels.
@@ -24,6 +88,7 @@ class CommonReferenceProcessor(BaseProcessor):
         operator: Literal["median", "average"] = "median",
         reference_channels: Optional[Union[List[int], int]] = None,
         groups: Optional[List[List[int]]] = None,
+        use_jit: bool = True,
     ):
         # Validate arguments
         if reference not in ("global", "single"):
@@ -35,9 +100,17 @@ class CommonReferenceProcessor(BaseProcessor):
         self.operator = operator
         self.reference_channels = reference_channels
         self.groups = groups
+        self.use_jit = use_jit
 
         # Set operator function
-        self.operator_func = np.mean if operator == "average" else np.median
+        if use_jit:
+            self.operator_func = (
+                _compute_channel_mean
+                if operator == "average"
+                else _compute_channel_median
+            )
+        else:
+            self.operator_func = np.mean if operator == "average" else np.median
 
         # Additional checks based on reference type
         if reference == "single":
@@ -61,8 +134,9 @@ class CommonReferenceProcessor(BaseProcessor):
 
     def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
         """
-        Apply common referencing to the data lazily
+        Apply common referencing to the data lazily with optional JIT acceleration
         """
+        use_jit = kwargs.get("use_jit", self.use_jit)
 
         # Define the referencing function to apply to each chunk
         def apply_reference(chunk: np.ndarray) -> np.ndarray:
@@ -74,6 +148,10 @@ class CommonReferenceProcessor(BaseProcessor):
             if chunk.dtype.kind in ["u", "i"]:
                 chunk = chunk.astype(np.float32)
 
+            # Ensure data is contiguous for better performance with Numba
+            if not chunk.flags.c_contiguous:
+                chunk = np.ascontiguousarray(chunk)
+
             # Apply the appropriate reference method
             if self.groups is None:
                 # No groups - apply reference to all channels
@@ -81,19 +159,33 @@ class CommonReferenceProcessor(BaseProcessor):
                     # Global reference
                     if self.reference_channels is None:
                         # Use all channels
-                        shift = self.operator_func(chunk, axis=1, keepdims=True)
+                        if use_jit:
+                            if self.operator == "median":
+                                shift = _compute_channel_median(chunk)
+                            else:  # average
+                                shift = _compute_channel_mean(chunk)
+                            return _apply_global_reference(chunk, shift)
+                        else:
+                            shift = self.operator_func(chunk, axis=1, keepdims=True)
+                            return chunk - shift
                     else:
                         # Use specified channels
-                        shift = self.operator_func(
-                            chunk[:, self.reference_channels], axis=1, keepdims=True
-                        )
-                    # Apply shift to all channels
-                    return chunk - shift
+                        ref_channels = np.array(self.reference_channels, dtype=np.int32)
+                        if use_jit:
+                            if self.operator == "median":
+                                shift = _compute_channel_median(chunk[:, ref_channels])
+                            else:  # average
+                                shift = _compute_channel_mean(chunk[:, ref_channels])
+                            return _apply_global_reference(chunk, shift)
+                        else:
+                            shift = self.operator_func(
+                                chunk[:, ref_channels], axis=1, keepdims=True
+                            )
+                            return chunk - shift
                 else:  # single reference
                     # Single channel reference
-                    shift = chunk[:, self.reference_channels].mean(
-                        axis=1, keepdims=True
-                    )
+                    ref_channels = np.array(self.reference_channels, dtype=np.int32)
+                    shift = chunk[:, ref_channels].mean(axis=1, keepdims=True)
                     return chunk - shift
             else:
                 # Apply reference group-wise
@@ -103,20 +195,32 @@ class CommonReferenceProcessor(BaseProcessor):
                 # Apply reference to each group separately
                 for group_idx, group_channels in enumerate(self.groups):
                     # Ensure group channels are within range
-                    valid_channels = [ch for ch in group_channels if ch < n_channels]
+                    valid_channels = np.array(
+                        [ch for ch in group_channels if ch < n_channels], dtype=np.int32
+                    )
 
-                    if not valid_channels:
+                    if len(valid_channels) == 0:
                         continue
 
                     if self.reference == "global":
                         # Compute shift from all channels in this group
-                        shift = self.operator_func(
-                            chunk[:, valid_channels], axis=1, keepdims=True
-                        )
-                        # Apply shift to all channels in the group
-                        re_referenced[:, valid_channels] = (
-                            chunk[:, valid_channels] - shift
-                        )
+                        if use_jit:
+                            if self.operator == "median":
+                                group_result, shift = _apply_group_median_reference(
+                                    chunk, valid_channels
+                                )
+                            else:  # average
+                                group_result, shift = _apply_group_mean_reference(
+                                    chunk, valid_channels
+                                )
+                            re_referenced[:, valid_channels] = group_result
+                        else:
+                            shift = self.operator_func(
+                                chunk[:, valid_channels], axis=1, keepdims=True
+                            )
+                            re_referenced[:, valid_channels] = (
+                                chunk[:, valid_channels] - shift
+                            )
                     elif self.reference == "single":
                         # Get reference channel for this group
                         ref_idx = (
@@ -137,7 +241,6 @@ class CommonReferenceProcessor(BaseProcessor):
                 return re_referenced
 
         # Use map_blocks without explicitly specifying chunks to maintain laziness
-        # This avoids accessing data.chunks which might trigger computation
         return data.map_blocks(apply_reference, dtype=np.float32)
 
     @property
@@ -157,6 +260,7 @@ class CommonReferenceProcessor(BaseProcessor):
                 "groups": f"{len(self.groups)} groups"
                 if self.groups is not None
                 else None,
+                "jit_acceleration": self.use_jit,
             }
         )
         return base_summary
@@ -165,28 +269,32 @@ class CommonReferenceProcessor(BaseProcessor):
 def create_car_processor(
     reference_channels: Optional[List[int]] = None,
     groups: Optional[List[List[int]]] = None,
+    use_jit: bool = True,
 ) -> CommonReferenceProcessor:
     """
-    Create a Common Average Reference (CAR) processor
+    Create a Common Average Reference (CAR) processor with optional JIT acceleration
     """
     return CommonReferenceProcessor(
         reference="global",
         operator="average",
         reference_channels=reference_channels,
         groups=groups,
+        use_jit=use_jit,
     )
 
 
 def create_cmr_processor(
     reference_channels: Optional[List[int]] = None,
     groups: Optional[List[List[int]]] = None,
+    use_jit: bool = True,
 ) -> CommonReferenceProcessor:
     """
-    Create a Common Median Reference (CMR) processor
+    Create a Common Median Reference (CMR) processor with optional JIT acceleration
     """
     return CommonReferenceProcessor(
         reference="global",
         operator="median",
         reference_channels=reference_channels,
         groups=groups,
+        use_jit=use_jit,
     )

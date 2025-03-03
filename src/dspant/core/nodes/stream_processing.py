@@ -284,10 +284,13 @@ class ProcessingNode:
         group: Optional[List[str]] = None,
         node: Optional[List[int]] = None,
         return_info: bool = False,
+        persist_intermediates: bool = False,  # New parameter
+        optimize_chunks: bool = True,  # New parameter
+        num_workers: Optional[int] = None,  # New parameter
         **kwargs,
     ) -> Union[da.Array, Tuple[da.Array, Dict[str, Any]]]:
         """
-        Process the stream data through specified processor groups and/or nodes.
+        Process the stream data through specified processor groups and/or nodes with optimized Dask execution.
 
         Args:
             group: List of processor groups to apply sequentially.
@@ -295,6 +298,9 @@ class ProcessingNode:
             node: List of processor nodes to apply in order.
                 Example: [0,1] applies only the first and second processor steps.
             return_info: If True, returns processing information along with data.
+            persist_intermediates: Whether to persist intermediate results to speed up computation.
+            optimize_chunks: Whether to optimize chunk sizes for better performance.
+            num_workers: Override the number of Dask workers for this computation.
             **kwargs: Additional keyword arguments passed to processors.
 
         Returns:
@@ -315,47 +321,113 @@ class ProcessingNode:
         else:
             data = self.stream_node.load_data()
 
+        # Configure dask compute parameters
+        compute_kwargs = {}
+        if num_workers is not None:
+            compute_kwargs["num_workers"] = num_workers
+
+        # Optimize chunk size if requested
+        if optimize_chunks and hasattr(data, "chunks"):
+            # Find maximum overlap required by any processor
+            max_overlap = 0
+            all_processors = []
+
+            if group:
+                for grp in group:
+                    if grp in self.pipeline.processors:
+                        all_processors.extend(self.pipeline.processors[grp])
+            elif node is not None:
+                for i, processors in enumerate(self.pipeline.processors.values()):
+                    if i in node:
+                        all_processors.extend(processors)
+            else:
+                for processors in self.pipeline.processors.values():
+                    all_processors.extend(processors)
+
+            for proc in all_processors:
+                if hasattr(proc, "overlap_samples"):
+                    max_overlap = max(max_overlap, proc.overlap_samples)
+
+            # If significant overlap is needed, optimize chunk size
+            if max_overlap > 0:
+                current_chunks = data.chunks[0]
+                avg_chunk_size = sum(current_chunks) / len(current_chunks)
+
+                # If chunks are too small or too numerous, rechunk
+                if avg_chunk_size < max_overlap * 4 or len(current_chunks) > 100:
+                    optimal_size = max(max_overlap * 4, 10000)  # Rule of thumb
+                    data = data.rechunk({0: optimal_size, 1: -1})
+
+                    # Persist the rechunked data if requested
+                    if persist_intermediates:
+                        data = data.persist(**compute_kwargs)
+
+        # Track which processors are applied
         applied_processors = []
 
+        # Processing by group
         if group:
-            for grp in group:
+            # For each group in sequence
+            for grp_idx, grp in enumerate(group):
                 if grp not in self.pipeline.processors:
                     raise ValueError(f"Processor group '{grp}' not found")
-                data = self.pipeline.process(
-                    data,
-                    self.pipeline.processors[grp],
-                    fs=self.stream_node.fs,
-                    **kwargs,
-                )
-                applied_processors.extend(
-                    [proc.__class__.__name__ for proc in self.pipeline.processors[grp]]
-                )
 
+                # Get processors for this group
+                processors = self.pipeline.processors[grp]
+
+                # Apply processors in this group
+                for proc_idx, proc in enumerate(processors):
+                    # Apply the processor
+                    data = proc.process(data, fs=self.stream_node.fs, **kwargs)
+                    applied_processors.append(proc.__class__.__name__)
+
+                    # Persist intermediate results if requested and not the final processor
+                    is_final = (grp_idx == len(group) - 1) and (
+                        proc_idx == len(processors) - 1
+                    )
+                    if persist_intermediates and not is_final:
+                        # Find optimal task fusion with dask optimization
+                        data = data.persist(**compute_kwargs)
+
+        # Processing by node index
         elif node is not None:
             ordered_processors = []
+            # Get processors from selected nodes
             for i, processors in enumerate(self.pipeline.processors.values()):
                 if i in node:
                     ordered_processors.extend(processors)
-            data = self.pipeline.process(
-                data, ordered_processors, fs=self.stream_node.fs, **kwargs
-            )
-            applied_processors.extend(
-                [proc.__class__.__name__ for proc in ordered_processors]
-            )
 
+            # Apply each processor
+            for proc_idx, proc in enumerate(ordered_processors):
+                data = proc.process(data, fs=self.stream_node.fs, **kwargs)
+                applied_processors.append(proc.__class__.__name__)
+
+                # Persist intermediate results if requested and not the final processor
+                if persist_intermediates and proc_idx < len(ordered_processors) - 1:
+                    data = data.persist(**compute_kwargs)
+
+        # Default: process all groups in sequence
         else:
-            for processors in self.pipeline.processors.values():
-                data = self.pipeline.process(
-                    data, processors, fs=self.stream_node.fs, **kwargs
-                )
-                applied_processors.extend(
-                    [proc.__class__.__name__ for proc in processors]
-                )
+            group_count = len(self.pipeline.processors)
+            for grp_idx, (_, processors) in enumerate(self.pipeline.processors.items()):
+                # Apply each processor in this group
+                for proc_idx, proc in enumerate(processors):
+                    data = proc.process(data, fs=self.stream_node.fs, **kwargs)
+                    applied_processors.append(proc.__class__.__name__)
 
+                    # Persist intermediate results if requested and not the final processor
+                    is_final = (grp_idx == group_count - 1) and (
+                        proc_idx == len(processors) - 1
+                    )
+                    if persist_intermediates and not is_final:
+                        data = data.persist(**compute_kwargs)
+
+        # Return results
         if return_info:
             info = {
                 "applied_processors": applied_processors,
                 "history": self._processor_history[:5],
+                "optimized_chunks": data.chunks if hasattr(data, "chunks") else None,
             }
             return data, info
 

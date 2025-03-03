@@ -31,16 +31,38 @@ class StreamNode(BaseStreamNode):
         self.data = None
 
     def load_data(self, force_reload: bool = False) -> da.Array:
-        """Load data into a Dask array"""
+        """Load data into a Dask array with optimized chunks"""
         if self.data is not None and not force_reload:
             return self.data
 
         try:
             with pa.memory_map(str(self.parquet_path), "r") as mmap:
                 table = pq.read_table(mmap)
-                self.data = da.from_array(
-                    table.to_pandas().values, chunks=self.chunk_size
-                )
+                data_array = table.to_pandas().values
+
+                # Auto-chunk optimization based on data shape and available memory
+                if self.chunk_size == "auto":
+                    # Get data dimensions (samples × channels)
+                    n_samples, n_channels = data_array.shape
+
+                    # Estimate memory per sample row (all channels)
+                    bytes_per_row = data_array.itemsize * n_channels
+
+                    # Choose chunk size to keep chunks around 100MB (adjustable)
+                    target_chunk_size = 100 * 1024 * 1024  # 100MB
+                    samples_per_chunk = int(target_chunk_size / bytes_per_row)
+
+                    # Ensure chunk size is at least 1000 samples and doesn't exceed dataset size
+                    chunk_size = min(n_samples, max(1000, samples_per_chunk))
+                    self.chunk_size = chunk_size
+
+                    # Use samples dimension for chunking, keep channels dimension intact
+                    self.data = da.from_array(
+                        data_array, chunks=(chunk_size, n_channels)
+                    )
+                else:
+                    # Use specified chunk size
+                    self.data = da.from_array(data_array, chunks=(self.chunk_size, -1))
         except Exception as e:
             raise RuntimeError(f"Failed to load data: {e}") from e
 

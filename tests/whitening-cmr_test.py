@@ -5,13 +5,10 @@ author: Jesus Penaloza
 """
 
 # %%
-
-import dask
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-# Add at the top of your script, after imports
-from dask.distributed import Client, LocalCluster
+from dask.optimization import cull
+from dask.threaded import get
 
 from dspant.core.nodes.data import EpocNode, StreamNode
 from dspant.core.nodes.stream_processing import ProcessingNode
@@ -29,11 +26,6 @@ from dspant.processing.time_frequency import (
     SpectrogramProcessor,
 )
 from dspant.processing.transforms import TKEOProcessor
-
-# %%
-# Create a local cluster with multiple workers
-# Adjust the number of workers based on your CPU cores
-
 
 sns.set_theme(style="darkgrid")
 # %%
@@ -64,22 +56,28 @@ bandpass = FilterProcessor(
     create_bandpass_filter(lowcut=300, highcut=8000), overlap_samples=1200
 )
 
-
-cmr = create_cmr_processor()
-
 processor_hd.add_processor([notch, bandpass], group="filters")
-processor_hd.add_processor(cmr, group="preprocessing")
 
-
-# %%
 processor_hd.summarize()
 # %%
-a = processor_hd.process()
+import dask
 
+# Set a higher optimization level to consolidate operations
+with dask.config.set(optimization_level=2):
+    processed_data = processor_hd.process()
+
+    # Get a high-level view of the graph
+    from dask.dot import dot_graph
+
+    # Collapse unnecessary nodes to simplify the visualization
+    dot_graph(processed_data.dask, filename="simplified_graph", collapse_outputs=True)
 # %%
 
 plt.plot(a[0:20000, 0])
 # %%
+
+cmr = create_cmr_processor()
+processor_hd.add_processor(cmr, group="preprocessing")
 whitening = create_whitening_processor()
 processor_hd.add_processor(whitening, group="preprocessing")
 w = processor_hd.process()
