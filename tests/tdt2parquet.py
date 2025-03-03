@@ -1,7 +1,7 @@
 # %%
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -70,10 +70,52 @@ class tdtStream(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    def data_to_parquet(self, save: bool = False, save_path: Path = None) -> pa.Table:
-        """Converts TDT stream data into a PyArrow Table with embedded metadata."""
+    def data_to_parquet(
+        self,
+        save: bool = False,
+        save_path: Path = None,
+        time_segment: Optional[Tuple[float, float]] = None,
+    ) -> Tuple[Dict[str, Any], pa.Table]:
+        """
+        Converts TDT stream data into a PyArrow Table with embedded metadata.
 
-        metadata_dict = self.metadata_to_dict(save, save_path)
+        Args:
+            save: Whether to save the data to disk
+            save_path: Path where to save the data
+            time_segment: Optional tuple of (start_time, end_time) in seconds to extract only a portion of the data.
+                          If None, the entire recording is used.
+
+        Returns:
+            Tuple of (metadata_dict, data_table)
+        """
+        # Extract the relevant portion of data based on time_segment
+        data = self.tdt_struct.data
+        fs = self.tdt_struct.fs
+        original_shape = data.shape
+
+        if time_segment is not None:
+            start_time, end_time = time_segment
+            # Convert time in seconds to sample indices
+            start_sample = max(0, int(start_time * fs))
+            end_sample = min(data.shape[1], int(end_time * fs))
+
+            # Update data to only include the requested segment
+            data = data[:, start_sample:end_sample]
+
+            # Add time segment info to metadata
+            segment_info = {
+                "original_samples": original_shape[1],
+                "segment_start_time": start_time,
+                "segment_end_time": end_time,
+                "segment_start_sample": start_sample,
+                "segment_end_sample": end_sample,
+                "segment_duration": end_time - start_time,
+            }
+        else:
+            segment_info = None
+
+        # Get metadata with potentially modified data shape
+        metadata_dict = self.metadata_to_dict(save, save_path, data.shape, segment_info)
 
         base_metadata = metadata_dict["base"]
         other_metadata = metadata_dict["other"]
@@ -89,7 +131,6 @@ class tdtStream(BaseModel):
             relative_path = save_path.relative_to(save_path.anchor)
             metadata_parquet["save_path"] = str(relative_path)
 
-        data = self.tdt_struct.data  # Corrected reference
         column_names = [
             str(i) for i in range(data.shape[0])
         ]  # Column names as string indices
@@ -110,6 +151,13 @@ class tdtStream(BaseModel):
             if save_path.exists():
                 # Use save_path.stem to strip the .ant extension
                 save_name = save_path.stem  # Strips the .ant extension
+
+                # Add time segment info to filename if provided
+                if time_segment is not None:
+                    start_str = f"{time_segment[0]:.1f}".replace(".", "_")
+                    end_str = f"{time_segment[1]:.1f}".replace(".", "_")
+                    save_name = f"{save_name}_t{start_str}-{end_str}"
+
                 data_path = save_path / f"data_{save_name}.parquet"
                 pq.write_table(data_table, data_path, compression="snappy")
                 print(f"✅ Data saved to {data_path}")
@@ -119,19 +167,33 @@ class tdtStream(BaseModel):
         return metadata_dict, data_table
 
     def metadata_to_dict(
-        self, save: bool = False, save_path: Path = None
+        self,
+        save: bool = False,
+        save_path: Path = None,
+        data_shape: Optional[Tuple[int, int]] = None,
+        segment_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Extracts metadata from a TDT stream and returns it as a dictionary."""
+        """
+        Extracts metadata from a TDT stream and returns it as a dictionary.
+
+        Args:
+            save: Whether to save the metadata to disk
+            save_path: Path where to save the metadata
+            data_shape: The shape of the data being saved (may differ from original if time_segment is used)
+            segment_info: Optional information about time segment extraction
+        """
+        # Use the provided data shape if available, otherwise use the original
+        shape = data_shape if data_shape is not None else self.tdt_struct.data.shape
+
         self.base_metadata = {
             "name": self.tdt_struct.name,
             "fs": float(self.tdt_struct.fs),
-            "number_of_samples": self.tdt_struct.data.shape[1],
-            "data_shape": self.tdt_struct.data.shape,
+            "number_of_samples": shape[1],
+            "data_shape": shape,
             "channel_numbers": len(self.tdt_struct.channel),
-            "channel_names": [str(ch) for ch in range(self.tdt_struct.data.shape[0])],
+            "channel_names": [str(ch) for ch in range(shape[0])],
             "channel_types": [
-                str(self.tdt_struct.data[i, :].dtype)
-                for i in range(self.tdt_struct.data.shape[0])
+                str(self.tdt_struct.data[i, :].dtype) for i in range(shape[0])
             ],
         }
 
@@ -145,6 +207,10 @@ class tdtStream(BaseModel):
             "start_time": float(self.tdt_struct.start_time),
             "channel": [str(ch) for ch in self.tdt_struct.channel],
         }
+
+        # Add segment information if available
+        if segment_info:
+            self.other_metadata["segment_info"] = segment_info
 
         # Add relative save path to metadata if save is True
         if save and save_path:
@@ -162,6 +228,17 @@ class tdtStream(BaseModel):
             if save_path.exists():
                 # Use save_path.stem to strip the .ant extension
                 save_name = save_path.stem  # Strips the .ant extension
+
+                # Add time segment info to filename if provided
+                if segment_info is not None:
+                    start_str = f"{segment_info['segment_start_time']:.1f}".replace(
+                        ".", "_"
+                    )
+                    end_str = f"{segment_info['segment_end_time']:.1f}".replace(
+                        ".", "_"
+                    )
+                    save_name = f"{save_name}_t{start_str}-{end_str}"
+
                 metadata_path = save_path / f"metadata_{save_name}.json"
                 with open(metadata_path, "w") as metadata_file:
                     json.dump(metadata, metadata_file, indent=4)
@@ -326,24 +403,31 @@ def ls(directory: Path):
 
 
 home = Path(r"E:\jpenalozaa")  # Path().home()
-tank_path = home.joinpath(
-    r"emgContusion\25-02-21_9878-2_testSubject_emgContusion_Hemisection"
-)
+tank_path = home.joinpath(r"topoMapping\25-02-26_9881-2_testSubject_topoMapping")
 # %%
 ls(tank_path)
 # %%
-block_path = tank_path.joinpath("15-11-48_meps")
+block_path = tank_path.joinpath("00_baseline")
 working_location = drvPathCarpenter(base_path=block_path)
 
 # %% Read the block
 test = tdt.read_block(str(block_path))
 # %%
-working_location.build_drv_directory(Path("../data"))
+working_location.build_drv_directory()
 # %%
 stream_name = "RawG"
 working_location.build_recording_directory(stream_name)
 a = tdtStream(tdt_struct=test.streams.RawG)
-k, w = a.data_to_parquet(save=True, save_path=working_location.drv_sub_path)
+k, w = a.data_to_parquet(
+    save=True, save_path=working_location.drv_sub_path, time_segment=[0, 5 * 60]
+)
+# %%
+stream_name = "HDEG"
+working_location.build_recording_directory(stream_name)
+a = tdtStream(tdt_struct=test.streams[stream_name])
+k, w = a.data_to_parquet(
+    save=True, save_path=working_location.drv_sub_path, time_segment=[0, 5 * 60]
+)
 
 # %%
 epoc_name = "AmpA"
