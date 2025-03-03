@@ -291,9 +291,9 @@ class ProcessingNode:
 
         Args:
             group: List of processor groups to apply sequentially.
-                   Example: ["filters", "le"] applies "filters" first, then "le".
+                Example: ["filters", "le"] applies "filters" first, then "le".
             node: List of processor nodes to apply in order.
-                  Example: [0,1] applies only the first and second processor steps.
+                Example: [0,1] applies only the first and second processor steps.
             return_info: If True, returns processing information along with data.
             **kwargs: Additional keyword arguments passed to processors.
 
@@ -309,7 +309,12 @@ class ProcessingNode:
         if not self.pipeline.processors:
             raise ValueError("No processors configured in the pipeline")
 
-        data = self.stream_node.load_data()
+        # Use existing data if already loaded, otherwise load it
+        if hasattr(self.stream_node, "data") and self.stream_node.data is not None:
+            data = self.stream_node.data
+        else:
+            data = self.stream_node.load_data()
+
         applied_processors = []
 
         if group:
