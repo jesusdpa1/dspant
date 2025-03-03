@@ -1,14 +1,16 @@
 # dspAnt
-This project takes inspiration from spikeinterface[^1] and branches only due to different requirements to handle emg data, 
+This project takes inspiration from spikeinterface[^1] and branches only due to different requirements to handle emg data.
 
-to follow project progress follow this link https://www.tldraw.com/p/7m_PZy79ZkdbCX-wcoYRZ?d=v226.-37.1577.1157.EJte7OP_8H5jimpGy8Wyq
+Follow [spikeinterface](https://github.com/SpikeInterface/spikeinterface.git)
+
+dspant current progress: [tldraw/todo](https://www.tldraw.com/p/7m_PZy79ZkdbCX-wcoYRZ?d=v226.-37.1577.1157.EJte7OP_8H5jimpGy8Wyq)
 
 ## Discord Channel 
 https://discord.gg/jGPJTrSU
 
 ## Working prototype for electrophysiology data processing
 
-### Core idea: https://www.tldraw.com/p/7m_PZy79ZkdbCX-wcoYRZ?d=v-188.522.2217.1628.page
+### Core idea: [tldraw/core](https://www.tldraw.com/p/7m_PZy79ZkdbCX-wcoYRZ?d=v-188.522.2217.1628.page)
 - use dask for lazyloading data processing
 - use pyarrow as data loading - aim for memory mapped
 - use parquet as the standard file storage for optimized reading and storing
@@ -61,8 +63,11 @@ https://discord.gg/jGPJTrSU
 - 
 
 ### Prototype made with LLMs
+
 Currently working on this project on my own, I use Claude, Chatgpt and MetaAI to reach to the current prototype. Errors and Bugs are expected use caususly 
 
+# Reference
 
+[^1]: https://github.com/SpikeInterface/spikeinterface.git
 
 
