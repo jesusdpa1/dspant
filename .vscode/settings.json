@@ -1,0 +1,19 @@
+{
+    "editor.rulers": [88],
+    "editor.wordWrapColumn": 80,
+    "editor.wordWrap": "wordWrapColumn", 
+    "python.languageServer": "charliermarsh.ruff",
+    "python.linting.enabled": true,
+    "python.linting.ruffEnabled": true,
+    "python.linting.lintOnSave": true,
+    "ruff.nativeServer": "on",
+
+
+    "[python]": {
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+        "editor.formatOnSave": true, 
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    }
+  }
