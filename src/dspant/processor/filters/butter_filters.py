@@ -176,11 +176,13 @@ class ButterFilter:
         fig_size: Tuple[int, int] = (10, 6),
         show_phase: bool = True,
         show_group_delay: bool = False,
-        freq_scale: Literal["linear", "log"] = "linear",
+        freq_scale: Literal["linear", "log"] = "log",  # Changed default to log
         cutoff_lines: bool = True,
         grid: bool = True,
         title: Optional[str] = None,
         save_path: Optional[str] = None,
+        y_min: float = -80,  # Added parameter for y-axis minimum
+        y_max: Optional[float] = None,  # Added parameter for y-axis maximum
     ) -> plt.Figure:
         """
         Plot the frequency response of the filter.
@@ -196,6 +198,8 @@ class ButterFilter:
             grid: Whether to show grid
             title: Custom title for the plot
             save_path: Path to save the figure, if provided
+            y_min: Minimum value for magnitude y-axis in dB (default: -80 dB)
+            y_max: Maximum value for magnitude y-axis in dB (default: auto)
 
         Returns:
             Matplotlib figure object
@@ -222,14 +226,19 @@ class ButterFilter:
 
         # Plot magnitude response
         ax_mag = axes[0]
-        ax_mag.plot(w, 20 * np.log10(abs(h)), "b", linewidth=2)
-        ax_mag.set_ylabel("Magnitude [dB]")
 
-        # Set frequency scale
+        # Use semilogx for log scale plotting of frequency axis
         if freq_scale == "log" and plot_fs is not None:
-            ax_mag.set_xscale("log")
-            min_freq = max(w[1], 0.1)  # Avoid zero frequency for log scale
+            ax_mag.semilogx(w, 20 * np.log10(abs(h)), "b", linewidth=2)
+            # Avoid zero frequency for log scale
+            min_freq = max(w[1], 0.1)
             ax_mag.set_xlim(min_freq, plot_fs / 2)
+        else:
+            ax_mag.plot(w, 20 * np.log10(abs(h)), "b", linewidth=2)
+
+        # Set y-axis limits
+        ax_mag.set_ylim(bottom=y_min, top=y_max)
+        ax_mag.set_ylabel("Magnitude [dB]")
 
         # Add cutoff lines
         if cutoff_lines:
@@ -249,17 +258,40 @@ class ButterFilter:
             for cutoff in cutoffs:
                 for ax in axes:
                     ax.axvline(x=cutoff, color="r", linestyle="--", alpha=0.7)
+                    # Add text label near the cutoff line
+                    if ax is ax_mag:  # Only add text to magnitude plot
+                        text_y = ax_mag.get_ylim()[0] + 0.1 * (
+                            ax_mag.get_ylim()[1] - ax_mag.get_ylim()[0]
+                        )
+                        ax.text(
+                            cutoff * 1.05,
+                            text_y,
+                            f"{cutoff} Hz",
+                            rotation=90,
+                            color="r",
+                            alpha=0.9,
+                            fontsize=8,
+                        )
 
-        # Add grid
+        # Add grid with better visibility for log scale
         if grid:
             for ax in axes:
-                ax.grid(True, which="both", alpha=0.3)
+                if freq_scale == "log":
+                    ax.grid(True, which="major", linestyle="-", alpha=0.4)
+                    ax.grid(True, which="minor", linestyle=":", alpha=0.2)
+                else:
+                    ax.grid(True, alpha=0.3)
 
         # Plot phase response
         if show_phase:
             ax_phase = axes[1] if num_plots > 1 else axes[0]
             angles = np.unwrap(np.angle(h))
-            ax_phase.plot(w, angles, "g", linewidth=2)
+
+            if freq_scale == "log":
+                ax_phase.semilogx(w, angles, "g", linewidth=2)
+            else:
+                ax_phase.plot(w, angles, "g", linewidth=2)
+
             ax_phase.set_ylabel("Phase [rad]")
 
         # Plot group delay
@@ -269,7 +301,12 @@ class ButterFilter:
             group_delay = -np.diff(np.unwrap(np.angle(h))) / np.diff(w)
             # Pad to match original length
             group_delay = np.concatenate([group_delay, [group_delay[-1]]])
-            ax_gd.plot(w, group_delay, "m", linewidth=2)
+
+            if freq_scale == "log":
+                ax_gd.semilogx(w, group_delay, "m", linewidth=2)
+            else:
+                ax_gd.plot(w, group_delay, "m", linewidth=2)
+
             ax_gd.set_ylabel("Group Delay [s]")
 
         # Set x-axis label on bottom plot
@@ -294,6 +331,8 @@ class ButterFilter:
                 )
 
             title_parts.append(f"Order {self.order}")
+            if plot_fs is not None:
+                title_parts.append(f"fs={plot_fs} Hz")
             title = f"Butterworth {' '.join(title_parts)}"
 
         fig.suptitle(title)
