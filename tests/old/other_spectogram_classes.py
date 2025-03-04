@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torchaudio import functional, transforms
 
-from dspant.core.nodes.stream_processing import BaseProcessor
+from dspant.processor.manager.stream_processing import BaseProcessor
 
 
 class SpectrogramProcessor(BaseProcessor):

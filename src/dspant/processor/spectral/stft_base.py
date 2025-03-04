@@ -1,3 +1,4 @@
+# src/dspant/processor/spectral/stft_base.py
 from typing import Any, Callable, Dict, Optional
 
 import dask.array as da
@@ -5,7 +6,7 @@ import numpy as np
 import torch
 from torchaudio import functional, transforms
 
-from ..core.nodes.stream_processing import BaseProcessor
+from ...engine.base import BaseProcessor
 
 
 class SpectrogramProcessor(BaseProcessor):
@@ -106,6 +107,12 @@ class SpectrogramProcessor(BaseProcessor):
 
 
 class LFCCProcessor(BaseProcessor):
+    """
+    Linear Frequency Cepstral Coefficients processor
+
+    Computes LFCC features from audio signals using a linear filterbank.
+    """
+
     def __init__(
         self,
         n_filter: int = 128,
@@ -237,6 +244,12 @@ class LFCCProcessor(BaseProcessor):
 
 
 class MFCCProcessor(BaseProcessor):
+    """
+    Mel-Frequency Cepstral Coefficients processor
+
+    Computes MFCC features from audio signals using a mel filterbank.
+    """
+
     def __init__(
         self,
         n_mfcc: int = 40,

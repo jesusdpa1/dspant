@@ -10,14 +10,15 @@ from sklearn.covariance import (
     ShrunkCovariance,
 )
 
-from ..core.nodes.stream_processing import BaseProcessor
+from ...engine.base import BaseProcessor
 
 
 class WhiteningProcessor(BaseProcessor):
     """
-    Whitening processor implementation for dspAnt framework
+    Whitening processor implementation
 
     Whitens the signal by decorrelating and normalizing the variance.
+    The whitening matrix is computed on-demand during processing.
 
     Parameters
     ----------
@@ -101,61 +102,6 @@ class WhiteningProcessor(BaseProcessor):
         W = (U @ np.diag(1 / np.sqrt(S + eps))) @ Ut
         return W
 
-    def fit(self, data: da.Array):
-        """
-        Compute the whitening matrix from the data.
-
-        Parameters
-        ----------
-        data : da.Array
-            Input data as a Dask array
-
-        Returns
-        -------
-        self : WhiteningProcessor
-            The fitted processor
-        """
-        # If matrices are already provided, no need to fit
-        if self._is_fitted:
-            return self
-
-        # Get random data chunks
-        random_data = data.compute().astype(np.float32)
-
-        # Compute mean if needed
-        if self.apply_mean:
-            self._mean = np.mean(random_data, axis=0)
-            self._mean = self._mean[np.newaxis, :]
-            data_centered = random_data - self._mean
-        else:
-            self._mean = None
-            data_centered = random_data
-
-        # Compute covariance matrix
-        if not self.regularize:
-            cov = data_centered.T @ data_centered
-            cov = cov / data_centered.shape[0]
-        else:
-            cov = self._compute_sklearn_covariance_matrix(
-                data_centered, self.regularize_kwargs
-            )
-            cov = cov.astype(np.float32)
-
-        # Determine epsilon for SVD regularization
-        if self.eps is None:
-            median_data_sqr = np.median(data_centered**2)
-            if median_data_sqr < 1 and median_data_sqr > 0:
-                eps = max(1e-16, median_data_sqr * 1e-3)
-            else:
-                eps = 1e-16
-        else:
-            eps = self.eps
-
-        # Compute whitening matrix
-        self._whitening_matrix = self._compute_whitening_from_covariance(cov, eps)
-        self._is_fitted = True
-        return self
-
     def _compute_sklearn_covariance_matrix(
         self, data: np.ndarray, regularize_kwargs: Dict[str, Any]
     ) -> np.ndarray:
@@ -184,8 +130,9 @@ class WhiteningProcessor(BaseProcessor):
             )
 
         # Get method and create estimator
-        method = regularize_kwargs.pop("method")
-        regularize_kwargs["assume_centered"] = True
+        method_name = regularize_kwargs.pop("method", "GraphicalLassoCV")
+        reg_kwargs = regularize_kwargs.copy()
+        reg_kwargs["assume_centered"] = True
 
         estimator_map = {
             "EmpiricalCovariance": EmpiricalCovariance,
@@ -195,11 +142,11 @@ class WhiteningProcessor(BaseProcessor):
             "GraphicalLassoCV": GraphicalLassoCV,
         }
 
-        if method not in estimator_map:
-            raise ValueError(f"Unknown covariance method: {method}")
+        if method_name not in estimator_map:
+            raise ValueError(f"Unknown covariance method: {method_name}")
 
-        estimator_class = estimator_map[method]
-        estimator = estimator_class(**regularize_kwargs)
+        estimator_class = estimator_map[method_name]
+        estimator = estimator_class(**reg_kwargs)
 
         # Fit estimator and get covariance
         estimator.fit(
@@ -212,6 +159,7 @@ class WhiteningProcessor(BaseProcessor):
     def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
         """
         Apply whitening to the data lazily.
+        Computes the whitening matrix if not already fitted.
 
         Parameters
         ----------
@@ -221,6 +169,10 @@ class WhiteningProcessor(BaseProcessor):
             Sampling frequency (not used but required by interface)
         **kwargs : dict
             Additional keyword arguments
+            compute_now: bool, default: False
+                Whether to compute the whitening matrix immediately or defer
+            sample_size: int, default: 10000
+                Number of samples to use for computing covariance matrix
 
         Returns
         -------
@@ -231,22 +183,116 @@ class WhiteningProcessor(BaseProcessor):
         if data.ndim == 1:
             data = data.reshape(-1, 1)
 
-        # Fit if not already fitted
+        # Check if we need to compute the whitening matrix
         if not self._is_fitted:
-            self.fit(data)
+            compute_now = kwargs.get("compute_now", False)
+            sample_size = kwargs.get("sample_size", 10000)
+
+            # Extract a subset of the data for computing the covariance matrix
+            if compute_now:
+                # For immediate computation, take a random subset
+                total_samples = data.shape[0]
+                if total_samples > sample_size:
+                    # Take samples from different parts of the data
+                    indices = np.linspace(0, total_samples - 1, sample_size, dtype=int)
+                    sample_data = data[indices].compute().astype(np.float32)
+                else:
+                    # Use all data if it's smaller than the sample size
+                    sample_data = data.compute().astype(np.float32)
+
+                # Compute mean if needed
+                if self.apply_mean:
+                    self._mean = np.mean(sample_data, axis=0)
+                    self._mean = self._mean[np.newaxis, :]
+                    data_centered = sample_data - self._mean
+                else:
+                    self._mean = None
+                    data_centered = sample_data
+
+                # Compute covariance matrix
+                if not self.regularize:
+                    cov = data_centered.T @ data_centered
+                    cov = cov / data_centered.shape[0]
+                else:
+                    cov = self._compute_sklearn_covariance_matrix(
+                        data_centered, self.regularize_kwargs
+                    )
+                    cov = cov.astype(np.float32)
+
+                # Determine epsilon for SVD regularization
+                if self.eps is None:
+                    median_data_sqr = np.median(data_centered**2)
+                    if median_data_sqr < 1 and median_data_sqr > 0:
+                        eps = max(1e-16, median_data_sqr * 1e-3)
+                    else:
+                        eps = 1e-16
+                else:
+                    eps = self.eps
+
+                # Compute whitening matrix
+                self._whitening_matrix = self._compute_whitening_from_covariance(
+                    cov, eps
+                )
+                self._is_fitted = True
 
         # Define the whitening function for each chunk
         def apply_whitening(chunk: np.ndarray) -> np.ndarray:
-            # Convert to float32 for computation
-            traces_dtype = chunk.dtype
-            if traces_dtype.kind == "u":
-                chunk = chunk.astype(np.float32)
+            # If not fitted yet, fit now with this chunk (per-chunk computation)
+            if not self._is_fitted:
+                # Convert to float32 for computation
+                chunk_float = (
+                    chunk.astype(np.float32) if chunk.dtype.kind == "u" else chunk
+                )
 
-            # Apply whitening
-            if self._mean is not None:
-                whitened = (chunk - self._mean) @ self._whitening_matrix
+                # Compute mean if needed
+                if self.apply_mean:
+                    chunk_mean = np.mean(chunk_float, axis=0)
+                    chunk_mean = chunk_mean[np.newaxis, :]
+                    chunk_centered = chunk_float - chunk_mean
+                else:
+                    chunk_mean = None
+                    chunk_centered = chunk_float
+
+                # Compute covariance matrix
+                if not self.regularize:
+                    chunk_cov = chunk_centered.T @ chunk_centered
+                    chunk_cov = chunk_cov / chunk_centered.shape[0]
+                else:
+                    chunk_cov = self._compute_sklearn_covariance_matrix(
+                        chunk_centered, self.regularize_kwargs
+                    )
+                    chunk_cov = chunk_cov.astype(np.float32)
+
+                # Determine epsilon for SVD regularization
+                if self.eps is None:
+                    median_data_sqr = np.median(chunk_centered**2)
+                    if median_data_sqr < 1 and median_data_sqr > 0:
+                        eps = max(1e-16, median_data_sqr * 1e-3)
+                    else:
+                        eps = 1e-16
+                else:
+                    eps = self.eps
+
+                # Compute whitening matrix for this chunk
+                chunk_whitening = self._compute_whitening_from_covariance(
+                    chunk_cov, eps
+                )
+
+                # Apply whitening
+                if chunk_mean is not None:
+                    whitened = (chunk_float - chunk_mean) @ chunk_whitening
+                else:
+                    whitened = chunk_float @ chunk_whitening
             else:
-                whitened = chunk @ self._whitening_matrix
+                # Use pre-computed whitening matrix
+                chunk_float = (
+                    chunk.astype(np.float32) if chunk.dtype.kind == "u" else chunk
+                )
+
+                if self._mean is not None:
+                    whitened = (chunk_float - self._mean) @ self._whitening_matrix
+                else:
+                    whitened = chunk_float @ self._whitening_matrix
 
             # Apply scaling if needed
             if self.int_scale is not None:

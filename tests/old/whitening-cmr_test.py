@@ -11,7 +11,6 @@ from dask.optimization import cull
 from dask.threaded import get
 
 from dspant.core.nodes.data import EpocNode, StreamNode
-from dspant.core.nodes.stream_processing import ProcessingNode
 from dspant.preprocessing.common_reference import create_cmr_processor
 from dspant.preprocessing.whiten import create_whitening_processor
 from dspant.processing.filters import (
@@ -26,6 +25,7 @@ from dspant.processing.time_frequency import (
     SpectrogramProcessor,
 )
 from dspant.processing.transforms import TKEOProcessor
+from dspant.processor.manager.stream_processing import ProcessingNode
 
 sns.set_theme(style="darkgrid")
 # %%

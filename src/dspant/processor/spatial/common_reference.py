@@ -2,9 +2,9 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 import dask.array as da
 import numpy as np
-from numba import jit, prange
+from numba import jit
 
-from ..core.nodes.stream_processing import BaseProcessor
+from ...engine.base import BaseProcessor
 
 
 # JIT-compiled functions for reference calculation
@@ -72,7 +72,7 @@ def _apply_group_mean_reference(chunk, group_channels):
 
 class CommonReferenceProcessor(BaseProcessor):
     """
-    Common Reference Processor implementation for dspAnt framework with JIT acceleration
+    Common Reference Processor implementation with JIT acceleration
 
     Re-references the signal traces by shifting values to a new reference.
     This can be useful for removing common noise across channels.
@@ -273,6 +273,14 @@ def create_car_processor(
 ) -> CommonReferenceProcessor:
     """
     Create a Common Average Reference (CAR) processor with optional JIT acceleration
+
+    Args:
+        reference_channels: Specific channels to use as reference
+        groups: Channel groups for group-wise referencing
+        use_jit: Whether to use JIT acceleration
+
+    Returns:
+        Configured CommonReferenceProcessor
     """
     return CommonReferenceProcessor(
         reference="global",
@@ -290,6 +298,14 @@ def create_cmr_processor(
 ) -> CommonReferenceProcessor:
     """
     Create a Common Median Reference (CMR) processor with optional JIT acceleration
+
+    Args:
+        reference_channels: Specific channels to use as reference
+        groups: Channel groups for group-wise referencing
+        use_jit: Whether to use JIT acceleration
+
+    Returns:
+        Configured CommonReferenceProcessor
     """
     return CommonReferenceProcessor(
         reference="global",

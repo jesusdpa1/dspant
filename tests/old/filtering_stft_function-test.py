@@ -28,7 +28,6 @@ from scipy.signal import butter, sosfiltfilt
 from torchaudio import functional, transforms
 
 from dspant.core.nodes.data import EpocNode, StreamNode
-from dspant.core.nodes.stream_processing import ProcessingNode
 from dspant.processing.filters import (
     FilterProcessor,
     create_bandpass_filter,
@@ -41,6 +40,7 @@ from dspant.processing.time_frequency import (
     SpectrogramProcessor,
 )
 from dspant.processing.transforms import TKEOProcessor
+from dspant.processor.manager.stream_processing import ProcessingNode
 
 # %%
 stream_path = (
