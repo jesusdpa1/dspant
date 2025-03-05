@@ -118,7 +118,14 @@ class tdtStream(BaseModel):
         # Extract the relevant portion of data based on time_segment
         data = self.tdt_struct.data
         fs = self.tdt_struct.fs
-        original_shape = data.shape
+
+        # Handle single-channel data (1D array)
+        if data.ndim == 1:
+            # Reshape to 2D (1, samples)
+            data = data.reshape(1, -1)
+            original_shape = data.shape
+        else:
+            original_shape = data.shape
 
         if time_segment is not None:
             start_time, end_time = time_segment
@@ -212,19 +219,37 @@ class tdtStream(BaseModel):
         Returns:
             Dictionary containing organized metadata
         """
-        # Use the provided data shape if available, otherwise use the original
-        shape = data_shape if data_shape is not None else self.tdt_struct.data.shape
+        # Get the original data for metadata generation
+        orig_data = self.tdt_struct.data
+
+        # Handle single-channel data (1D array)
+        if orig_data.ndim == 1:
+            # Reshape to 2D (1, samples) for consistent handling
+            orig_data = orig_data.reshape(1, -1)
+
+        # Use the provided data shape if available, otherwise use the original shape
+        shape = data_shape if data_shape is not None else orig_data.shape
+
+        # Get channel information
+        # If channel is a scalar or 1D array with one element, adjust accordingly
+        channel_info = self.tdt_struct.channel
+        if not isinstance(channel_info, (list, np.ndarray)) or len(channel_info) == 1:
+            # Convert to list with single element if scalar
+            if not isinstance(channel_info, (list, np.ndarray)):
+                channel_list = [channel_info]
+            else:
+                channel_list = list(channel_info)
+        else:
+            channel_list = list(channel_info)
 
         self.base_metadata = {
             "name": self.tdt_struct.name,
             "fs": float(self.tdt_struct.fs),
             "number_of_samples": shape[1],
             "data_shape": shape,
-            "channel_numbers": len(self.tdt_struct.channel),
+            "channel_numbers": len(channel_list),
             "channel_names": [str(ch) for ch in range(shape[0])],
-            "channel_types": [
-                str(self.tdt_struct.data[i, :].dtype) for i in range(shape[0])
-            ],
+            "channel_types": [str(orig_data[i, :].dtype) for i in range(shape[0])],
         }
 
         self.other_metadata = {
@@ -235,7 +260,7 @@ class tdtStream(BaseModel):
             "ucf": str(self.tdt_struct.ucf),
             "dform": int(self.tdt_struct.dform),
             "start_time": float(self.tdt_struct.start_time),
-            "channel": [str(ch) for ch in self.tdt_struct.channel],
+            "channel": [str(ch) for ch in channel_list],
         }
 
         # Add segment information if available
@@ -450,9 +475,11 @@ def convert_tdt_to_ant(
     stream_names: Optional[List[str]] = None,
     epoc_names: Optional[List[str]] = None,
     time_segment: Optional[Tuple[float, float]] = None,
+    start: Optional[Tuple[float, float]] = 0,
+    end: Optional[Tuple[float, float]] = -1,
 ) -> Path:
     """
-    Convert TDT block data to ANT format.
+    Convert TDT block data to ANT format, focusing on streams and epocs.
 
     Args:
         tdt_block_path: Path to TDT block directory
@@ -469,14 +496,14 @@ def convert_tdt_to_ant(
     if output_path is not None:
         output_path = Path(output_path)
 
-    # Read the TDT block
+    # Read the TDT block (returns a struct with data components)
     print(f"Loading TDT block from {tdt_block_path}...")
-    tdt_block = tdt.read_block(str(tdt_block_path))
+    tdt_block = tdt.read_block(str(tdt_block_path), t1=start, t2=end)
 
-    # Create path manager
+    # Create path manager for output
     working_location = drvPathCarpenter(base_path=tdt_block_path)
 
-    # Create derived directory
+    # Create derived directory for output
     if output_path is not None:
         # Use provided output path
         drv_path = working_location.build_drv_directory(output_path)
@@ -484,41 +511,79 @@ def convert_tdt_to_ant(
         # Create default derived directory
         drv_path = working_location.build_drv_directory()
 
-    # Convert streams
-    if stream_names is None:
-        # Convert all available streams
-        stream_names = list(tdt_block.streams.keys())
+    # Get available streams and epocs
+    # Just list the keys provided by the TDT API
+    available_streams = (
+        tdt_block.streams.keys() if hasattr(tdt_block, "streams") else []
+    )
+    available_epocs = tdt_block.epocs.keys() if hasattr(tdt_block, "epocs") else []
 
+    # Determine which streams to convert
+    if stream_names is None:
+        stream_names = list(available_streams)
+    else:
+        # Check if provided stream names exist
+        valid_streams = [name for name in stream_names if name in available_streams]
+        invalid_streams = set(stream_names) - set(valid_streams)
+        if invalid_streams:
+            print(f"⚠️ These streams were not found: {', '.join(invalid_streams)}")
+        stream_names = valid_streams
+
+    # Determine which epocs to convert
+    if epoc_names is None:
+        epoc_names = list(available_epocs)
+    else:
+        # Check if provided epoc names exist
+        valid_epocs = [name for name in epoc_names if name in available_epocs]
+        invalid_epocs = set(epoc_names) - set(valid_epocs)
+        if invalid_epocs:
+            print(f"⚠️ These epocs were not found: {', '.join(invalid_epocs)}")
+        epoc_names = valid_epocs
+
+    # Process streams sequentially
+    processed_streams = []
     for stream_name in stream_names:
-        if stream_name in tdt_block.streams:
+        try:
             print(f"Converting stream: {stream_name}")
             # Create directory for this stream
             stream_dir = working_location.build_recording_directory(stream_name)
 
+            # Access the stream
+            stream_obj = tdt_block.streams[stream_name]
+
             # Create stream converter and save data
-            stream_converter = tdtStream(tdt_struct=tdt_block.streams[stream_name])
+            stream_converter = tdtStream(tdt_struct=stream_obj)
             _, _ = stream_converter.data_to_parquet(
                 save=True, save_path=stream_dir, time_segment=time_segment
             )
-        else:
-            print(f"⚠️ Stream '{stream_name}' not found in TDT block")
+            processed_streams.append(stream_name)
+            print(f"✅ Stream {stream_name} converted successfully")
+        except Exception as e:
+            print(f"❌ Error converting stream '{stream_name}': {str(e)}")
 
-    # Convert epocs
-    if epoc_names is None:
-        # Convert all available epocs
-        epoc_names = list(tdt_block.epocs.keys())
-
+    # Process epocs sequentially
+    processed_epocs = []
     for epoc_name in epoc_names:
-        if epoc_name in tdt_block.epocs:
+        try:
             print(f"Converting epoc: {epoc_name}")
             # Create directory for this epoc
             epoc_dir = working_location.build_recording_directory(epoc_name)
 
-            # Create epoc converter and save data
-            epoc_converter = tdtEpoc(tdt_struct=tdt_block.epocs[epoc_name])
-            epoc_converter.data_to_parquet(save=True, save_path=epoc_dir)
-        else:
-            print(f"⚠️ Epoc '{epoc_name}' not found in TDT block")
+            # Access the epoc
+            epoc_obj = tdt_block.epocs[epoc_name]
 
+            # Create epoc converter and save data
+            epoc_converter = tdtEpoc(tdt_struct=epoc_obj)
+            epoc_converter.data_to_parquet(save=True, save_path=epoc_dir)
+            processed_epocs.append(epoc_name)
+            print(f"✅ Epoc {epoc_name} converted successfully")
+        except Exception as e:
+            print(f"❌ Error converting epoc '{epoc_name}': {str(e)}")
+
+    # Print summary
+    print(f"\nConversion Summary:")
+    print(f"- Processed {len(processed_streams)}/{len(stream_names)} streams")
+    print(f"- Processed {len(processed_epocs)}/{len(epoc_names)} epocs")
     print(f"✅ Conversion complete. Data saved to {drv_path}")
+
     return drv_path
