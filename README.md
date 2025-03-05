@@ -1,73 +1,132 @@
-# dspAnt
-This project takes inspiration from spikeinterface[^1] and branches only due to different requirements to handle emg data.
+# dspAnt 🐜
 
-Follow [spikeinterface](https://github.com/SpikeInterface/spikeinterface.git)
+A flexible and powerful framework for processing time-series data, with a focus on neural and physiological signals.
 
-dspant current progress: [tldraw/todo](https://www.tldraw.com/p/7m_PZy79ZkdbCX-wcoYRZ?d=v226.-37.1577.1157.EJte7OP_8H5jimpGy8Wyq)
+## 🌟 Project Vision
 
-## Discord Channel 
-https://discord.gg/jGPJTrSU
+dspAnt aims to simplify complex signal processing workflows by providing an intuitive, performant, and scalable approach to data analysis.
 
-## Working prototype for electrophysiology data processing
+## 🚀 Key Design Principles
 
-### Core idea: [tldraw/core](https://www.tldraw.com/p/7m_PZy79ZkdbCX-wcoYRZ?d=v-188.522.2217.1628.page)
-- use dask for lazyloading data processing
-- use pyarrow as data loading - aim for memory mapped
-- use parquet as the standard file storage for optimized reading and storing
-- graph nodes as the core phylosophy of the module - processing functions are attached to the raw data and processing can be access by requesting different node combinations
-- metadata will be enforce:
-  - When looking into other frameworks and how data is store by different products there are different design ideas behind the code. This make it hard to understand the data collected. The idea of this framework is to ensure that all dataset will be splitted into two major groups: Streams and Epocs. Streams will require not only having fs[sampling_frequency] but also units and other variables that describe the parquet file. This metadata will be name "**core**" in the metadata.json file, example:
+### Data Processing Philosophy
+
+```mermaid
+flowchart TD
+    A[Raw Data] --> B{Dask Lazy Loading}
+    B --> C[Memory-Efficient Processing]
+    C --> D[Parquet Storage]
+    D --> E[Flexible Node-Based Analysis]
+    
+    subgraph Data Structure
+        F[Streams] --> G[Continuous Signals]
+        H[Epochs] --> I[Event-Based Data]
+    end
+```
+
+### Why Our Approach?
+
+1. **Lazy Loading**: Process large datasets without memory constraints
+2. **Standardized Metadata**: Consistent data description across different sources
+3. **Flexible Processing**: Attach processing functions to raw data dynamically
+4. **Scalable Architecture**: Designed for complex scientific workflows
+
+### Metadata Example
+
+We use a structured metadata approach to provide clear, comprehensive information about your data:
+
 ```json
 {
-    "source": "StructType",
     "base": {
-        "name": "RawG",
-        "fs": 24414.0625,
-        "number_of_samples": 35143680,
-        "data_shape": [
-            2,
-            35143680
-        ],
-        "channel_numbers": 2,
-        "channel_names": [
-            "0",
-            "1"
-        ],
-        "channel_types": [
-            "float32",
-            "float32"
-        ],
-        "channel_units":[
-            "V",
-            "V"
-        ],
+        "name": "RawEMG",
+        "sampling_rate": 24414.0625,
+        "total_samples": 35143680,
+        "channels": {
+            "count": 2,
+            "names": ["Channel1", "Channel2"],
+            "units": ["V", "V"]
+        }
     },
-    "other": {
-        "code": 1199006034,
-        "size": 2058,
-        "type": 33025,
-        "type_str": "streams",
-        "ucf": "False",
-        "dform": 0,
-        "start_time": 0.0,
-        "channel": [
-            "1",
-            "2"
-        ],
-        "save_path": "..\\data\\25-02-12_9882-1_testSubject_emgContusion\\drv_16-49-56_stim\\RawG.ant"
+    "recording_details": {
+        "date": "2024-02-25",
+        "subject_id": "9882-1",
+        "experiment_type": "EMG Contusion"
     }
 }
 ```
 
-### Current prototype: 
-- 
+## 🛠 Current Features
 
-### Prototype made with LLMs
+- Dask-powered lazy data processing
+- PyArrow-based memory-mapped reading
+- Parquet file storage
+- Flexible node-based processing
+- Support for streams and epoch-based data
 
-Currently working on this project on my own, I use Claude, Chatgpt and MetaAI to reach to the current prototype. Errors and Bugs are expected use caususly 
+## 📡 Community & Support
 
-# Reference
+- **Discord**: [Join our Community](https://discord.gg/jGPJTrSU)
+- **Inspiration**: [SpikeInterface](https://github.com/SpikeInterface/spikeinterface.git)
 
-[^1]: https://github.com/SpikeInterface/spikeinterface.git
+## 🧠 Development Approach
 
+This project is developed with the assistance of AI language models (Claude, ChatGPT, Meta AI). 
 
+**Disclaimer**: As an evolving prototype, expect ongoing improvements and potential bugs.
+
+## 🗺️ Project Roadmap
+
+```mermaid
+timeline
+    title dspAnt Development Roadmap
+    2024 Q1: Initial Prototype
+    2024 Q2: Core Functionality
+    2024 Q3: Advanced Processing Modules
+    2024 Q4: Community Feedback Integration
+```
+
+## 🤝 Contributions
+
+Interested in contributing? We welcome:
+- Bug reports
+- Feature suggestions
+- Code contributions
+- Documentation improvements
+
+## 📊 Technology Stack
+
+- **Language**: Python
+- **Lazy Processing**: Dask
+- **Data Storage**: PyArrow, Parquet
+- **Signal Processing**: NumPy, SciPy
+- **Performance**: Numba
+
+## 📦 Installation (Coming Soon)
+
+```bash
+pip install dspant
+```
+
+## 📚 Quick Example
+
+```python
+from dspant import StreamNode, create_processing_node
+
+# Load your data
+stream = StreamNode('path/to/your/data.parquet')
+
+# Create a processing pipeline
+processor = create_processing_node(stream)
+processor.add_processor(filter_processor)
+processor.add_processor(envelope_processor)
+
+# Process data lazily
+processed_data = processor.process()
+```
+
+## License
+
+[To be determined]
+
+## References
+
+[1] SpikeInterface: https://github.com/SpikeInterface/spikeinterface.git
