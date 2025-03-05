@@ -293,12 +293,12 @@ plt.plot(
 # Increase title and label font sizes
 plt.title(
     f"EMG Signal and Envelope - Channel {channel_id}",
-    fontdict={"size": 16, **font_dict},
+    fontdict={"size": 24, **font_dict},
 )
-plt.ylabel("Amplitude", fontdict={"size": 14, **font_dict})
+plt.ylabel("Amplitude", fontdict={"size": 16, **font_dict})
 plt.legend(prop={"size": 12, **font_dict})
 plt.grid(True, alpha=0.3)
-plt.tick_params(labelsize=12)  # Increase tick label size
+plt.tick_params(labelsize=16)  # Increase tick label size
 
 # Plot envelope with onsets/offsets
 plt.subplot(2, 1, 2)
@@ -474,3 +474,5 @@ plt.tick_params(labelsize=12)  # Increase tick label size
 plt.tight_layout()
 plt.savefig("emg_onset_detection_absolute.png", dpi=300, bbox_inches="tight")
 plt.show()
+
+# %%
