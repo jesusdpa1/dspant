@@ -7,6 +7,8 @@ This module provides processors for spectral analysis of time-series data:
 - LFCC for linear-frequency cepstral coefficients
 """
 
+import torch
+
 from .stft_base import (
     LFCCProcessor,
     MFCCProcessor,

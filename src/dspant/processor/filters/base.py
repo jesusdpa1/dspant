@@ -7,9 +7,6 @@ from scipy.signal import sosfiltfilt
 from ...engine.base import BaseProcessor, ProcessingFunction
 
 # This function is only a placeholder - it can't actually apply SciPy's sosfiltfilt
-# since Numba can't compile that. We should remove it since it's misleading.
-# REMOVING: @jit(nopython=True, parallel=True, cache=True)
-# REMOVING: def _apply_filter_parallel(chunk, sos): ...
 
 
 class FilterProcessor(BaseProcessor):

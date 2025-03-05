@@ -27,10 +27,8 @@ from dspant.processor.spectral import LFCCProcessor, MFCCProcessor, SpectrogramP
 sns.set_theme(style="darkgrid")
 # %%
 
-base_path = (
-    r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
-)
-# r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+base_path = r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+#     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
 
 emg_stream_path = base_path + r"/RawG.ant"
 # %%
@@ -97,7 +95,7 @@ processor_hd.summarize()
 # Apply filters and plot results
 filter_data = processor_hd.process(group=["filters"]).persist()
 # %%
-channel_id = 1
+channel_id = 0
 # Plot filtered data
 plt.figure(figsize=(15, 6))
 time_axis = np.arange(40000) / fs  # Create time axis in seconds
@@ -129,7 +127,7 @@ plt.show()
 base_data = filter_data
 
 # Define the time window to plot
-plot_start = 10000
+plot_start = 0
 plot_end = 20000
 plot_time = np.arange(plot_start, plot_end) / fs
 
@@ -191,7 +189,7 @@ rms_data = processor_rms.process(group=["preprocess", "envelope"]).persist()
 # %%
 # 4. Create TKEO envelope pipeline
 tkeo_pipeline = create_tkeo_envelope(
-    method="classic", rectify=True, smooth=True, cutoff_freq=20, fs=fs
+    method="modified", rectify=True, smooth=True, cutoff_freq=20, fs=fs
 )
 
 # Add to processing node
