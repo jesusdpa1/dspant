@@ -125,6 +125,15 @@ Interested in contributing? We welcome:
 
 ## 📦 Installation (Coming Soon)
 
+### Current 
+``` bash
+git clone repo
+# cd to directory
+# --extra for stft functionality
+
+uv sync --extra cu124
+```
+### Coming Soon
 ```bash
 pip install dspant
 ```
