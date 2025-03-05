@@ -379,3 +379,18 @@ if len(tkeo_abs_df_ch) > 0:
 ## References
 
 [1] SpikeInterface: https://github.com/SpikeInterface/spikeinterface.git
+
+
+## License and Disclaimer
+
+### Liability Disclaimer
+
+**IMPORTANT: USE AT YOUR OWN RISK**
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+
+Users are solely responsible for:
+- Verifying the accuracy and appropriateness of results
+- Ensuring proper implementation in their specific use case
+- Checking and validating all outputs
+- Any consequences resulting from the use of this software
