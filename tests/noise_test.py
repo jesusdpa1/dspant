@@ -21,9 +21,9 @@ from dspant.processor.filters import (
     ButterFilter,
     FilterProcessor,
 )
+from dspant.processor.quality_metrics import create_noise_estimation_processor
 from dspant.processor.spatial import create_cmr_processor, create_whitening_processor
 from dspant.processor.spectral import LFCCProcessor, MFCCProcessor, SpectrogramProcessor
-from dspant.processor.utils import create_noise_estimation_processor
 
 sns.set_theme(style="darkgrid")
 # %%

@@ -15,6 +15,11 @@ from .activity import (
     create_rms_onset_detector,
     create_std_onset_detector,
 )
+from .extraction import (
+    create_centered_extractor,
+    create_fixed_window_extractor,
+    create_onset_offset_extractor,
+)
 
 # You can add additional imports from other submodules as needed
 # For example:
@@ -27,4 +32,9 @@ __all__ = [
     "create_std_onset_detector",
     "create_rms_onset_detector",
     "create_absolute_threshold_detector",
+    # Extraction
+    # Segment processors
+    "create_centered_extractor",
+    "create_fixed_window_extractor",
+    "create_onset_offset_extractor",
 ]
