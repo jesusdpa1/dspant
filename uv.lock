@@ -313,7 +313,7 @@ wheels = [
 
 [[package]]
 name = "dask"
-version = "2025.1.0"
+version = "2025.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -324,12 +324,15 @@ dependencies = [
     { name = "pyyaml" },
     { name = "toolz" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/41/43eb54e0f6d1ba971d5adcad8f0862b327af6a2041aa134acbcec630ad43/dask-2025.1.0.tar.gz", hash = "sha256:bb807586ff20f0f59f3d36fe34eb4a95f75a1aae2a775b521de6dd53727d2063", size = 10758681 }
+sdist = { url = "https://files.pythonhosted.org/packages/55/30/ba2d373923cad0e069b50bf27115745fba4fb0a4f53cee7002582cb5cec7/dask-2025.2.0.tar.gz", hash = "sha256:89c87125d04d28141eaccc4794164ce9098163fd22d8ad943db48f8d4c815460", size = 10781637 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/a0/016d956a3fec193e3a5b466ca912944669c18dccc736b64a9e28ccdcc5f7/dask-2025.1.0-py3-none-any.whl", hash = "sha256:db86220c8d19bdf464cbe11a87a2c8f5d537acf586bb02eed6d61a302af5c2fd", size = 1371235 },
+    { url = "https://files.pythonhosted.org/packages/55/4a/738ec3dac7e767c1ba6fbb6ecb908ceda66a1b2f4ee967bc03800fb07630/dask-2025.2.0-py3-none-any.whl", hash = "sha256:f0fdeef6ceb0a06569d456c9e704f220f7f54e80f3a6ea42ab98cea6bc642b6e", size = 1393839 },
 ]
 
 [package.optional-dependencies]
+array = [
+    { name = "numpy" },
+]
 complete = [
     { name = "bokeh" },
     { name = "distributed" },
@@ -338,6 +341,50 @@ complete = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
+]
+dataframe = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+]
+
+[[package]]
+name = "dask-glm"
+version = "0.3.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cloudpickle" },
+    { name = "dask", extra = ["array"] },
+    { name = "distributed" },
+    { name = "multipledispatch" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "sparse" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/da/2b/bfd5cc11f023af8a1b7c22141cb7cd3bde05384883fe7d47a1e8cf02342a/dask-glm-0.3.2.tar.gz", hash = "sha256:c947a566866698a01d79978ae73233cb5e838ad5ead6085143582c5e930b9a4a", size = 29649 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/8e/cd1502dd2d00d54fb3e10880d4c8cb6699320a239da7a39c9f55044afdee/dask_glm-0.3.2-py2.py3-none-any.whl", hash = "sha256:649e55f24e5e0d91a51e0d8d45a9b005dde3c3e6b6480e1290422adec91d4da6", size = 13479 },
+]
+
+[[package]]
+name = "dask-ml"
+version = "2025.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dask", extra = ["array", "dataframe"] },
+    { name = "dask-glm" },
+    { name = "distributed" },
+    { name = "multipledispatch" },
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pandas" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/97/4eb888d0cc602759941b2152f2a6a67f1ab882f8de018450f42ed053f54f/dask_ml-2025.1.0.tar.gz", hash = "sha256:b31caeb5f603f9537ffa34bd247e0e1fcefda7c007631260f8abdee49f89b1e1", size = 123283 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/21/b5/701a16d3d9ccf12ff752f258a720230d93c28ce5a2eca340ce921f897abc/dask_ml-2025.1.0-py3-none-any.whl", hash = "sha256:475c542b342d915934fbbbca6395798a22cf50283b1626fc0924abe40d0b3558", size = 149997 },
 ]
 
 [[package]]
@@ -380,7 +427,7 @@ wheels = [
 
 [[package]]
 name = "distributed"
-version = "2025.1.0"
+version = "2025.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -399,9 +446,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "zict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c7/8e/f35c479339261a88cf6209f145d4f55316b60b6d6548832ebf17c3ced072/distributed-2025.1.0.tar.gz", hash = "sha256:8924c49adae0fc8532b464e94bdfea979c08c67835bafb5f315f33cc0ab14dd3", size = 1109046 }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/92/7ed81ced4d9301d79696c4f25a874371cf4ecd90aac5137f807870c290f1/distributed-2025.2.0.tar.gz", hash = "sha256:84e8e3a9290db805250cd8f0b46416b8e3e32c8088ffa778d8a21ea1e2c1cac3", size = 1111668 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f8/c6/ab0d2104364653897a2bad66d5da9dbf282897b126d3690c92c7d4b23b35/distributed-2025.1.0-py3-none-any.whl", hash = "sha256:0b9c0ebcab8fe25322d71d04deb6d8ed8c7bbfd1521d1906d5d71bf82eee5ae3", size = 1018174 },
+    { url = "https://files.pythonhosted.org/packages/30/a8/fec2e908b32a1b7868bd4c6144ac12ce1eb22460e18d6a2f093da2a8283d/distributed-2025.2.0-py3-none-any.whl", hash = "sha256:368462084be47092d0a835f6c64c9b852da64dc88302b76d5f93bd5131228c67", size = 1018389 },
 ]
 
 [[package]]
@@ -422,11 +469,13 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "dask", extra = ["complete"] },
+    { name = "dask-ml" },
     { name = "graphviz" },
     { name = "hvplot" },
     { name = "ipycytoscape" },
     { name = "librosa" },
     { name = "matplotlib" },
+    { name = "numba" },
     { name = "pendulum" },
     { name = "polars" },
     { name = "pyarrow" },
@@ -464,12 +513,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dask", extras = ["complete"], specifier = ">=2025.1.0" },
+    { name = "dask", extras = ["complete"], specifier = ">=2025.2.0" },
+    { name = "dask-ml", specifier = ">=2025.1.0" },
     { name = "graphviz", specifier = ">=0.20.3" },
     { name = "hvplot", specifier = ">=0.11.2" },
     { name = "ipycytoscape", specifier = ">=1.3.3" },
     { name = "librosa", specifier = ">=0.10.2.post1" },
     { name = "matplotlib", specifier = ">=3.10.0" },
+    { name = "numba", specifier = ">=0.61.0" },
     { name = "pendulum", specifier = ">=3.0.0" },
     { name = "polars", specifier = ">=1.21.0" },
     { name = "pyarrow", specifier = ">=19.0.0" },
@@ -1061,6 +1112,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7a/40/631c238f1f338eb09f4acb0f34ab5862c4e9d7eda11c1b685471a4c5ea37/msgpack-1.1.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:b4c01941fd2ff87c2a934ee6055bda4ed353a7846b8d4f341c428109e9fcde8c", size = 399082 },
     { url = "https://files.pythonhosted.org/packages/e9/1b/fa8a952be252a1555ed39f97c06778e3aeb9123aa4cccc0fd2acd0b4e315/msgpack-1.1.0-cp313-cp313-win32.whl", hash = "sha256:7c9a35ce2c2573bada929e0b7b3576de647b0defbd25f5139dcdaba0ae35a4cc", size = 69037 },
     { url = "https://files.pythonhosted.org/packages/b6/bc/8bd826dd03e022153bfa1766dcdec4976d6c818865ed54223d71f07862b3/msgpack-1.1.0-cp313-cp313-win_amd64.whl", hash = "sha256:bce7d9e614a04d0883af0b3d4d501171fbfca038f12c77fa838d9f198147a23f", size = 75140 },
+]
+
+[[package]]
+name = "multipledispatch"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/3e/a62c3b824c7dec33c4a1578bcc842e6c30300051033a4e5975ed86cc2536/multipledispatch-1.0.0.tar.gz", hash = "sha256:5c839915465c68206c3e9c473357908216c28383b425361e5d144594bf85a7e0", size = 12385 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/c0/00c9809d8b9346eb238a6bbd5f83e846a4ce4503da94a4c08cb7284c325b/multipledispatch-1.0.0-py3-none-any.whl", hash = "sha256:0c53cd8b077546da4e48869f49b13164bebafd0c2a5afceb6bb6a316e7fb46e4", size = 12818 },
 ]
 
 [[package]]
@@ -1992,6 +2052,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b8/38/bad15a9e615215c8219652ca554b601663ac3b7ac82a284aca53ec2ff48c/soxr-0.5.0.post1-cp312-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:bd052a66471a7335b22a6208601a9d0df7b46b8d087dce4ff6e13eed6a33a2a1", size = 216564 },
     { url = "https://files.pythonhosted.org/packages/e1/1a/569ea0420a0c4801c2c8dd40d8d544989522f6014d51def689125f3f2935/soxr-0.5.0.post1-cp312-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a3f16810dd649ab1f433991d2a9661e9e6a116c2b4101039b53b3c3e90a094fc", size = 248455 },
     { url = "https://files.pythonhosted.org/packages/bc/10/440f1ba3d4955e0dc740bbe4ce8968c254a3d644d013eb75eea729becdb8/soxr-0.5.0.post1-cp312-abi3-win_amd64.whl", hash = "sha256:b1be9fee90afb38546bdbd7bde714d1d9a8c5a45137f97478a83b65e7f3146f6", size = 164937 },
+]
+
+[[package]]
+name = "sparse"
+version = "0.15.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8c/97/ef70784ece46b7071f357f89f69ae8b120f7a2dff1a70f9747563b709683/sparse-0.15.5.tar.gz", hash = "sha256:4c76ce0c96f5cd5c31b7e79e650f0022424c2b16f05f10049e9c6381ee4be266", size = 359719 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4f/37/fcb96b950a972dac48e0fc9e3c528130ca8d8d1e0f09e727df3c6342c7c8/sparse-0.15.5-py2.py3-none-any.whl", hash = "sha256:cf608731f8564916443427bca323fe118e8c25a712ddf02dbe7673a961139706", size = 117384 },
 ]
 
 [[package]]

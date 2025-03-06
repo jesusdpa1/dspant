@@ -6,18 +6,18 @@ neural spikes and events in extracellular recordings.
 """
 
 import concurrent.futures
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Literal, Optional, Tuple
 
 import dask.array as da
 import numpy as np
 import polars as pl
-from numba import jit, prange
+from numba import jit
 
 from ...processor.quality_metrics import NoiseEstimationProcessor
 from ..detection.base import ThresholdDetector
 
 
-@jit(nopython=True, parallel=True, cache=True)
+@jit(nopython=True, cache=True)
 def _detect_peaks_numba(
     data: np.ndarray,
     positive_threshold: float,
@@ -27,7 +27,7 @@ def _detect_peaks_numba(
     min_distance_samples: int,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Detect peaks in signal using numba acceleration with optional channel parallelism.
+    Detect peaks in signal using sequential processing.
 
     Args:
         data: Input data array of shape (samples, channels)
@@ -55,8 +55,8 @@ def _detect_peaks_numba(
     # Tracking number of peaks found
     peak_count = 0
 
-    # Process each channel in parallel
-    for channel in prange(n_channels):
+    # Process each channel sequentially
+    for channel in range(n_channels):
         # Get channel data and thresholds
         channel_data = data[:, channel]
         pos_threshold = positive_threshold
