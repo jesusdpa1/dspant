@@ -12,7 +12,7 @@ This module provides various signal processing components:
 
 # Import factory functions for easier access
 # Expose all sub-packages
-from . import basic, filters, segments, spatial, spectral, utils
+from . import basic, filters, quality_metrics, spatial, spectral
 from .basic import (
     create_moving_average,
     create_normalizer,
@@ -26,11 +26,7 @@ from .filters import (
     create_lowpass_filter,
     create_notch_filter,
 )
-from .segments import (
-    create_centered_extractor,
-    create_fixed_window_extractor,
-    create_onset_offset_extractor,
-)
+from .quality_metrics import create_noise_estimation_processor
 from .spatial import (
     create_car_processor,
     create_cmr_processor,
@@ -41,7 +37,6 @@ from .spectral import (
     create_mfcc,
     create_spectrogram,
 )
-from .utils import create_noise_estimation_processor
 
 __all__ = [
     # Sub-packages
@@ -50,7 +45,7 @@ __all__ = [
     "segments",
     "spatial",
     "spectral",
-    "utils",
+    "quality_metrics",
     # Basic processors
     "create_moving_average",
     "create_normalizer",
@@ -62,10 +57,6 @@ __all__ = [
     "create_highpass_filter",
     "create_lowpass_filter",
     "create_notch_filter",
-    # Segment processors
-    "create_centered_extractor",
-    "create_fixed_window_extractor",
-    "create_onset_offset_extractor",
     # Spatial processors
     "create_car_processor",
     "create_cmr_processor",
@@ -74,6 +65,6 @@ __all__ = [
     "create_lfcc",
     "create_mfcc",
     "create_spectrogram",
-    # Utility processors
+    # Qualty metrics processor
     "create_noise_estimation_processor",
 ]
