@@ -17,17 +17,17 @@ def ls(directory: Path):
         print(f"{i}. {entry.name} ({entry_type})")
 
 
-home = Path(r"E:\jpenalozaa")  # Path().home()
-tank_path = home.joinpath(r"topoMapping\25-02-26_9881-2_testSubject_topoMapping")
+home = Path().home()  # Path(r"E:\jpenalozaa")  #
+tank_path = home.joinpath(r"data/topoMapping/25-02-26_9881-2_testSubject_topoMapping")
 
 ls(tank_path)
 # %%
 
 block_path = tank_path.joinpath("00_baseline")
-convert_tdt_to_ant(block_path, start=0, end=-1)
+convert_tdt_to_ant(block_path, start=0, end=1000000)
 
 # %%
 
-tdt_block = tdt.read_block(str(block_path), t1=0, t2=100)
+tdt_block = tdt.read_block(str(block_path), t1=0, t2=1)
 
 # %%
