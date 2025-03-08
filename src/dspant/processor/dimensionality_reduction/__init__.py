@@ -35,6 +35,34 @@ from .umap import (
     create_visualization_umap,
 )
 
+# Import Numba-accelerated implementations
+try:
+    from .pca_numba import (
+        NumbaRealPCAProcessor,
+        create_fast_numba_pca,
+        create_numba_pca,
+        create_numba_whitening_pca,
+    )
+
+    has_numba_pca = True
+except ImportError:
+    has_numba_pca = False
+
+try:
+    from .tsne_numba import (
+        NumbaRealTSNEProcessor,
+        create_cluster_preservation_numba_tsne,
+        create_fast_numba_tsne,
+        create_high_quality_numba_tsne,
+        create_incremental_numba_tsne,
+        create_numba_tsne,
+        create_numba_visualization_tsne,
+    )
+
+    has_numba_tsne = True
+except ImportError:
+    has_numba_tsne = False
+
 __all__ = [
     # Base class
     "BaseDimensionalityReductionProcessor",
@@ -56,3 +84,27 @@ __all__ = [
     "create_fast_umap",
     "create_supervised_umap",
 ]
+
+# Add Numba implementations to __all__ if available
+if has_numba_pca:
+    __all__.extend(
+        [
+            "NumbaRealPCAProcessor",
+            "create_numba_pca",
+            "create_numba_whitening_pca",
+            "create_fast_numba_pca",
+        ]
+    )
+
+if has_numba_tsne:
+    __all__.extend(
+        [
+            "NumbaRealTSNEProcessor",
+            "create_numba_tsne",
+            "create_numba_visualization_tsne",
+            "create_fast_numba_tsne",
+            "create_high_quality_numba_tsne",
+            "create_cluster_preservation_numba_tsne",
+            "create_incremental_numba_tsne",
+        ]
+    )

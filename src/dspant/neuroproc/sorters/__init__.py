@@ -14,6 +14,13 @@ from .pca_kmeans import (
     create_pca_kmeans,
     create_quality_metrics_clustering,
 )
+from .pca_kmeans_numba import (
+    NumbaComposedPCAKMeansProcessor,
+    create_adaptive_numba_pca_kmeans,
+    create_fast_numba_pca_kmeans,
+    create_multichannel_numba_pca_kmeans,
+    create_numba_pca_kmeans,
+)
 
 __all__ = [
     # PCA-KMeans
@@ -24,4 +31,11 @@ __all__ = [
     "create_incremental_clustering",
     "create_quality_metrics_clustering",
     "create_multichannel_clustering",
+    # Numba-accelerated PCA-KMeans
+    "NumbaComposedPCAKMeansProcessor",
+    "create_numba_pca_kmeans",
+    "create_fast_numba_pca_kmeans",
+    "create_high_quality_numba_pca_kmeans",
+    "create_adaptive_numba_pca_kmeans",
+    "create_multichannel_numba_pca_kmeans",
 ]
