@@ -37,8 +37,13 @@ from dspant.processor.spatial import create_cmr_processor, create_whitening_proc
 sns.set_theme(style="darkgrid")
 # %%
 # ---- STEP 1: Load and preprocess data (using your exact code) ----
-base_path = Path(
-    r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+# base_path = Path(
+#     r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+# )
+
+home_path = Path.home()
+base_path = home_path.joinpath(
+    r"data/topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
 )
 emg_stream_path = base_path.joinpath(r"HDEG.ant")
 # %%
@@ -103,6 +108,15 @@ valid_spikes = spike_df.filter(
 )
 
 print(f"Valid spikes for channel {channel_idx}: {len(valid_spikes)}")
+
+# %%
+plot_spike_events(
+    np.array(data_to_process),
+    spike_df=spike_df,
+    fs=fs,
+    channels=[1, 2, 3],
+    time_window=[0.2, 0.8],
+)
 # %%
 # Extract waveforms using your settings
 waveforms, spike_times, metadata = extract_spike_waveforms(
