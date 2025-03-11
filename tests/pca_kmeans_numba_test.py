@@ -37,14 +37,16 @@ from dspant.processor.spatial import create_cmr_processor, create_whitening_proc
 sns.set_theme(style="darkgrid")
 # %%
 # ---- STEP 1: Load and preprocess data (using your exact code) ----
-# base_path = Path(
-#     r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
-# )
 
-home_path = Path.home()
+home_path = Path(r"E:\jpenalozaa")
 base_path = home_path.joinpath(
-    r"data/topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
+    r"topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
 )
+
+# home_path = Path.home()
+# base_path = home_path.joinpath(
+#     r"data/topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
+# )
 emg_stream_path = base_path.joinpath(r"HDEG.ant")
 # %%
 # Load EMG data
