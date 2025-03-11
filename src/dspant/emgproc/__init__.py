@@ -9,7 +9,7 @@ This module contains tools for processing and analyzing EMG data, including:
 """
 
 # Re-export key functionality from submodules
-from .activity import (
+from .activity_detection import (
     EMGOnsetDetector,
     create_absolute_threshold_detector,
     create_rms_onset_detector,

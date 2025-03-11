@@ -5,7 +5,7 @@ This module provides functionality for extracting segments of data based on onse
 with various methods for determining segment boundaries.
 """
 
-from .waveform_extraction import (
+from .waveform_extractor import (
     SegmentExtractionProcessor,
     create_centered_extractor,
     create_fixed_window_extractor,

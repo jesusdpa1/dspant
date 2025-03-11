@@ -12,7 +12,7 @@ import rerun as rr
 import rerun.blueprint as rrb
 import seaborn as sns
 
-from dspant.emgproc.activity import (
+from dspant.emgproc.activity_detection import (
     EMGOnsetDetector,
     create_absolute_threshold_detector,
 )
