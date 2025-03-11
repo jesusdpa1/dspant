@@ -3,6 +3,8 @@ Filter processors for dspant.
 
 This module provides filter implementations for various types of filters:
 - Butterworth filters (lowpass, highpass, bandpass, notch)
+- Feed Forward Comb (FFC) filter
+- Wavelet Packet Harmonic Interference Removal
 - Base classes for custom filter implementations
 - Filter visualization tools
 """
@@ -15,6 +17,17 @@ from .butter_filters import (
     create_lowpass_filter,
     create_notch_filter,
     plot_filter_response,
+)
+from .ffc_filter import (
+    FFCFilter,
+    create_ffc_enhancement,
+    create_ffc_filter,
+    create_ffc_notch,
+)
+from .wp_harmonic_removal import (
+    WaveletPacketHarmonicRemoval,
+    create_powerline_filter,
+    create_wp_harmonic_removal,
 )
 
 
@@ -137,4 +150,13 @@ __all__ = [
     # Factory functions
     "create_filter_processor",
     "create_visualizable_filter",
+    # FFC Filter
+    "FFCFilter",
+    "create_ffc_filter",
+    "create_ffc_notch",
+    "create_ffc_enhancement",
+    # Wavelet Packet Harmonic Removal
+    "WaveletPacketHarmonicRemoval",
+    "create_wp_harmonic_removal",
+    "create_powerline_filter",
 ]
