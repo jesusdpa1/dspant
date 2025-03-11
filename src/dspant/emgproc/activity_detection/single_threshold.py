@@ -6,7 +6,7 @@ using various methods including threshold-based detection.
 """
 
 import concurrent.futures
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Literal, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
