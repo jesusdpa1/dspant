@@ -2,17 +2,15 @@ version = 1
 revision = 1
 requires-python = ">=3.12"
 resolution-markers = [
-    "extra != 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun'",
-    "extra != 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124' and extra != 'extra-6-dspant-cu124-rerun'",
-    "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124' and extra != 'extra-6-dspant-cu124-rerun') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124' and extra != 'extra-6-dspant-cu124-rerun')",
-    "platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124' and extra != 'extra-6-dspant-cu124-rerun'",
-    "sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124' and extra != 'extra-6-dspant-cu124-rerun'",
-    "extra != 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124' and extra != 'extra-6-dspant-cu124-rerun'",
+    "extra != 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124'",
+    "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124')",
+    "platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124'",
+    "sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124'",
+    "extra != 'extra-6-dspant-cpu' and extra != 'extra-6-dspant-cu124'",
 ]
 conflicts = [[
     { package = "dspant", extra = "cpu" },
     { package = "dspant", extra = "cu124" },
-    { package = "dspant", extra = "cu124-rerun" },
 ]]
 
 [[package]]
@@ -40,15 +38,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/4a/e7/82da0a03e7ba5141f05cce0d302e6eed121ae055e0456ca228bf693984bc/asttokens-3.0.0.tar.gz", hash = "sha256:0dcd8baa8d62b0c1d118b399b2ddba3c4aff271d0d7a9e0d4c1681c79035bbc7", size = 61978 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/8a/c46dcc25341b5bce5472c718902eb3d38600a903b14fa6aeecef3f21a46f/asttokens-3.0.0-py3-none-any.whl", hash = "sha256:e3078351a059199dd5138cb1c706e6430c05eff2ff136af5eb4790f9d28932e2", size = 26918 },
-]
-
-[[package]]
-name = "attrs"
-version = "25.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/49/7c/fdf464bcc51d23881d110abd74b512a42b3d5d376a55a831b44c603ae17f/attrs-25.1.0.tar.gz", hash = "sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e", size = 810562 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/30/d4986a882011f9df997a55e6becd864812ccfcd821d64aac8570ee39f719/attrs-25.1.0-py3-none-any.whl", hash = "sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a", size = 63152 },
 ]
 
 [[package]]
@@ -174,7 +163,7 @@ name = "click"
 version = "8.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b9/2e/0090cbf739cee7d23781ad4b89a9894a41538e4fcf4c31dcdd705b78eb8b/click-8.1.8.tar.gz", hash = "sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a", size = 226593 }
 wheels = [
@@ -491,19 +480,14 @@ dependencies = [
 
 [package.optional-dependencies]
 cpu = [
-    { name = "torch", version = "2.6.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
-    { name = "torch", version = "2.6.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-6-dspant-cpu') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
-    { name = "torchaudio", version = "2.6.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu') or (platform_machine != 'aarch64' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (platform_machine != 'aarch64' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (platform_machine != 'aarch64' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu') or (sys_platform != 'linux' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform != 'linux' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform != 'linux' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform == 'darwin' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun') or (extra != 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
-    { name = "torchaudio", version = "2.6.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-6-dspant-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform == 'darwin' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform == 'linux' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform == 'linux' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra != 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "torch", version = "2.6.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
+    { name = "torch", version = "2.6.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-6-dspant-cpu') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
+    { name = "torchaudio", version = "2.6.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu') or (platform_machine != 'aarch64' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu') or (sys_platform != 'linux' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
+    { name = "torchaudio", version = "2.6.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-6-dspant-cpu') or (sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform == 'linux' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
 ]
 cu124 = [
     { name = "torch", version = "2.6.0+cu124", source = { registry = "https://download.pytorch.org/whl/cu124" } },
     { name = "torchaudio", version = "2.6.0+cu124", source = { registry = "https://download.pytorch.org/whl/cu124" } },
-]
-cu124-rerun = [
-    { name = "rerun-sdk" },
-    { name = "torch", version = "2.6.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "torchaudio", version = "2.6.0", source = { registry = "https://pypi.org/simple" } },
 ]
 
 [package.dev-dependencies]
@@ -527,7 +511,6 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=19.0.0" },
     { name = "pydantic", specifier = ">=2.10.6" },
     { name = "pywavelets", specifier = ">=1.8.0" },
-    { name = "rerun-sdk", marker = "extra == 'cu124-rerun'", specifier = ">=0.22.0" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "scipy", specifier = ">=1.15.1" },
     { name = "seaborn", specifier = ">=0.13.2" },
@@ -535,13 +518,11 @@ requires-dist = [
     { name = "tdt", specifier = ">=0.6.7" },
     { name = "torch", marker = "extra == 'cpu'", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "dspant", extra = "cpu" } },
     { name = "torch", marker = "extra == 'cu124'", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cu124", conflict = { package = "dspant", extra = "cu124" } },
-    { name = "torch", marker = "extra == 'cu124-rerun'", specifier = ">=2.6.0" },
     { name = "torchaudio", marker = "extra == 'cpu'", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "dspant", extra = "cpu" } },
     { name = "torchaudio", marker = "extra == 'cu124'", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cu124", conflict = { package = "dspant", extra = "cu124" } },
-    { name = "torchaudio", marker = "extra == 'cu124-rerun'", specifier = ">=2.6.0" },
     { name = "zarr", specifier = ">=3.0.2" },
 ]
-provides-extras = ["cpu", "cu124", "cu124-rerun"]
+provides-extras = ["cpu", "cu124"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -675,7 +656,7 @@ name = "ipykernel"
 version = "6.29.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "appnope", marker = "sys_platform == 'darwin' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "appnope", marker = "sys_platform == 'darwin' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
     { name = "comm" },
     { name = "debugpy" },
     { name = "ipython" },
@@ -699,11 +680,11 @@ name = "ipython"
 version = "8.32.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
     { name = "decorator" },
     { name = "jedi" },
     { name = "matplotlib-inline" },
-    { name = "pexpect", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32') or (sys_platform == 'emscripten' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform == 'emscripten' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform == 'emscripten' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform == 'win32' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform == 'win32' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform == 'win32' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "pexpect", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32') or (sys_platform == 'emscripten' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform == 'win32' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
     { name = "prompt-toolkit" },
     { name = "pygments" },
     { name = "stack-data" },
@@ -785,7 +766,7 @@ version = "5.7.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "platformdirs" },
-    { name = "pywin32", marker = "(platform_python_implementation != 'PyPy' and sys_platform == 'win32') or (platform_python_implementation == 'PyPy' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (platform_python_implementation == 'PyPy' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (platform_python_implementation == 'PyPy' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform != 'win32' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform != 'win32' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform != 'win32' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "pywin32", marker = "(platform_python_implementation != 'PyPy' and sys_platform == 'win32') or (platform_python_implementation == 'PyPy' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform != 'win32' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
     { name = "traitlets" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/00/11/b56381fa6c3f4cc5d2cf54a7dbf98ad9aa0b339ef7a601d6053538b079a7/jupyter_core-5.7.2.tar.gz", hash = "sha256:aa5f8d32bbf6b431ac830496da7392035d6f61b4f54872f15c4bd2a9c3f536d9", size = 87629 }
@@ -1473,7 +1454,7 @@ version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
-    { name = "time-machine", marker = "implementation_name != 'pypy' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "time-machine", marker = "implementation_name != 'pypy' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
     { name = "tzdata" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b8/fe/27c7438c6ac8b8f8bef3c6e571855602ee784b85d072efddfff0ceb1cd77/pendulum-3.0.0.tar.gz", hash = "sha256:5d034998dea404ec31fae27af6b22cff1708f830a1ed7353be4d1019bb9f584e", size = 84524 }
@@ -1839,7 +1820,7 @@ name = "pyzmq"
 version = "26.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cffi", marker = "implementation_name == 'pypy' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "cffi", marker = "implementation_name == 'pypy' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5a/e3/8d0382cb59feb111c252b54e8728257416a38ffcb2243c4e4775a3c990fe/pyzmq-26.2.1.tar.gz", hash = "sha256:17d72a74e5e9ff3829deb72897a175333d3ef5b5413948cae3cf7ebf0b02ecca", size = 278433 }
 wheels = [
@@ -1891,25 +1872,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz", hash = "sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760", size = 131218 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/9b/335f9764261e915ed497fcdeb11df5dfd6f7bf257d4a6a2a686d80da4d54/requests-2.32.3-py3-none-any.whl", hash = "sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6", size = 64928 },
-]
-
-[[package]]
-name = "rerun-sdk"
-version = "0.22.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "attrs" },
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "pyarrow" },
-    { name = "typing-extensions" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/41/f9724c6ee4b4d45f9ae433f41fc8b4f2827d5b3f9459b9e9a9c55fdda5ab/rerun_sdk-0.22.1-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:176853d14bcac0b3cab8b240fe6760e32a577b1edd9ecb2fd0656e83f046a2c4", size = 46819325 },
-    { url = "https://files.pythonhosted.org/packages/01/8e/db9fd7e7d9d9ec6e3f0781ce6f3b71c06952f9b0c40e9720822fd83f711e/rerun_sdk-0.22.1-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:dea4a50c916bc82bd97a8f9dc44c71f9a9fccec7e73f37edfaa0de800caf5dce", size = 44566672 },
-    { url = "https://files.pythonhosted.org/packages/ad/41/87079d0a897e4fc2dd54a356be9556626f40ec1ff1c3393178e7ac9feb9d/rerun_sdk-0.22.1-cp38-abi3-manylinux_2_31_aarch64.whl", hash = "sha256:29d807909f5e484aa6427d9fb25706d0a154de392a4ca47eb303fbd135c0e382", size = 49830061 },
-    { url = "https://files.pythonhosted.org/packages/1e/db/3ce2be017d7d4ac0948fb064bf7417b36c96bc07d1b8a922017606ba03c6/rerun_sdk-0.22.1-cp38-abi3-manylinux_2_31_x86_64.whl", hash = "sha256:b9672412d0cdf57c79c10ca683e59716399da3358df78b985b25093d022ebbaf", size = 51423327 },
-    { url = "https://files.pythonhosted.org/packages/43/eb/edafdcba1619955c2c9b66c7a1bcbbce4ad62a1a36db984b46aa793fe366/rerun_sdk-0.22.1-cp38-abi3-win_amd64.whl", hash = "sha256:d3d0afe1b8e749a1088a0bb75f372ad7fe70eb3728bd32e07bf78300436a053d", size = 42085149 },
 ]
 
 [[package]]
@@ -2246,44 +2208,6 @@ wheels = [
 
 [[package]]
 name = "torch"
-version = "2.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
-    { name = "nvidia-cublas-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-cupti-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-nvrtc-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-runtime-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cudnn-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cufft-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-curand-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusolver-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusparse-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusparselt-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nccl-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nvtx-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "triton", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "typing-extensions" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/35/0c52d708144c2deb595cd22819a609f78fdd699b95ff6f0ebcd456e3c7c1/torch-2.6.0-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:2bb8987f3bb1ef2675897034402373ddfc8f5ef0e156e2d8cfc47cacafdda4a9", size = 766624563 },
-    { url = "https://files.pythonhosted.org/packages/01/d6/455ab3fbb2c61c71c8842753b566012e1ed111e7a4c82e0e1c20d0c76b62/torch-2.6.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:b789069020c5588c70d5c2158ac0aa23fd24a028f34a8b4fcb8fcb4d7efcf5fb", size = 95607867 },
-    { url = "https://files.pythonhosted.org/packages/18/cf/ae99bd066571656185be0d88ee70abc58467b76f2f7c8bfeb48735a71fe6/torch-2.6.0-cp312-cp312-win_amd64.whl", hash = "sha256:7e1448426d0ba3620408218b50aa6ada88aeae34f7a239ba5431f6c8774b1239", size = 204120469 },
-    { url = "https://files.pythonhosted.org/packages/81/b4/605ae4173aa37fb5aa14605d100ff31f4f5d49f617928c9f486bb3aaec08/torch-2.6.0-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:9a610afe216a85a8b9bc9f8365ed561535c93e804c2a317ef7fabcc5deda0989", size = 66532538 },
-    { url = "https://files.pythonhosted.org/packages/24/85/ead1349fc30fe5a32cadd947c91bda4a62fbfd7f8c34ee61f6398d38fb48/torch-2.6.0-cp313-cp313-manylinux1_x86_64.whl", hash = "sha256:4874a73507a300a5d089ceaff616a569e7bb7c613c56f37f63ec3ffac65259cf", size = 766626191 },
-    { url = "https://files.pythonhosted.org/packages/dd/b0/26f06f9428b250d856f6d512413e9e800b78625f63801cbba13957432036/torch-2.6.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:a0d5e1b9874c1a6c25556840ab8920569a7a4137afa8a63a32cee0bc7d89bd4b", size = 95611439 },
-    { url = "https://files.pythonhosted.org/packages/c2/9c/fc5224e9770c83faed3a087112d73147cd7c7bfb7557dcf9ad87e1dda163/torch-2.6.0-cp313-cp313-win_amd64.whl", hash = "sha256:510c73251bee9ba02ae1cb6c9d4ee0907b3ce6020e62784e2d7598e0cfa4d6cc", size = 204126475 },
-    { url = "https://files.pythonhosted.org/packages/88/8b/d60c0491ab63634763be1537ad488694d316ddc4a20eaadd639cedc53971/torch-2.6.0-cp313-none-macosx_11_0_arm64.whl", hash = "sha256:ff96f4038f8af9f7ec4231710ed4549da1bdebad95923953a25045dcf6fd87e2", size = 66536783 },
-]
-
-[[package]]
-name = "torch"
 version = "2.6.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
@@ -2354,32 +2278,14 @@ resolution-markers = [
     "sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "torch", version = "2.6.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
-    { name = "torch", version = "2.6.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu') or (platform_machine != 'aarch64' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (platform_machine != 'aarch64' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (platform_machine != 'aarch64' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform != 'linux' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform != 'linux' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (sys_platform != 'linux' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun') or (extra != 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "torch", version = "2.6.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-6-dspant-cpu') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
+    { name = "torch", version = "2.6.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-6-dspant-cpu') or (platform_machine != 'aarch64' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (sys_platform != 'linux' and extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
 ]
 wheels = [
     { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.6.0-cp312-cp312-linux_aarch64.whl", hash = "sha256:6291d9507dc1d6b4ffe8843fbfb201e6c8270dd8c42ad70bb76226c0ebdcad56" },
     { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.6.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:7d0e4b08c42325bf4b887de9a25c44ed882997001740e1bd7d901f65581cf1ab" },
     { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.6.0-cp313-cp313-linux_aarch64.whl", hash = "sha256:b521ea9618fb4c29a6f8071628170c222291f46a48a3bf424cfeb488f54af714" },
     { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.6.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:66f2e0bd5ab56fd81419d2f5afb74a9a70141688594646441756c8c24f424a73" },
-]
-
-[[package]]
-name = "torchaudio"
-version = "2.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "torch", version = "2.6.0", source = { registry = "https://pypi.org/simple" } },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/4a/d71b932bda4171970bdf4997541b5c778daa0e2967ed5009d207fca86ded/torchaudio-2.6.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:7d0e4b08c42325bf4b887de9a25c44ed882997001740e1bd7d901f65581cf1ab", size = 1812899 },
-    { url = "https://files.pythonhosted.org/packages/ed/aa/9082e715a673dd8e22b6a60cec7f301e897406023672b2090f8bcd8a5959/torchaudio-2.6.0-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:715aa21f6bdbd085454c313ae3a2c7cc07bf2e8cf05752f819afb5b4c57f4e6f", size = 3379510 },
-    { url = "https://files.pythonhosted.org/packages/f2/e7/0bcb2e33f4bdec69477344eccfe25c515b90496888095e99f837ea422089/torchaudio-2.6.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:6291d9507dc1d6b4ffe8843fbfb201e6c8270dd8c42ad70bb76226c0ebdcad56", size = 1653523 },
-    { url = "https://files.pythonhosted.org/packages/80/95/29e917905328337c7b104ce81f3bb5e2ad8dc70af2edf1d43f67eb621513/torchaudio-2.6.0-cp312-cp312-win_amd64.whl", hash = "sha256:86d6239792bf94741a41acd6fe3d549faaf0d50e7275d17d076a190bd007e2f9", size = 2449191 },
-    { url = "https://files.pythonhosted.org/packages/fb/73/861afa5864e95fbf42b693e0359b2bf0177b6b5f4274fa4472fd51e5298e/torchaudio-2.6.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:66f2e0bd5ab56fd81419d2f5afb74a9a70141688594646441756c8c24f424a73", size = 1813188 },
-    { url = "https://files.pythonhosted.org/packages/d2/f0/daffd9afa60bd835a2d7980eddfe44524adcb3ee0837486ceae4cd1f68e2/torchaudio-2.6.0-cp313-cp313-manylinux1_x86_64.whl", hash = "sha256:52f15185349c370fc1faa84e8b8b2782c007472db9d586a16bba314130b322f2", size = 3380706 },
-    { url = "https://files.pythonhosted.org/packages/94/7b/887b91372e34119aa140cf67614e5ba901bf6a0db86f2c39e30ff71eec54/torchaudio-2.6.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:b521ea9618fb4c29a6f8071628170c222291f46a48a3bf424cfeb488f54af714", size = 1653553 },
-    { url = "https://files.pythonhosted.org/packages/55/c8/3010878a5e7f15d89450e22769697173c6dc244a0647ddc5386c28b6dacc/torchaudio-2.6.0-cp313-cp313-win_amd64.whl", hash = "sha256:393fa74ec40d167f0170728ea21c9b5e0f830648fd02df7db2bf7e62f64245ec", size = 2449350 },
 ]
 
 [[package]]
@@ -2436,7 +2342,7 @@ name = "tqdm"
 version = "4.67.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124') or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124-rerun') or (extra == 'extra-6-dspant-cu124' and extra == 'extra-6-dspant-cu124-rerun')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-6-dspant-cpu' and extra == 'extra-6-dspant-cu124')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a8/4b/29b4ef32e036bb34e4ab51796dd745cdba7ed47ad142a9f4a1eb8e0c744d/tqdm-4.67.1.tar.gz", hash = "sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2", size = 169737 }
 wheels = [

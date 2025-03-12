@@ -33,9 +33,10 @@ dependencies = [
 dspant = "dspant:main"
 
 [tool.maturin]
-module-name = "dspant._core"
+module-name = "dspant._rs"
 python-packages = ["dspant"]
 python-source = "src"
+manifest-path = "./rust/Cargo.toml"
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

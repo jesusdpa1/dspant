@@ -13,7 +13,7 @@ except importlib.metadata.PackageNotFoundError:
     __version__ = "unknown"
 
 # Import the hello_from_bin function from the Rust extension
-from dspant._core import hello_from_bin
+from dspant._rs import print_hello
 from dspant.engine import BaseProcessor
 
 # Import key components for easier access
