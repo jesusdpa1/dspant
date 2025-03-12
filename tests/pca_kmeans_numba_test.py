@@ -79,6 +79,7 @@ whiten_processor = create_whitening_processor(eps=1e-6)
 # Add processors to the processing node
 processor_hd.add_processor([notch_processor, bandpass_processor], group="filters")
 processor_hd.add_processor([cmr_processor, whiten_processor], group="spatial")
+
 # %%
 # Process data
 whiten_data = processor_hd.process().persist()

@@ -65,6 +65,7 @@ conflicts = [
     { extra = "cu124" },
   ],
 ]
+cache-keys = [{file = "pyproject.toml"}, {file = "rust/Cargo.toml"}, {file = "**/*.rs"}]
 
 [tool.uv.sources]
 torch = [

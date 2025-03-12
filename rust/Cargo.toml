@@ -18,3 +18,8 @@ pyo3 = {version = "^0.23.0", features = ["extension-module", "abi3-py39"] }
 rayon = "1.10.0"
 realfft = "3.4.0"
 rustfft = "6.2.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
