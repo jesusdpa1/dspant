@@ -1,13 +1,7 @@
-"""
-General visualization functions for neural data.
-
-This module provides visualization tools for neural signals, spike data,
-and other common neural data visualizations.
-"""
-
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
+import seaborn as sns
 from matplotlib.figure import Figure
 
 
@@ -22,9 +16,12 @@ def plot_spikes(
     color_mode: str = "channel",
     max_spikes_per_channel: int = None,
     time_window: tuple = None,
+    sort_spikes: str = None,  # New parameter: "time" or "amplitude"
+    sort_order: str = "ascending",  # New parameter: "ascending" or "descending"
+    show_background: bool = True,  # New parameter to control background signal display
 ) -> Figure:
     """
-    Plot detected spikes across specified channels with optional time windowing.
+    Plot detected spikes across specified channels with optional time windowing and sorting.
 
     Parameters:
     -----------
@@ -50,11 +47,23 @@ def plot_spikes(
         Color scheme for spikes. Options:
         - "channel": different color for each channel
         - "amplitude": color based on spike amplitude
+        - "time": color based on spike time (earliest to latest)
     max_spikes_per_channel : int, optional
         Maximum number of spikes to plot per channel. If None, plot all spikes.
     time_window : tuple, optional
         Time window to plot (start_time, end_time) in seconds.
         If None, plot entire dataset.
+    sort_spikes : str, optional
+        How to sort spikes for display. Options:
+        - "time": Sort by spike time
+        - "amplitude": Sort by spike amplitude
+        - None: No specific sorting (default)
+    sort_order : str, default "ascending"
+        Order for sorting spikes:
+        - "ascending": Smallest/earliest first
+        - "descending": Largest/latest first
+    show_background : bool, default True
+        Whether to show the background signal or only the spike waveforms
 
     Returns:
     --------
@@ -104,6 +113,22 @@ def plot_spikes(
         # Filter spikes for this channel
         channel_spikes = spike_df.filter(pl.col("channel") == channel)
 
+        # Sort spikes if requested
+        if sort_spikes is not None:
+            if sort_spikes == "time":
+                channel_spikes = channel_spikes.sort(
+                    "time_sec", descending=(sort_order == "descending")
+                )
+            elif sort_spikes == "amplitude":
+                # Handle both positive and negative amplitudes based on absolute value
+                if "amplitude" in channel_spikes.columns:
+                    if sort_order == "ascending":
+                        channel_spikes = channel_spikes.sort(pl.abs("amplitude"))
+                    else:
+                        channel_spikes = channel_spikes.sort(
+                            pl.abs("amplitude"), descending=True
+                        )
+
         # Limit number of spikes per channel if needed
         if (
             max_spikes_per_channel is not None
@@ -121,23 +146,39 @@ def plot_spikes(
         subset_time = time[start_idx:end_idx]
         subset_data = data[start_idx:end_idx, channel]
 
-        axs[idx].plot(
-            subset_time,
-            subset_data,
-            color="lightgray",
-            alpha=0.5,
-            linewidth=0.5,
-            zorder=1,
-        )
+        # Plot background signal if enabled
+        if show_background:
+            axs[idx].plot(
+                subset_time,
+                subset_data,
+                color="lightgray",
+                alpha=0.8,
+                linewidth=0.5,
+                zorder=1,
+            )
+
         axs[idx].set_ylabel(f"Channel {channel}")
 
         # Plot spikes for this channel
         spike_indices = channel_spikes["index"].to_numpy()
         spike_times = channel_spikes["time_sec"].to_numpy()
-        spike_amplitudes = channel_spikes["amplitude"].to_numpy()
 
-        for spike_idx, spike_time, spike_amp in zip(
-            spike_indices, spike_times, spike_amplitudes
+        # Check if amplitude column exists
+        if "amplitude" in channel_spikes.columns:
+            spike_amplitudes = channel_spikes["amplitude"].to_numpy()
+        else:
+            # Create dummy amplitudes if the column doesn't exist
+            spike_amplitudes = np.ones_like(spike_times)
+
+        # Create a color gradient based on time if color_mode is time
+        if color_mode == "time" and len(spike_times) > 0:
+            time_norm = (spike_times - spike_times.min()) / (
+                spike_times.max() - spike_times.min() + 1e-10
+            )
+            time_colors = [cm.viridis(t) for t in time_norm]
+
+        for i, (spike_idx, spike_time, spike_amp) in enumerate(
+            zip(spike_indices, spike_times, spike_amplitudes)
         ):
             # Determine spike window
             start = max(0, spike_idx - half_window)
@@ -163,10 +204,12 @@ def plot_spikes(
                 color = cm.Set1(idx / len(channels))
             elif color_mode == "amplitude":
                 # Normalize amplitude for color mapping
-                norm_amp = (spike_amp - spike_amplitudes.min()) / (
-                    spike_amplitudes.max() - spike_amplitudes.min()
+                norm_amp = (abs(spike_amp) - min(abs(spike_amplitudes))) / (
+                    max(abs(spike_amplitudes)) - min(abs(spike_amplitudes)) + 1e-10
                 )
                 color = cm.viridis(norm_amp)
+            elif color_mode == "time":
+                color = time_colors[i]
             else:
                 color = "red"
 
@@ -182,7 +225,7 @@ def plot_spikes(
                     spike_segment,
                     color=color,
                     linewidth=0.5,
-                    alpha=0.5,
+                    alpha=0.9,
                     zorder=2,
                 )
 
@@ -198,7 +241,12 @@ def plot_spikes(
 
     # Finalize plot
     plt.xlabel("Time (s)")
+
+    # Update title with sort information
+    if sort_spikes is not None:
+        title += f" (Sorted by {sort_spikes}, {sort_order})"
     plt.suptitle(title)
+
     plt.tight_layout()
 
     return fig
@@ -206,16 +254,20 @@ def plot_spikes(
 
 def plot_spike_raster(
     spike_df: pl.DataFrame,
-    num_channels: int = None,
+    channels: list = None,
     figsize: tuple = (15, 6),
     title: str = "Spike Raster Plot",
     color_mode: str = "channel",
     time_window: tuple = None,
     cluster_colors: dict = None,
     cluster_column: str = None,
+    sort_channels: bool = False,  # New parameter to sort channels by activity
+    max_spikes: int = None,  # New parameter to limit total spikes
+    sort_spikes: str = None,  # New parameter to sort spikes
+    sort_order: str = "ascending",  # New parameter for sort order
 ) -> Figure:
     """
-    Create a raster plot of spikes across channels with optional time windowing.
+    Create a raster plot of spikes across channels with optional time windowing and sorting.
 
     Parameters:
     -----------
@@ -225,8 +277,8 @@ def plot_spike_raster(
         - 'time_sec': spike time in seconds
         - 'channel': channel number
         - optionally 'cluster' or other cluster column name
-    num_channels : int, optional
-        Number of channels to plot. If None, use max channel number + 1
+    channels : list, optional
+        List of channel indices to plot. If None, all channels found in spike_df will be used.
     figsize : tuple, default (15, 6)
         Figure size (width, height)
     title : str, default "Spike Raster Plot"
@@ -243,22 +295,82 @@ def plot_spike_raster(
         Dictionary mapping cluster IDs to colors
     cluster_column : str, optional
         Name of the column containing cluster assignments (default: 'cluster')
+    sort_channels : bool, default False
+        Whether to sort channels by activity level (most active first)
+    max_spikes : int, optional
+        Maximum number of total spikes to plot. If None, plot all spikes.
+    sort_spikes: str, optional
+        How to sort spikes for display:
+        - "time": Sort by spike time
+        - "amplitude": Sort by spike amplitude (if available)
+        - None: No specific sorting (default)
+    sort_order : str, default "ascending"
+        Order for sorting spikes:
+        - "ascending": Smallest/earliest first
+        - "descending": Largest/latest first
 
     Returns:
     --------
     matplotlib.figure.Figure
         The created figure object
     """
-    # Filter spikes by time window if specified
+    # Filter spikes based on time window if specified
     if time_window is not None:
         start_time, end_time = time_window
         spike_df = spike_df.filter(
             (pl.col("time_sec") >= start_time) & (pl.col("time_sec") <= end_time)
         )
 
-    # Determine number of channels
-    if num_channels is None:
-        num_channels = spike_df["channel"].max() + 1
+    # Sort spikes if requested
+    if sort_spikes is not None:
+        if sort_spikes == "time":
+            spike_df = spike_df.sort(
+                "time_sec", descending=(sort_order == "descending")
+            )
+        elif sort_spikes == "amplitude" and "amplitude" in spike_df.columns:
+            if sort_order == "ascending":
+                spike_df = spike_df.sort(pl.abs("amplitude"))
+            else:
+                spike_df = spike_df.sort(pl.abs("amplitude"), descending=True)
+
+    # Limit total number of spikes if requested
+    if max_spikes is not None and len(spike_df) > max_spikes:
+        spike_df = spike_df.head(max_spikes)
+
+    # Determine channels to display
+    if channels is None:
+        if "channel" in spike_df.columns:
+            # Default to all channels present in the data
+            channels = list(range(spike_df["channel"].max() + 1))
+        else:
+            channels = [0]
+    num_channels = len(channels)
+    # Create a channel mapping if sorting channels by activity
+    if sort_channels:
+        # Count spikes per channel
+        if "channel" in spike_df.columns:
+            # Filter to only count spikes from requested channels
+            filtered_df = spike_df.filter(pl.col("channel").is_in(channels))
+            channel_counts = filtered_df.group_by("channel").count()
+
+            # Sort channels by count (descending)
+            sorted_channels = channel_counts.sort("count", descending=True)[
+                "channel"
+            ].to_numpy()
+
+            # Create a mapping from original channel to y-position
+            channel_to_y = {ch: i for i, ch in enumerate(sorted_channels)}
+
+            # Ensure all channels are in the mapping (even if they have no spikes)
+            for i, ch in enumerate(channels):
+                if ch not in channel_to_y:
+                    channel_to_y[ch] = len(channel_to_y)
+        else:
+            # If no channel column, no sorting needed
+            channel_to_y = {0: 0}
+    else:
+        # No sorting - direct mapping with consecutive y-positions
+        channel_to_y = {ch: i for i, ch in enumerate(channels)}
 
     # Prepare figure
     fig, ax = plt.subplots(figsize=figsize)
@@ -283,75 +395,112 @@ def plot_spike_raster(
             clustering_enabled = False
             color_mode = "channel"
 
-    # Filter spikes
-    for channel in range(num_channels):
-        # Filter spikes for this channel
-        channel_spikes = spike_df.filter(pl.col("channel") == channel)
+    # Plot spikes
+    if "channel" in spike_df.columns:
+        for channel in channels:
+            # Map to y-position based on sorting
+            y_pos = channel_to_y.get(channel, channel)
 
-        # Skip if no spikes
-        if len(channel_spikes) == 0:
-            continue
+            # Filter spikes for this channel
+            channel_spikes = spike_df.filter(pl.col("channel") == channel)
 
-        # Get spike times
-        times = channel_spikes["time_sec"].to_numpy()
+            # Skip if no spikes
+            if len(channel_spikes) == 0:
+                continue
 
-        # Color selection
-        if color_mode == "channel":
-            # Assign colors by channel
-            color = cm.Set1(channel / num_channels)
-            ax.scatter(
-                times, [channel] * len(times), color=color, marker="|", alpha=0.7
-            )
+            # Get spike times
+            times = channel_spikes["time_sec"].to_numpy()
 
-        elif color_mode == "time":
+            # Color selection
+            if color_mode == "channel":
+                # Assign colors by channel
+                color = cm.Set1(channel / num_channels)
+                ax.scatter(
+                    times, [y_pos] * len(times), color=color, marker="|", alpha=0.7
+                )
+
+            elif color_mode == "time":
+                # Color by time
+                norm_time = (times - times.min()) / (times.max() - times.min() + 1e-10)
+                colors = [cm.viridis(t) for t in norm_time]
+                ax.scatter(
+                    times, [y_pos] * len(times), color=colors, marker="|", alpha=0.7
+                )
+
+            elif clustering_enabled:
+                # Color by cluster
+                clusters = channel_spikes[cluster_col].to_numpy()
+                unique_clusters = np.unique(clusters)
+
+                # Use provided cluster colors or generate new ones
+                if cluster_colors is None:
+                    cluster_colors = {
+                        cluster: cm.tab10(i % 10)
+                        for i, cluster in enumerate(unique_clusters)
+                    }
+
+                # Plot each cluster separately
+                for cluster in unique_clusters:
+                    mask = clusters == cluster
+                    cluster_times = times[mask]
+
+                    # Get color for this cluster
+                    color = cluster_colors.get(cluster, "black")
+
+                    # Plot spikes for this cluster
+                    ax.scatter(
+                        cluster_times,
+                        [y_pos] * len(cluster_times),
+                        color=color,
+                        marker="|",
+                        alpha=0.7,
+                    )
+            else:
+                # Default coloring (plain black)
+                ax.scatter(
+                    times, [y_pos] * len(times), color="black", marker="|", alpha=0.7
+                )
+    else:
+        # If no channel column, plot all spikes on one line
+        times = spike_df["time_sec"].to_numpy()
+        y_pos = 0
+        if color_mode == "time" and len(times) > 0:
             # Color by time
             norm_time = (times - times.min()) / (times.max() - times.min() + 1e-10)
             colors = [cm.viridis(t) for t in norm_time]
-            ax.scatter(
-                times, [channel] * len(times), color=colors, marker="|", alpha=0.7
-            )
-
-        elif clustering_enabled:
-            # Color by cluster
-            clusters = channel_spikes[cluster_col].to_numpy()
-            unique_clusters = np.unique(clusters)
-
-            # Use provided cluster colors or generate new ones
-            if cluster_colors is None:
-                cluster_colors = {
-                    cluster: cm.tab10(i % 10)
-                    for i, cluster in enumerate(unique_clusters)
-                }
-
-            # Plot each cluster separately
-            for cluster in unique_clusters:
-                mask = clusters == cluster
-                cluster_times = times[mask]
-
-                # Get color for this cluster
-                color = cluster_colors.get(cluster, "black")
-
-                # Plot spikes for this cluster
-                ax.scatter(
-                    cluster_times,
-                    [channel] * len(cluster_times),
-                    color=color,
-                    marker="|",
-                    alpha=0.7,
-                )
+            ax.scatter(times, [y_pos] * len(times), color=colors, marker="|", alpha=0.7)
         else:
             # Default coloring (plain black)
             ax.scatter(
-                times, [channel] * len(times), color="black", marker="|", alpha=0.7
+                times, [y_pos] * len(times), color="black", marker="|", alpha=0.7
             )
 
     # Finalize plot
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Channel")
-    ax.set_title(title)
-    ax.set_yticks(range(num_channels))
-    ax.set_yticklabels([f"Channel {i}" for i in range(num_channels)])
 
+    # Update title with sort information
+    if sort_spikes is not None:
+        title += f" (Sorted by {sort_spikes}, {sort_order})"
+    if sort_channels:
+        title += " (Channels sorted by activity)"
+    ax.set_title(title)
+
+    # Set y-ticks based on channel mapping
+    if sort_channels:
+        # Create sorted y-ticks
+        yticks = list(range(len(channel_to_y)))
+        yticklabels = [
+            f"Channel {channel}"
+            for channel, _ in sorted(channel_to_y.items(), key=lambda x: x[1])
+        ]
+    else:
+        yticks = list(range(len(channels)))
+        yticklabels = [f"Channel {ch}" for ch in channels]
+
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(yticklabels)
+    # ax.invert_yaxis()
     # Set x-axis limits if time window is specified
     if time_window is not None:
         ax.set_xlim(time_window)
@@ -381,6 +530,10 @@ def plot_spike_events(
     max_spikes_per_channel: int = None,
     figsize: tuple = None,
     cluster_column: str = None,
+    sort_spikes: str = None,  # New parameter
+    sort_order: str = "ascending",  # New parameter
+    sort_channels: bool = False,  # New parameter
+    show_background: bool = True,  # New parameter
 ) -> tuple:
     """
     Convenience function to plot spike events with multiple visualization options.
@@ -405,6 +558,17 @@ def plot_spike_events(
         Figure size as (width, height) for each plot. If None, uses defaults.
     cluster_column : str, optional
         Name of column containing cluster assignments for colored raster plot
+    sort_spikes : str, optional
+        How to sort spikes. Options:
+        - "time": Sort by spike time
+        - "amplitude": Sort by spike amplitude (if available)
+        - None: No specific sorting (default)
+    sort_order : str, default "ascending"
+        Order for sorting: "ascending" or "descending"
+    sort_channels : bool, default False
+        Whether to sort channels by activity level
+    show_background : bool, default True
+        Whether to show background signal in the waveform plot
 
     Returns:
     --------
@@ -431,367 +595,24 @@ def plot_spike_events(
         window_ms=window_ms,
         max_spikes_per_channel=max_spikes_per_channel,
         figsize=figsize,
+        sort_spikes=sort_spikes,
+        sort_order=sort_order,
+        show_background=show_background,
+        color_mode=color_mode,
     )
 
     # Plot raster
     raster_figsize = figsize if figsize else (15, 6)
     raster_fig = plot_spike_raster(
         spike_df,
-        num_channels=max(channels) + 1,
+        channels=channels,
         time_window=time_window,
         figsize=raster_figsize,
         color_mode=color_mode,
         cluster_column=cluster_column,
+        sort_spikes=sort_spikes,
+        sort_order=sort_order,
+        sort_channels=sort_channels,
     )
 
     return waveform_fig, raster_fig
-
-
-def plot_waveform_clusters(
-    waveforms: np.ndarray,
-    cluster_labels: np.ndarray,
-    fs: float = None,
-    max_waveforms_per_cluster: int = 100,
-    figsize: tuple = (14, 10),
-    title: str = "Waveform Clusters",
-    plot_mean: bool = True,
-    plot_individual: bool = True,
-    alpha_individual: float = 0.2,
-):
-    """
-    Plot clustered waveforms with mean waveform for each cluster.
-
-    Parameters:
-    -----------
-    waveforms : numpy array
-        Waveform data (n_waveforms × n_samples × n_channels)
-    cluster_labels : numpy array
-        Cluster assignments for each waveform
-    fs : float, optional
-        Sampling frequency in Hz. If provided, x-axis will be in milliseconds
-    max_waveforms_per_cluster : int, default 100
-        Maximum number of individual waveforms to plot per cluster
-    figsize : tuple, default (14, 10)
-        Figure size as (width, height)
-    title : str, default "Waveform Clusters"
-        Title for the plot
-    plot_mean : bool, default True
-        Whether to plot mean waveform for each cluster
-    plot_individual : bool, default True
-        Whether to plot individual waveforms
-    alpha_individual : float, default 0.2
-        Alpha value for individual waveforms
-
-    Returns:
-    --------
-    matplotlib.figure.Figure
-        The created figure object
-    """
-    # Handle 3D waveforms (simplify by taking first channel)
-    if waveforms.ndim == 3:
-        # For multi-channel data, use the first channel
-        waveforms_2d = waveforms[:, :, 0]
-    else:
-        waveforms_2d = waveforms
-
-    # Get unique clusters
-    unique_clusters = np.unique(cluster_labels)
-    n_clusters = len(unique_clusters)
-
-    # Determine subplot layout
-    n_cols = min(3, n_clusters)
-    n_rows = (n_clusters + n_cols - 1) // n_cols  # Ceiling division
-
-    # Create figure
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=figsize, sharex=True, sharey=True)
-
-    # Handle single subplot case
-    if n_clusters == 1:
-        axs = np.array([axs])
-
-    # Flatten axes for easy iteration
-    axs = axs.flatten() if hasattr(axs, "flatten") else [axs]
-
-    # Create x-axis values
-    if fs is not None:
-        # Convert to milliseconds
-        x_values = np.arange(waveforms_2d.shape[1]) * 1000 / fs
-        x_label = "Time (ms)"
-    else:
-        x_values = np.arange(waveforms_2d.shape[1])
-        x_label = "Samples"
-
-    # Get colormap for clusters
-    import matplotlib.cm as cm
-
-    colors = [cm.tab10(i % 10) for i in range(n_clusters)]
-
-    # Plot clusters
-    for i, cluster in enumerate(unique_clusters):
-        # Get waveforms for this cluster
-        cluster_mask = cluster_labels == cluster
-        cluster_waveforms = waveforms_2d[cluster_mask]
-
-        # Sample waveforms if there are too many
-        if len(cluster_waveforms) > max_waveforms_per_cluster and plot_individual:
-            sample_indices = np.random.choice(
-                len(cluster_waveforms), max_waveforms_per_cluster, replace=False
-            )
-            plot_waveforms = cluster_waveforms[sample_indices]
-        else:
-            plot_waveforms = cluster_waveforms
-
-        # Plot individual waveforms
-        if plot_individual:
-            for wf in plot_waveforms:
-                axs[i].plot(
-                    x_values, wf, color=colors[i], alpha=alpha_individual, linewidth=0.5
-                )
-
-        # Plot mean waveform
-        if plot_mean and len(cluster_waveforms) > 0:
-            mean_wf = np.mean(cluster_waveforms, axis=0)
-            std_wf = np.std(cluster_waveforms, axis=0)
-
-            # Plot mean with std shading
-            axs[i].plot(x_values, mean_wf, color=colors[i], linewidth=2, label=f"Mean")
-            axs[i].fill_between(
-                x_values,
-                mean_wf - std_wf,
-                mean_wf + std_wf,
-                color=colors[i],
-                alpha=0.3,
-                label="±1 std",
-            )
-
-        # Set title and labels
-        axs[i].set_title(f"Cluster {cluster} (n={np.sum(cluster_mask)})")
-        axs[i].grid(True, linestyle="--", alpha=0.7)
-
-        # Set x and y labels on edge subplots
-        if i % n_cols == 0:  # Left edge
-            axs[i].set_ylabel("Amplitude")
-        if i >= n_clusters - n_cols:  # Bottom edge
-            axs[i].set_xlabel(x_label)
-
-    # Hide unused subplots
-    for i in range(n_clusters, len(axs)):
-        axs[i].set_visible(False)
-
-    # Set common title
-    plt.suptitle(title, fontsize=16)
-    plt.tight_layout()
-
-    return fig
-
-
-def plot_firing_rates(
-    spike_times: np.ndarray,
-    cluster_labels: np.ndarray,
-    fs: float = None,
-    bin_width_sec: float = 1.0,
-    smoothing_window: int = 5,
-    figsize: tuple = (14, 6),
-    title: str = "Firing Rates by Cluster",
-    normalize: bool = False,
-):
-    """
-    Plot firing rates over time for different clusters.
-
-    Parameters:
-    -----------
-    spike_times : numpy array
-        Times of spikes in seconds
-    cluster_labels : numpy array
-        Cluster assignments for each spike
-    fs : float, optional
-        Sampling frequency in Hz (used if spike_times are in samples)
-    bin_width_sec : float, default 1.0
-        Width of time bins in seconds
-    smoothing_window : int, default 5
-        Size of moving average window for smoothing
-    figsize : tuple, default (14, 6)
-        Figure size as (width, height)
-    title : str, default "Firing Rates by Cluster"
-        Title for the plot
-    normalize : bool, default False
-        Whether to normalize each cluster's firing rate to [0, 1]
-
-    Returns:
-    --------
-    matplotlib.figure.Figure
-        The created figure object
-    """
-    # Convert spike times to seconds if needed
-    if (
-        fs is not None and spike_times.max() > 1000
-    ):  # Assume values in samples if very large
-        spike_times_sec = spike_times / fs
-    else:
-        spike_times_sec = spike_times
-
-    # Get unique clusters
-    unique_clusters = np.unique(cluster_labels)
-
-    # Create figure
-    fig, ax = plt.subplots(figsize=figsize)
-
-    # Create time bins
-    min_time = 0
-    max_time = spike_times_sec.max() * 1.02  # Add 2% margin
-    time_bins = np.arange(min_time, max_time, bin_width_sec)
-
-    # Get colormap for clusters
-    import matplotlib.cm as cm
-
-    colors = [cm.tab10(i % 10) for i in range(len(unique_clusters))]
-
-    # Apply simple moving average for smoothing
-    def smooth(y, window_size):
-        if window_size <= 1:
-            return y
-        box = np.ones(window_size) / window_size
-        return np.convolve(y, box, mode="same")
-
-    # Store rates for legend sorting
-    cluster_rates = []
-
-    # Plot firing rate for each cluster
-    for i, cluster in enumerate(unique_clusters):
-        # Get spike times for this cluster
-        cluster_mask = cluster_labels == cluster
-        cluster_spike_times = spike_times_sec[cluster_mask]
-
-        # Skip if no spikes
-        if len(cluster_spike_times) == 0:
-            cluster_rates.append((cluster, 0))
-            continue
-
-        # Calculate histogram
-        counts, bin_edges = np.histogram(cluster_spike_times, bins=time_bins)
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-
-        # Convert to rates (Hz)
-        rates = counts / bin_width_sec
-
-        # Apply smoothing
-        if smoothing_window > 1:
-            rates = smooth(rates, smoothing_window)
-
-        # Store average rate
-        avg_rate = np.mean(rates)
-        cluster_rates.append((cluster, avg_rate))
-
-        # Normalize if requested
-        if normalize and np.max(rates) > 0:
-            rates = rates / np.max(rates)
-
-        # Plot rates
-        ax.plot(
-            bin_centers, rates, color=colors[i], linewidth=2, label=f"Cluster {cluster}"
-        )
-
-    # Sort legend by average firing rate (highest first)
-    cluster_rates.sort(key=lambda x: x[1], reverse=True)
-    handles, labels = ax.get_legend_handles_labels()
-    sorted_idx = [
-        next(i for i, l in enumerate(labels) if f"Cluster {cluster}" in l)
-        for cluster, _ in cluster_rates
-    ]
-
-    # Set labels and title
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Firing Rate (Hz)" if not normalize else "Normalized Firing Rate")
-    ax.set_title(title)
-    ax.grid(True, linestyle="--", alpha=0.7)
-    ax.legend(
-        [handles[i] for i in sorted_idx], [labels[i] for i in sorted_idx], loc="best"
-    )
-
-    plt.tight_layout()
-    return fig
-
-
-def plot_spike_scatter_3d(
-    embeddings: np.ndarray,
-    cluster_labels: np.ndarray,
-    figsize: tuple = (10, 8),
-    title: str = "3D Spike Clusters",
-    alpha: float = 0.7,
-    s: int = 20,
-):
-    """
-    Create a 3D scatter plot of spike embeddings colored by cluster.
-
-    Parameters:
-    -----------
-    embeddings : numpy array
-        3D embeddings of spikes (N × 3)
-    cluster_labels : numpy array
-        Cluster assignments for each spike
-    figsize : tuple, default (10, 8)
-        Figure size as (width, height)
-    title : str, default "3D Spike Clusters"
-        Title for the plot
-    alpha : float, default 0.7
-        Alpha value for scatter points
-    s : int, default 20
-        Size of scatter points
-
-    Returns:
-    --------
-    matplotlib.figure.Figure
-        The created figure object
-    """
-    # Check dimensions
-    if embeddings.shape[1] < 3:
-        raise ValueError("Embeddings must have at least 3 dimensions for 3D plotting")
-
-    # Create figure
-    fig = plt.figure(figsize=figsize)
-    ax = fig.add_subplot(111, projection="3d")
-
-    # Get unique clusters
-    unique_clusters = np.unique(cluster_labels)
-
-    # Get colormap for clusters
-    import matplotlib.cm as cm
-
-    colors = [cm.tab10(i % 10) for i in range(len(unique_clusters))]
-
-    # Plot each cluster
-    for i, cluster in enumerate(unique_clusters):
-        # Get points for this cluster
-        mask = cluster_labels == cluster
-        cluster_points = embeddings[mask]
-
-        # Skip if no points
-        if len(cluster_points) == 0:
-            continue
-
-        # Plot 3D scatter
-        ax.scatter(
-            cluster_points[:, 0],
-            cluster_points[:, 1],
-            cluster_points[:, 2],
-            color=colors[i],
-            label=f"Cluster {cluster}",
-            alpha=alpha,
-            s=s,
-        )
-
-    # Set labels and title
-    ax.set_xlabel("Component 1")
-    ax.set_ylabel("Component 2")
-    ax.set_zlabel("Component 3")
-    ax.set_title(title)
-    ax.legend(loc="best")
-
-    # Add grid
-    ax.grid(True, linestyle="--", alpha=0.4)
-
-    # Adjust view angle
-    ax.view_init(elev=30, azim=45)
-
-    plt.tight_layout()
-    return fig
