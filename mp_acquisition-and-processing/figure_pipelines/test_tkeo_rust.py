@@ -144,28 +144,74 @@ print(f"Mean difference: {mean_diff:.8f}")
 print(f"Max difference: {max_diff:.8f}")
 
 # %%
-# Plot a sample of both envelopes for comparison
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from matplotlib.gridspec import GridSpec
+from scipy import signal
+
+# Sample length and channel to plot (from original code)
 sample_length = 50000  # 5 seconds of data at 1000 Hz
 channel_to_plot = 0
 
-plt.figure(figsize=(15, 8))
-plt.subplot(3, 1, 1)
-plt.title("Filtered EMG Signal")
-plt.plot(base_data[:sample_length, channel_to_plot])
-plt.ylabel("Amplitude")
+# Set the colorblind-friendly palette
+sns.set_palette("colorblind")
+palette = sns.color_palette("colorblind")
 
-plt.subplot(3, 1, 2)
-plt.title("Python TKEO Envelope")
-plt.plot(tkeo_envelope[:sample_length, channel_to_plot])
-plt.ylabel("Amplitude")
+# Add Montserrat font
+plt.rcParams["font.family"] = "sans-serif"
+plt.rcParams["font.sans-serif"] = ["Montserrat"]
 
-plt.subplot(3, 1, 3)
-plt.title("Rust TKEO Envelope")
-plt.plot(tkeo_envelope_rs[:sample_length, channel_to_plot], "r")
-plt.ylabel("Amplitude")
-plt.xlabel("Samples")
+# Set the style
+sns.set_theme(style="darkgrid")
 
-plt.tight_layout()
+# Define font sizes with appropriate scaling
+TITLE_SIZE = 18
+SUBTITLE_SIZE = 16
+AXIS_LABEL_SIZE = 14
+TICK_SIZE = 12
+CAPTION_SIZE = 13
+
+# Create figure with GridSpec for better control over subplot spacing
+fig = plt.figure(figsize=(14, 10))
+gs = GridSpec(2, 1, height_ratios=[1, 1], hspace=0.3)
+
+# First subplot - Filtered EMG Signal
+ax1 = fig.add_subplot(gs[0])
+ax1.plot(base_data[:sample_length, channel_to_plot], color=palette[0], linewidth=1.5)
+ax1.set_title("Filtered EMG Signal", fontsize=TITLE_SIZE, fontweight="bold")
+ax1.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE)
+ax1.tick_params(axis="both", which="major", labelsize=TICK_SIZE)
+ax1.grid(True, alpha=0.3)
+
+# Second subplot - TKEO Envelope
+ax2 = fig.add_subplot(gs[1])
+ax2.plot(
+    tkeo_envelope_rs[:sample_length, channel_to_plot], color=palette[3], linewidth=1.5
+)
+ax2.set_title("TKEO Envelope", fontsize=TITLE_SIZE, fontweight="bold")
+ax2.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE)
+ax2.set_xlabel("Samples", fontsize=AXIS_LABEL_SIZE)
+ax2.tick_params(axis="both", which="major", labelsize=TICK_SIZE)
+ax2.grid(True, alpha=0.3)
+
+# Add overall title
+fig.suptitle("EMG Signal Analysis", fontsize=TITLE_SIZE + 2, fontweight="bold", y=0.98)
+
+# Adjust layout to make room for titles
+plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+# Add a caption/note if needed
+plt.figtext(
+    0.5,
+    0.01,
+    "Note: Data sampled at 1000 Hz",
+    ha="center",
+    fontsize=CAPTION_SIZE,
+    fontstyle="italic",
+)
+
+# Show the plot
 plt.show()
 
 # %%
