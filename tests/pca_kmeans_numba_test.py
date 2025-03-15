@@ -28,7 +28,7 @@ from dspant.neuroproc.utils.template_utils import (
     compute_template_similarity,
     compute_templates,
 )
-from dspant.neuroproc.vizualization import plot_spike_events
+from dspant.neuroproc.vizualization import plot_spike_events, plot_spike_raster
 from dspant.nodes import StreamNode
 from dspant.processor.filters import ButterFilter, FilterProcessor
 from dspant.processor.spatial import create_cmr_processor, create_whitening_processor
@@ -50,7 +50,7 @@ base_path = home_path.joinpath(
 emg_stream_path = base_path.joinpath(r"HDEG.ant")
 # %%
 # Load EMG data
-stream_emg = StreamNode(str(emg_stream_path))
+stream_emg = StreamNode(str(emg_stream_path), chunk_size=100000)
 stream_emg.load_metadata()
 stream_emg.load_data()
 # Print stream_emg summary
@@ -83,11 +83,12 @@ processor_hd.add_processor([cmr_processor, whiten_processor], group="spatial")
 # %%
 # Process data
 whiten_data = processor_hd.process().persist()
-
+# %%
 # ---- STEP 2: Detect spikes (using your code) ----
 # Rechunk data for processing
 data_to_process = whiten_data[:, :].rechunk((int(fs) * 10000, -1))
-threshold = 10
+# %%
+threshold = 15
 refractory_period = 0.002
 detector = create_negative_peak_detector(
     threshold=threshold, refractory_period=refractory_period
@@ -100,8 +101,8 @@ print(f"Detected {len(spike_df)} spikes across all channels")
 channel_idx = 16  # We'll use your channel 16 as in your example
 channel_to_process = data_to_process[:, channel_idx]
 data_length = data_to_process.shape[0]
-pre_samples = 10
-post_samples = 40
+pre_samples = 30
+post_samples = 80
 # %%
 # Filter spikes for the specific channel and within valid boundaries
 valid_spikes = spike_df.filter(
@@ -117,8 +118,18 @@ plot_spike_events(
     np.array(data_to_process),
     spike_df=spike_df,
     fs=fs,
-    channels=[1, 2, 3],
+    channels=[3, 2, 1, 0],
     time_window=[0.2, 0.8],
+    sort_spikes="time",
+    sort_channels=True,
+)
+# %%
+a = plot_spike_raster(
+    spike_df=spike_df,
+    channels=np.arange(0, 33, 1),
+    time_window=[0.2, 0.8],
+    sort_spikes="time",
+    sort_channels=True,
 )
 # %%
 # Extract waveforms using your settings
