@@ -28,7 +28,11 @@ from dspant.neuroproc.utils.template_utils import (
     compute_template_similarity,
     compute_templates,
 )
-from dspant.neuroproc.vizualization import plot_spike_events, plot_spike_raster
+from dspant.neuroproc.vizualization import (
+    plot_multi_channel_data,
+    plot_spike_events,
+    plot_spike_raster,
+)
 from dspant.nodes import StreamNode
 from dspant.processor.filters import ButterFilter, FilterProcessor
 from dspant.processor.spatial import create_cmr_processor, create_whitening_processor
@@ -118,19 +122,37 @@ plot_spike_events(
     np.array(data_to_process),
     spike_df=spike_df,
     fs=fs,
-    channels=[3, 2, 1, 0],
+    channels=[0, 1, 2, 3],
     time_window=[0.2, 0.8],
     sort_spikes="time",
     sort_channels=True,
+    sort_order="descending",
 )
 # %%
 a = plot_spike_raster(
     spike_df=spike_df,
-    channels=np.arange(0, 33, 1),
-    time_window=[0.2, 0.8],
+    channels=np.arange(0, 4, 1),
+    time_window=[0.2, .8],
     sort_spikes="time",
+    color="black",
+    color_mode="single",
     sort_channels=True,
+    figsize=(10, 10),
+    marker_width=2,
+    marker_size=50
 )
+# %%
+a = plot_multi_channel_data(
+    np.array(data_to_process),
+    channels=np.arange(0, 32, 1),
+    time_window=[0.2, 0.8],
+    fs=fs,
+    figsize=(10, 10),
+    color="black",
+    color_mode="single",
+    grid=True,
+)
+
 # %%
 # Extract waveforms using your settings
 waveforms, spike_times, metadata = extract_spike_waveforms(
