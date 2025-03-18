@@ -104,14 +104,13 @@ freqs = np.linspace(0, fs / 2, tf_data.shape[0])[::-1]
 # Visualization with SSQueezePy's imshow
 plt.figure(figsize=(12, 6))
 imshow(
-    tf_data,
-    abs=1,
+    np.abs(tf_data),
     xticks=time_points,
     yticks=freqs,
     xlabel="Time [sec]",
     ylabel="Frequency [Hz]",
     title="CWT Time-Frequency Representation",
-    cmap="turbo",
+    cmap="magma",
 )
 plt.show()
 

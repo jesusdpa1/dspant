@@ -18,12 +18,12 @@ def ls(directory: Path):
 
 
 home = Path(r"E:\jpenalozaa")  # Path().home()
-tank_path = home.joinpath(r"topoMapping\25-03-16_4896-1_testSubject_topoMapping")
+tank_path = home.joinpath(r"camber_presentation")
 
 ls(tank_path)
 # %%
 
-block_path = tank_path.joinpath("15-20-00_meps")
+block_path = tank_path.joinpath("02_hemisection")
 convert_tdt_to_ant(block_path, start=0, end=-1)
 
 # %%
