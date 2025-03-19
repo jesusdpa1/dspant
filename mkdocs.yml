@@ -1,7 +1,7 @@
 site_name: dspant
 site_description: A Comprehensive Digital Signal Processing Library for Neural Data
 site_author: dspant Team
-repo_url: https://github.com/yourusername/dspant
+repo_url: https://github.com/jesusdpa1/dspant
 
 theme:
   logo: assets/logo.svg
