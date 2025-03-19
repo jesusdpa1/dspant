@@ -15,102 +15,17 @@ dspant requires Python 3.8 or higher and depends on several scientific computing
 - Matplotlib (>=3.4.0)
 - Numba (>=0.54.0)
 
-## Standard Installation
+## Current Installation
 
-For most users, the simplest way to install dspant is via pip:
-
-```bash
-pip install dspant
-```
-
-This will install dspant and all its required dependencies.
-
-## Installation with Optional Features
-
-dspant offers several optional features that can be installed depending on your needs:
+For current installation 
 
 ```bash
-# Install with TDT support
-pip install dspant[tdt]
-
-# Install with advanced visualization tools
-pip install dspant[viz]
-
-# Install with all optional dependencies
-pip install dspant[all]
-```
-
-## Development Installation
-
-If you want to contribute to dspant or use the latest development version, you can install directly from the repository:
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/dspant.git
-cd dspant
-
-# Install in development mode
-pip install -e .
-
-# Install with development dependencies (testing, documentation, etc.)
-pip install -e .[dev]
-```
-
-## Installing in a Virtual Environment
-
-It's recommended to install dspant in a virtual environment to avoid conflicts with other packages:
-
-```bash
-# Create a virtual environment
-python -m venv dspant-env
-
-# Activate the environment
-# On Windows:
-dspant-env\Scripts\activate
-# On macOS/Linux:
-source dspant-env/bin/activate
-
-# Install dspant
-pip install dspant
-```
-
-## GPU Support
-
-For accelerated processing on NVIDIA GPUs:
-
-```bash
-# Install with CUDA support
-pip install dspant[cuda]
-```
-
-Note: GPU acceleration requires an NVIDIA GPU with CUDA support and appropriate CUDA drivers installed.
-
-## Troubleshooting
-
-### Common Installation Issues
-
-#### Missing Compiler
-
-Some dependencies may require a C compiler. If you encounter build errors:
-
-- **Windows**: Install Visual C++ Build Tools
-- **macOS**: Install Xcode Command Line Tools (`xcode-select --install`)
-- **Linux**: Install GCC (`sudo apt-get install build-essential` or equivalent)
-
-#### Memory Errors During Installation
-
-If you encounter memory errors while installing, try:
-
-```bash
-pip install --no-cache-dir dspant
-```
-
-#### ImportError After Installation
-
-If you encounter import errors after installation, ensure that you have all required dependencies:
-
-```bash
-pip install --upgrade -r requirements.txt
+git clone #repo
+cd # to location
+# if uv available
+uv sync
+# else after creating a venv
+pip install -e 
 ```
 
 ### Checking Your Installation

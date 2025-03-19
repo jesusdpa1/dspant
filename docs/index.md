@@ -49,16 +49,3 @@ fig_waveforms, fig_raster = plot_spike_events(
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Citation
-
-If you use dspant in your research, please cite:
-
-```
-@software{dspant2023,
-  author = {dspant Team},
-  title = {dspant: Digital Signal Processing for Neural Data},
-  year = {2023},
-  url = {https://github.com/yourusername/dspant}
-}
-```
