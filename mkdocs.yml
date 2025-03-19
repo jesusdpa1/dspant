@@ -1,0 +1,60 @@
+site_name: dspant
+site_description: A Comprehensive Digital Signal Processing Library for Neural Data
+site_author: dspant Team
+repo_url: https://github.com/yourusername/dspant
+
+theme:
+  name: material
+  palette:
+    primary: indigo
+    accent: blue
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.annotation
+    - content.code.copy
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed
+  - pymdownx.arithmatex:
+      generic: true
+  - admonition
+  - footnotes
+  - attr_list
+  - pymdownx.details
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quickstart: getting-started/quickstart.md
+  - Core Concepts:
+    - Data Nodes: core-concepts/data-nodes.md
+    - Processing Pipeline: core-concepts/processing-pipeline.md
+  - General Processors:
+    - Overview : general-processor/overview.md
+  - EMG Processors:
+    - Overview : emg-processor/overview.md
+  - Neural Processing:
+    - Overview : neural-processor/overview.md
+    - API : neural-processor/api.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_category_heading: true
+            show_submodules: true
