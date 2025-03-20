@@ -1,4 +1,5 @@
 """
+dspant/neurproc/detection/__ini__.py
 Neural spike detection module.
 
 This module provides tools for detecting action potentials (spikes) in
