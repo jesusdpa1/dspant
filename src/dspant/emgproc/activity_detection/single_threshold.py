@@ -95,6 +95,9 @@ class EMGOnsetDetector(BaseProcessor):
         # Store computed thresholds
         self.thresholds = None
 
+        # Store original data for amplitude computation
+        self._original_data = None
+
         # Define dtype for output
         self._dtype = np.dtype(
             [
@@ -121,7 +124,9 @@ class EMGOnsetDetector(BaseProcessor):
             data, self.threshold_method, self.threshold_value
         )
 
-    def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
+    def process(
+        self, data: da.Array, fs: Optional[float] = None, **kwargs
+    ) -> Union[da.Array, np.ndarray]:
         """
         Detect EMG onset events in the input data.
 
@@ -129,23 +134,25 @@ class EMGOnsetDetector(BaseProcessor):
             data: Input dask array
             fs: Sampling frequency (required)
             **kwargs: Additional keyword arguments
+                return_mask_only: If True, return only the binary mask
 
         Returns:
-            Dask array with onset events (can be converted to DataFrame)
+            Binary mask (if return_mask_only=True) or array of onset events
         """
         if fs is None:
             raise ValueError("Sampling frequency (fs) is required for onset detection")
+
+        # Store original data for amplitude calculation
+        self._original_data = data
 
         # Convert minimum duration to samples
         min_samples = int(self.min_duration * fs)
 
         # Pre-compute the thresholds for the entire dataset if possible
-        # This can help ensure consistent threshold application across chunks
         if self.threshold_method == "absolute":
             self.thresholds = np.array([self.threshold_value], dtype=np.float32)
         elif kwargs.get("precompute_thresholds", False):
             # Optionally precompute thresholds from the entire dataset
-            # This could be expensive for large datasets
             sample_data = data.compute()
             if sample_data.ndim == 1:
                 sample_data = sample_data.reshape(-1, 1)
@@ -158,23 +165,19 @@ class EMGOnsetDetector(BaseProcessor):
             baseline_start = int(self.baseline_window[0] * fs)
             baseline_end = int(self.baseline_window[1] * fs)
 
-        def detect_onsets_chunk(chunk: np.ndarray, block_info=None) -> np.ndarray:
-            """Process a chunk of data to detect onsets"""
+        def detect_activation_mask(chunk: np.ndarray, block_info=None) -> np.ndarray:
+            """Process a chunk of data to create an activation mask"""
             # Get chunk offset from block_info
             chunk_offset = 0
-            print(block_info)
             if block_info and len(block_info) > 0:
                 chunk_offset = block_info[0]["array-location"][0][0]
-                print(chunk_offset)
-            # Debug: print chunk info to see which chunks are being processed
-            # print(f"Processing chunk with offset {chunk_offset}, shape {chunk.shape}")
 
-            # Ensure the input is a contiguous array and has correct memory layout
+            # Ensure the input is a contiguous array
             chunk = np.ascontiguousarray(chunk)
 
-            # Handle single-channel case by adding extra dimension if needed
+            # Handle single-channel case
             if chunk.ndim == 1:
-                chunk = chunk[:, np.newaxis]  # Use np.newaxis instead of reshape
+                chunk = chunk[:, np.newaxis]
 
             # Compute thresholds if not already computed
             if self.thresholds is None or len(self.thresholds) != chunk.shape[1]:
@@ -192,131 +195,138 @@ class EMGOnsetDetector(BaseProcessor):
                 # Expand threshold to match number of channels
                 self.thresholds = np.repeat(self.thresholds, chunk.shape[1])
 
-            # Detect threshold crossings
+            # Create a binary mask
+            mask = np.zeros_like(chunk, dtype=np.int8)
+
+            # Apply threshold and identify regions above threshold
             above_threshold = chunk > self.thresholds[None, :]
 
-            # Create result array for all channels
-            all_results = []
-
-            # Helper function to process a single channel
-            def process_channel(channel_ind):
-                # Get transitions for this channel
-                channel_transitions = np.diff(
-                    above_threshold[:, channel_ind].astype(int)
+            # For each channel, find continuous segments above threshold
+            for channel in range(chunk.shape[1]):
+                # Get transitions
+                transitions = np.diff(
+                    above_threshold[:, channel].astype(int), prepend=0
                 )
 
                 # Find rising edges (1) and falling edges (-1)
-                onset_indices = np.where(channel_transitions == 1)[0]
-                offset_indices = np.where(channel_transitions == -1)[0]
+                onsets = np.where(transitions == 1)[0]
+                offsets = np.where(transitions == -1)[0]
 
-                # Add one to onset indices (diff reduces length by 1)
-                onset_indices = onset_indices + 1
-                offset_indices = offset_indices + 1
-
-                # Estimate max possible events (can't be more than number of onsets)
-                max_events = len(onset_indices)
-
-                # Skip further processing if no onsets
-                if max_events == 0:
-                    return np.array([], dtype=self._dtype)
-
-                # Pre-allocate arrays for results
-                result_onsets = np.zeros(max_events, dtype=np.int64)
-                result_offsets = np.zeros(max_events, dtype=np.int64)
-                result_amplitudes = np.zeros(max_events, dtype=np.float32)
-                result_durations = np.zeros(max_events, dtype=np.float32)
-
-                # Counter for actual valid events
-                event_count = 0
-
-                # Process valid onset-offset pairs
-                for onset_idx in onset_indices:
-                    # Find the next offset after this onset
-                    valid_offsets = offset_indices[offset_indices > onset_idx]
+                # Process pairs
+                for i, onset in enumerate(onsets):
+                    # Find corresponding offset
+                    valid_offsets = offsets[offsets > onset]
                     if len(valid_offsets) == 0:
-                        continue
+                        offset = len(chunk)
+                    else:
+                        offset = valid_offsets[0]
 
-                    offset_idx = valid_offsets[0]
+                    # Check minimum duration
+                    if offset - onset >= min_samples:
+                        # Mark this region in the mask
+                        mask[onset:offset, channel] = 1
 
-                    # Calculate duration
-                    duration_samples = offset_idx - onset_idx
+            return mask
 
-                    # Skip if shorter than minimum duration
-                    if duration_samples < min_samples:
-                        continue
-
-                    # Calculate duration in seconds
-                    duration_sec = duration_samples / fs
-
-                    # Calculate amplitude
-                    segment = chunk[onset_idx : offset_idx + 1, channel_ind]
-                    amplitude = np.max(segment)
-
-                    # Store in pre-allocated arrays
-                    result_onsets[event_count] = onset_idx + chunk_offset
-                    result_offsets[event_count] = offset_idx + chunk_offset
-                    result_amplitudes[event_count] = amplitude
-                    result_durations[event_count] = duration_sec
-                    event_count += 1
-
-                # Create structured array from filled portion only
-                if event_count > 0:
-                    result = np.zeros(event_count, dtype=self._dtype)
-                    result["onset_idx"] = result_onsets[:event_count]
-                    result["offset_idx"] = result_offsets[:event_count]
-                    result["channel"] = channel_ind
-                    result["amplitude"] = result_amplitudes[:event_count]
-                    result["duration"] = result_durations[:event_count]
-                    return result
-                else:
-                    return np.array([], dtype=self._dtype)
-
-            # Use ThreadPoolExecutor if we have multiple channels and max_workers is specified
-            print(chunk.shape)
-            if chunk.shape[1] > 1 and self.max_workers is not None:
-                with concurrent.futures.ThreadPoolExecutor(
-                    max_workers=self.max_workers
-                ) as executor:
-                    # Process each channel in parallel
-                    futures = [
-                        executor.submit(process_channel, i)
-                        for i in range(chunk.shape[1])
-                    ]
-
-                    # Collect results as they complete
-                    for future in concurrent.futures.as_completed(futures):
-                        channel_result = future.result()
-                        if len(channel_result) > 0:
-                            all_results.append(channel_result)
-            else:
-                # Process channels sequentially
-                for channel_ind in range(chunk.shape[1]):
-                    channel_result = process_channel(channel_ind)
-                    if len(channel_result) > 0:
-                        all_results.append(channel_result)
-
-            # Combine all channel results
-            if not all_results:
-                return np.array([], dtype=self._dtype)
-
-            return np.concatenate(all_results)
-
-        # Ensure input is 2D using a safer method
+        # Create a binary activation mask
         if data.ndim == 1:
-            # Use indexing syntax instead of reshape
             data = data[:, np.newaxis]
 
-        # Use map_overlap with explicit boundary handling and drop_axis parameter
-        result = data.map_overlap(
-            detect_onsets_chunk,
-            depth={-2: self._overlap_samples},
+        # Use map_overlap to create a binary mask
+        activation_mask = data.map_overlap(
+            detect_activation_mask,
+            depth={0: self._overlap_samples},
             boundary="reflect",
-            dtype=self._dtype,
-            meta=np.array([], dtype=self._dtype),
-            drop_axis=None,
+            dtype=np.int8,
         )
 
-        return result
+        # Store this mask for later use
+        self._activation_mask = activation_mask
+
+        # If only mask requested, return it
+        if kwargs.get("return_mask_only", False):
+            return activation_mask
+
+        # Post-process the mask to extract events
+        # This is more efficiently done after computing the full mask
+        events = self._extract_events_from_mask(activation_mask, data, fs)
+
+        return events
+
+    def _extract_events_from_mask(
+        self, mask: da.Array, data: da.Array, fs: float
+    ) -> np.ndarray:
+        """
+        Extract onset events from a binary activation mask.
+
+        Args:
+            mask: Binary activation mask
+            data: Original data array
+            fs: Sampling frequency
+
+        Returns:
+            Array of onset events
+        """
+        # Compute the mask and original data to get numpy arrays
+        mask_array = mask.compute()
+        data_array = data.compute()
+
+        # Extract events from the mask
+        events_list = []
+
+        # Process each channel
+        for channel in range(mask_array.shape[1]):
+            channel_mask = mask_array[:, channel]
+
+            # Find transitions
+            transitions = np.diff(channel_mask, prepend=0)
+
+            # Find rising and falling edges
+            onsets = np.where(transitions == 1)[0]
+            offsets = np.where(transitions == -1)[0]
+
+            # If no falling edge after last onset, use the end of the data
+            if len(onsets) > len(offsets):
+                offsets = np.append(offsets, len(channel_mask))
+
+            # Create events for each onset-offset pair
+            for onset, offset in zip(onsets, offsets):
+                # Calculate duration
+                duration_samples = offset - onset
+                duration_sec = duration_samples / fs
+
+                # Calculate amplitude from original data
+                segment = data_array[onset:offset, channel]
+                if len(segment) > 0:
+                    amplitude = np.max(segment)
+                else:
+                    amplitude = 0.0
+
+                # Create event
+                event = (onset, offset, channel, amplitude, duration_sec)
+                events_list.append(event)
+
+        # Create structured array
+        if events_list:
+            events_array = np.array(events_list, dtype=self._dtype)
+        else:
+            events_array = np.array([], dtype=self._dtype)
+
+        return events_array
+
+    def create_binary_mask(self, data: da.Array, fs: float) -> da.Array:
+        """
+        Create a binary mask showing activation periods.
+
+        Args:
+            data: Input data array
+            fs: Sampling frequency
+
+        Returns:
+            Binary mask array (1 where active, 0 elsewhere)
+        """
+        # Process the data but only return the mask
+        return self.process(data, fs, return_mask_only=True)
 
     def to_dataframe(self, events_array: Union[np.ndarray, da.Array]) -> pl.DataFrame:
         """
@@ -328,9 +338,47 @@ class EMGOnsetDetector(BaseProcessor):
         Returns:
             Polars DataFrame with onset events
         """
+        # Handle empty arrays
+        if isinstance(events_array, da.Array) and events_array.size == 0:
+            # Return empty DataFrame with correct schema
+            return pl.DataFrame(
+                {
+                    "onset_idx": [],
+                    "offset_idx": [],
+                    "channel": [],
+                    "amplitude": [],
+                    "duration": [],
+                }
+            )
+
         # Convert dask array to numpy if needed
         if isinstance(events_array, da.Array):
-            events_array = events_array.compute()
+            try:
+                events_array = events_array.compute()
+            except Exception as e:
+                print(f"Error computing events array: {e}")
+                # Return empty DataFrame with correct schema
+                return pl.DataFrame(
+                    {
+                        "onset_idx": [],
+                        "offset_idx": [],
+                        "channel": [],
+                        "amplitude": [],
+                        "duration": [],
+                    }
+                )
+
+        # Handle empty numpy array case
+        if len(events_array) == 0:
+            return pl.DataFrame(
+                {
+                    "onset_idx": [],
+                    "offset_idx": [],
+                    "channel": [],
+                    "amplitude": [],
+                    "duration": [],
+                }
+            )
 
         # Convert numpy structured array to Polars DataFrame
         return pl.from_numpy(events_array)
@@ -365,6 +413,15 @@ def create_std_onset_detector(
 ) -> EMGOnsetDetector:
     """
     Create an EMG onset detector using standard deviation thresholding.
+
+    Args:
+        threshold_std: Threshold as multiple of standard deviation above mean
+        min_duration: Minimum duration for a valid activation (seconds)
+        baseline_window: Optional window for baseline calculation (start_time, end_time) in seconds
+        max_workers: Maximum number of worker threads to use
+
+    Returns:
+        Configured EMGOnsetDetector for standard deviation-based detection
     """
     return EMGOnsetDetector(
         threshold_method="std",
@@ -378,15 +435,26 @@ def create_std_onset_detector(
 def create_rms_onset_detector(
     threshold_factor: float = 1.5,
     min_duration: float = 0.01,
+    baseline_window: Optional[Tuple[float, float]] = None,
     max_workers: Optional[int] = None,
 ) -> EMGOnsetDetector:
     """
     Create an EMG onset detector using RMS thresholding.
+
+    Args:
+        threshold_factor: Multiplier for RMS value to determine threshold
+        min_duration: Minimum duration for a valid activation (seconds)
+        baseline_window: Optional window for baseline calculation
+        max_workers: Maximum number of worker threads to use
+
+    Returns:
+        Configured EMGOnsetDetector for RMS-based detection
     """
     return EMGOnsetDetector(
         threshold_method="rms",
         threshold_value=threshold_factor,
         min_duration=min_duration,
+        baseline_window=baseline_window,
         max_workers=max_workers,
     )
 
@@ -398,9 +466,73 @@ def create_absolute_threshold_detector(
 ) -> EMGOnsetDetector:
     """
     Create an EMG onset detector using absolute thresholding.
+
+    Args:
+        threshold: Fixed threshold value for activation detection
+        min_duration: Minimum duration for a valid activation (seconds)
+        max_workers: Maximum number of worker threads to use
+
+    Returns:
+        Configured EMGOnsetDetector for absolute threshold-based detection
     """
     return EMGOnsetDetector(
         threshold_method="absolute",
+        threshold_value=threshold,
+        min_duration=min_duration,
+        max_workers=max_workers,
+    )
+
+
+def create_percent_max_detector(
+    percent: float = 10.0,  # 10% of maximum by default
+    min_duration: float = 0.01,
+    baseline_window: Optional[Tuple[float, float]] = None,
+    max_workers: Optional[int] = None,
+) -> EMGOnsetDetector:
+    """
+    Create an EMG onset detector using percentage of maximum value thresholding.
+
+    Args:
+        percent: Percentage of maximum value to use as threshold
+        min_duration: Minimum duration for a valid activation (seconds)
+        baseline_window: Optional window for baseline calculation
+        max_workers: Maximum number of worker threads to use
+
+    Returns:
+        Configured EMGOnsetDetector for percentage of maximum-based detection
+    """
+    return EMGOnsetDetector(
+        threshold_method="percent_max",
+        threshold_value=percent,
+        min_duration=min_duration,
+        baseline_window=baseline_window,
+        max_workers=max_workers,
+    )
+
+
+def create_normalized_onset_detector(
+    threshold: float = 0.5,
+    threshold_method: Literal["absolute", "std", "rms", "percent_max"] = "absolute",
+    min_duration: float = 0.01,
+    max_workers: Optional[int] = None,
+) -> EMGOnsetDetector:
+    """
+    Create an EMG onset detector optimized for normalized data.
+
+    This factory function creates a detector with parameters suited for data
+    that has already been normalized to a standard range (e.g., 0-1).
+
+    Args:
+        threshold: Threshold value (appropriate for normalized data)
+        threshold_method: Method for determining threshold (typically 'absolute' for normalized data)
+        min_duration: Minimum duration for a valid activation (seconds)
+        max_workers: Maximum number of worker threads to use
+
+    Returns:
+        Configured EMGOnsetDetector for normalized data
+    """
+    return EMGOnsetDetector(
+        threshold_method=threshold_method,
         threshold_value=threshold,
         min_duration=min_duration,
         max_workers=max_workers,

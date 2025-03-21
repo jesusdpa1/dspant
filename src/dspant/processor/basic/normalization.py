@@ -206,3 +206,58 @@ def _apply_robust(data: np.ndarray, median: float, iqr: float) -> np.ndarray:
         iqr = 1.0
 
     return (data - median) / iqr
+
+
+def create_normalizer(
+    method: Literal["zscore", "minmax", "robust"] = "zscore",
+) -> NormalizationProcessor:
+    """
+    Create a normalization processor with the specified method.
+
+    Args:
+        method: Normalization method to use
+            "zscore": zero mean, unit variance normalization
+            "minmax": scales to range [0,1]
+            "robust": uses median and interquartile range
+
+    Returns:
+        Configured NormalizationProcessor instance
+    """
+    return NormalizationProcessor(method=method)
+
+
+def create_zscore_normalizer() -> NormalizationProcessor:
+    """
+    Create a z-score normalization processor.
+
+    Z-score normalization transforms data to have zero mean and unit variance.
+
+    Returns:
+        Configured NormalizationProcessor for z-score normalization
+    """
+    return NormalizationProcessor(method="zscore")
+
+
+def create_minmax_normalizer() -> NormalizationProcessor:
+    """
+    Create a min-max scaling normalization processor.
+
+    Min-max scaling transforms data to range [0,1].
+
+    Returns:
+        Configured NormalizationProcessor for min-max normalization
+    """
+    return NormalizationProcessor(method="minmax")
+
+
+def create_robust_normalizer() -> NormalizationProcessor:
+    """
+    Create a robust normalization processor.
+
+    Robust normalization uses median and interquartile range instead of
+    mean and standard deviation, making it less sensitive to outliers.
+
+    Returns:
+        Configured NormalizationProcessor for robust normalization
+    """
+    return NormalizationProcessor(method="robust")
