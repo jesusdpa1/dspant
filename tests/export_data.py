@@ -31,8 +31,9 @@ from dspant.processor.filters import (
 
 sns.set_theme(style="darkgrid")
 # %%
-
-base_path = r"/home/jesusdpa1/data/topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
+# /home/jesusdpa1/data/topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/
+#
+base_path = r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
 #     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
 
 emg_stream_path = base_path + r"/RawG.ant"
@@ -141,14 +142,173 @@ onset_detector = create_absolute_threshold_detector(
 
 
 # Detect onsets in Rust envelope
-rust_onsets = onset_detector.process(tkeo_envelope_rs, fs=fs)
-# %%
-rust_onsets_df = onset_detector.to_dataframe(rust_onsets)
-print(f"Rust TKEO detected {len(rust_onsets_df)} onsets")
+tkeo_activation_mask = onset_detector.process(tkeo_envelope_rs, fs=fs)
+tkeo_onsets = onset_detector.extract_events_from_mask(
+    tkeo_activation_mask, tkeo_envelope_rs, fs
+)
+
 
 # %%
-a = onset_detector.create_binary_mask(tkeo_envelope_rs, fs=fs).persist()
+from typing import Dict, List, Optional, Union
+
+import dask.array as da
+import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+
+def export_data_to_parquet(
+    data: da.Array,
+    filename: str,
+    fs: Optional[float] = None,
+    chunk_size: int = 1000000,
+    channel_names: Optional[List[str]] = None,
+    include_timestamp: bool = False,
+) -> None:
+    """
+    Export any timeseries data to a Parquet file by processing in chunks.
+    Leverages PyArrow's automatic type inference.
+
+    Args:
+        data: Timeseries data array (samples × channels)
+        filename: Path to save the Parquet file
+        fs: Sampling frequency
+        chunk_size: Number of samples to process in each chunk
+        channel_names: Custom names for the channels. If None, uses "channel_0", "channel_1", etc.
+        include_timestamp: Whether to include timestamps in the export
+    """
+    # Get dimensions
+    if data.ndim == 1:
+        data = data.reshape(-1, 1)
+
+    n_samples, n_channels = data.shape
+
+    # Determine channel names
+    if channel_names is None:
+        channel_names = [f"channel_{c}" for c in range(n_channels)]
+    elif len(channel_names) != n_channels:
+        raise ValueError(
+            f"Expected {n_channels} channel names, got {len(channel_names)}"
+        )
+
+    # Process first chunk to determine schema
+    first_chunk_size = min(chunk_size, n_samples)
+    first_chunk = data[:first_chunk_size].compute()
+
+    # Create first chunk DataFrame with exact length
+    sample_indices = np.arange(first_chunk_size)
+    first_df = pd.DataFrame({"sample_idx": sample_indices})
+
+    if include_timestamp and fs is not None:
+        first_df["timestamp"] = sample_indices / fs
+
+    for i, name in enumerate(channel_names):
+        first_df[name] = first_chunk[:, i]
+
+    # Let PyArrow infer schema from the first chunk
+    table = pa.Table.from_pandas(first_df)
+    schema = table.schema
+
+    # Create PyArrow writer with metadata
+    writer = pq.ParquetWriter(filename, schema)
+
+    # Write first chunk
+    writer.write_table(table)
+
+    # Process remaining chunks
+    current_idx = first_chunk_size
+    while current_idx < n_samples:
+        # Calculate exact chunk boundaries
+        start_idx = current_idx
+        end_idx = min(start_idx + chunk_size, n_samples)
+
+        # Validate that we're not requesting out of bounds
+        if start_idx >= n_samples:
+            print(
+                f"Warning: Skipping processing at index {start_idx} which exceeds data length {n_samples}"
+            )
+            break
+
+        # Calculate exact chunk size for this iteration
+        current_chunk_size = end_idx - start_idx
+
+        # Create exact sample indices array for this chunk
+        sample_indices = np.arange(start_idx, end_idx)
+
+        # Extract chunk with validation
+        try:
+            chunk = data[start_idx:end_idx].compute()
+
+            # Validate chunk dimensions
+            if len(chunk) != current_chunk_size:
+                print(f"Warning: Chunk size mismatch at {start_idx}-{end_idx}")
+                print(f"Expected {current_chunk_size} samples but got {len(chunk)}")
+
+                # Adjust sample indices to match the actual chunk size
+                sample_indices = np.arange(start_idx, start_idx + len(chunk))
+        except Exception as e:
+            print(f"Error processing chunk {start_idx}-{end_idx}: {str(e)}")
+            # Move to next chunk
+            current_idx = end_idx
+            continue
+
+        # Create DataFrame with exactly matching dimensions
+        chunk_df = pd.DataFrame({"sample_idx": sample_indices})
+
+        if include_timestamp and fs is not None:
+            chunk_df["timestamp"] = sample_indices / fs
+
+        # Add channel data with dimension validation
+        for j, name in enumerate(channel_names):
+            channel_data = chunk[:, j]
+
+            # Ensure data length matches DataFrame length
+            if len(channel_data) != len(sample_indices):
+                print(
+                    f"Warning: Channel {name} length ({len(channel_data)}) doesn't match index length ({len(sample_indices)})"
+                )
+
+                if len(channel_data) > len(sample_indices):
+                    # Truncate data if too long
+                    channel_data = channel_data[: len(sample_indices)]
+                else:
+                    # Pad data if too short
+                    padding = np.zeros(
+                        len(sample_indices) - len(channel_data),
+                        dtype=channel_data.dtype,
+                    )
+                    if len(channel_data) > 0:  # Use last value for padding if available
+                        padding.fill(channel_data[-1])
+                    channel_data = np.concatenate([channel_data, padding])
+
+            chunk_df[name] = channel_data
+
+        # Convert to PyArrow table and write
+        chunk_table = pa.Table.from_pandas(chunk_df, schema=schema)
+        writer.write_table(chunk_table)
+
+        print(
+            f"Processed samples {start_idx:,} to {end_idx:,} ({(end_idx / n_samples) * 100:.1f}%)"
+        )
+
+        # Update current index for next iteration
+        current_idx = end_idx
+
+    # Close writer
+    writer.close()
+    print(f"Data successfully exported to {filename}")
+    print(f"Total samples: {n_samples:,}, Channels: {n_channels}")
+
+
 # %%
-plt.plot(tkeo_envelope_rs[:100000, 0])
-plt.plot(a[:100000, 0])
+export_data_to_parquet(
+    tkeo_activation_mask, "./data/mask02.parquet", fs, include_timestamp=False
+)
+
+# %%
+export_data_to_parquet(
+    stream_emg.data, "./data/data.parquet", fs, include_timestamp=False
+)
+
 # %%

@@ -95,9 +95,6 @@ class EMGOnsetDetector(BaseProcessor):
         # Store computed thresholds
         self.thresholds = None
 
-        # Store original data for amplitude computation
-        self._original_data = None
-
         # Define dtype for output
         self._dtype = np.dtype(
             [
@@ -124,26 +121,20 @@ class EMGOnsetDetector(BaseProcessor):
             data, self.threshold_method, self.threshold_value
         )
 
-    def process(
-        self, data: da.Array, fs: Optional[float] = None, **kwargs
-    ) -> Union[da.Array, np.ndarray]:
+    def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
         """
-        Detect EMG onset events in the input data.
+        Create a binary mask for EMG activity detection.
 
         Args:
             data: Input dask array
             fs: Sampling frequency (required)
             **kwargs: Additional keyword arguments
-                return_mask_only: If True, return only the binary mask
 
         Returns:
-            Binary mask (if return_mask_only=True) or array of onset events
+            Binary mask (1 where active, 0 elsewhere)
         """
         if fs is None:
             raise ValueError("Sampling frequency (fs) is required for onset detection")
-
-        # Store original data for amplitude calculation
-        self._original_data = data
 
         # Convert minimum duration to samples
         min_samples = int(self.min_duration * fs)
@@ -165,13 +156,8 @@ class EMGOnsetDetector(BaseProcessor):
             baseline_start = int(self.baseline_window[0] * fs)
             baseline_end = int(self.baseline_window[1] * fs)
 
-        def detect_activation_mask(chunk: np.ndarray, block_info=None) -> np.ndarray:
+        def create_activation_mask(chunk: np.ndarray, block_info=None) -> np.ndarray:
             """Process a chunk of data to create an activation mask"""
-            # Get chunk offset from block_info
-            chunk_offset = 0
-            if block_info and len(block_info) > 0:
-                chunk_offset = block_info[0]["array-location"][0][0]
-
             # Ensure the input is a contiguous array
             chunk = np.ascontiguousarray(chunk)
 
@@ -234,30 +220,19 @@ class EMGOnsetDetector(BaseProcessor):
 
         # Use map_overlap to create a binary mask
         activation_mask = data.map_overlap(
-            detect_activation_mask,
+            create_activation_mask,
             depth={0: self._overlap_samples},
             boundary="reflect",
             dtype=np.int8,
         )
 
-        # Store this mask for later use
-        self._activation_mask = activation_mask
+        return activation_mask
 
-        # If only mask requested, return it
-        if kwargs.get("return_mask_only", False):
-            return activation_mask
-
-        # Post-process the mask to extract events
-        # This is more efficiently done after computing the full mask
-        events = self._extract_events_from_mask(activation_mask, data, fs)
-
-        return events
-
-    def _extract_events_from_mask(
+    def extract_events_from_mask(
         self, mask: da.Array, data: da.Array, fs: float
-    ) -> np.ndarray:
+    ) -> pl.DataFrame:
         """
-        Extract onset events from a binary activation mask.
+        Extract onset events from a binary activation mask and return as a DataFrame.
 
         Args:
             mask: Binary activation mask
@@ -265,7 +240,7 @@ class EMGOnsetDetector(BaseProcessor):
             fs: Sampling frequency
 
         Returns:
-            Array of onset events
+            Polars DataFrame with onset events
         """
         # Compute the mask and original data to get numpy arrays
         mask_array = mask.compute()
@@ -306,82 +281,35 @@ class EMGOnsetDetector(BaseProcessor):
                 event = (onset, offset, channel, amplitude, duration_sec)
                 events_list.append(event)
 
-        # Create structured array
-        if events_list:
-            events_array = np.array(events_list, dtype=self._dtype)
-        else:
-            events_array = np.array([], dtype=self._dtype)
+        # Handle empty results
+        if not events_list:
+            return pl.DataFrame(
+                {
+                    "onset_idx": [],
+                    "offset_idx": [],
+                    "channel": [],
+                    "amplitude": [],
+                    "duration": [],
+                }
+            )
 
-        return events_array
+        # Convert to structured array and then to DataFrame
+        events_array = np.array(events_list, dtype=self._dtype)
+        return pl.from_numpy(events_array)
 
-    def create_binary_mask(self, data: da.Array, fs: float) -> da.Array:
+    def to_dataframe(self, mask: da.Array, data: da.Array, fs: float) -> pl.DataFrame:
         """
-        Create a binary mask showing activation periods.
+        Convert a binary activity mask to a Polars DataFrame with onset events.
 
         Args:
-            data: Input data array
+            mask: Binary activation mask
+            data: Original data array for amplitude calculation
             fs: Sampling frequency
-
-        Returns:
-            Binary mask array (1 where active, 0 elsewhere)
-        """
-        # Process the data but only return the mask
-        return self.process(data, fs, return_mask_only=True)
-
-    def to_dataframe(self, events_array: Union[np.ndarray, da.Array]) -> pl.DataFrame:
-        """
-        Convert events array to a Polars DataFrame.
-
-        Args:
-            events_array: Array of detected events
 
         Returns:
             Polars DataFrame with onset events
         """
-        # Handle empty arrays
-        if isinstance(events_array, da.Array) and events_array.size == 0:
-            # Return empty DataFrame with correct schema
-            return pl.DataFrame(
-                {
-                    "onset_idx": [],
-                    "offset_idx": [],
-                    "channel": [],
-                    "amplitude": [],
-                    "duration": [],
-                }
-            )
-
-        # Convert dask array to numpy if needed
-        if isinstance(events_array, da.Array):
-            try:
-                events_array = events_array.compute()
-            except Exception as e:
-                print(f"Error computing events array: {e}")
-                # Return empty DataFrame with correct schema
-                return pl.DataFrame(
-                    {
-                        "onset_idx": [],
-                        "offset_idx": [],
-                        "channel": [],
-                        "amplitude": [],
-                        "duration": [],
-                    }
-                )
-
-        # Handle empty numpy array case
-        if len(events_array) == 0:
-            return pl.DataFrame(
-                {
-                    "onset_idx": [],
-                    "offset_idx": [],
-                    "channel": [],
-                    "amplitude": [],
-                    "duration": [],
-                }
-            )
-
-        # Convert numpy structured array to Polars DataFrame
-        return pl.from_numpy(events_array)
+        return self.extract_events_from_mask(mask, data, fs)
 
     @property
     def overlap_samples(self) -> int:
