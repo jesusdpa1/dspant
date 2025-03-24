@@ -42,6 +42,12 @@ manifest-path = "./rust/Cargo.toml"
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "ruff>=0.9.5",
+]
+
 [project.optional-dependencies]
 dev = [
     "ipykernel>=6.29.5",

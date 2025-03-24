@@ -1,6 +1,6 @@
 // rust/src/processors/spatial/whitening.rs
 
-use ndarray::{Array1, Array2, ArrayView2};
+use ndarray::{Array1, Array2};
 use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2};
 use pyo3::prelude::*;
 use rayon::prelude::*;

@@ -10,6 +10,9 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import dask.array as da
 import numpy as np
 
+from dspant.core.internals import public_api
+from dspant.engine.base import BaseProcessor
+
 try:
     from dspant._rs import (
         apply_channel_reference,
@@ -30,9 +33,8 @@ except ImportError:
         "Warning: Rust extension not available, falling back to Python implementation."
     )
 
-from ...engine.base import BaseProcessor
 
-
+@public_api
 class CommonReferenceRustProcessor(BaseProcessor):
     """
     Rust-accelerated Common Reference Processor implementation.
@@ -235,6 +237,7 @@ def create_car_processor_rs(
     )
 
 
+@public_api
 def create_cmr_processor_rs(
     reference_channels: Optional[List[int]] = None,
     groups: Optional[List[List[int]]] = None,
@@ -278,6 +281,7 @@ def create_cmr_processor_rs(
     )
 
 
+@public_api
 # Direct functions for immediate use
 def apply_car_rs(
     data: np.ndarray,
@@ -347,6 +351,7 @@ def apply_car_rs(
     return result
 
 
+@public_api
 def apply_cmr_rs(
     data: np.ndarray,
     reference_channels: Optional[List[int]] = None,
