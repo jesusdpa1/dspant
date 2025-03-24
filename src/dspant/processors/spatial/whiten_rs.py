@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 import dask.array as da
 import numpy as np
 
+from dspant.core.internals import public_api
 from dspant.engine.base import BaseProcessor
 
 try:
@@ -31,6 +32,7 @@ except ImportError:
     )
 
 
+@public_api
 class WhiteningRustProcessor(BaseProcessor):
     """
     Rust-accelerated whitening processor implementation.
@@ -202,6 +204,7 @@ class WhiteningRustProcessor(BaseProcessor):
         return base_summary
 
 
+@public_api
 def create_whitening_processor_rs(
     apply_mean: bool = False,
     int_scale: Optional[float] = None,
@@ -247,6 +250,7 @@ def create_whitening_processor_rs(
     )
 
 
+@public_api
 # Direct functions for immediate use without the processor class
 def apply_whiten_rs(
     data: np.ndarray,

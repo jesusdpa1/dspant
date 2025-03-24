@@ -513,6 +513,12 @@ neuroproc = [
     { name = "dspant-neuroproc" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "ipykernel" },
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "dask", extras = ["complete"], specifier = ">=2025.2.0" },
@@ -546,6 +552,12 @@ requires-dist = [
     { name = "zarr", specifier = ">=3.0.2" },
 ]
 provides-extras = ["dev", "cpu", "cu126", "emgproc", "neuroproc", "all"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "ipykernel", specifier = ">=6.29.5" },
+    { name = "ruff", specifier = ">=0.9.5" },
+]
 
 [[package]]
 name = "dspant-emgproc"
