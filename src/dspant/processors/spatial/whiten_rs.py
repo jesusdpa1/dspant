@@ -88,8 +88,6 @@ class WhiteningRustProcessor(BaseProcessor):
             Sampling frequency (not used but required by interface)
         **kwargs : dict
             Additional keyword arguments
-            compute_now: bool, default: False
-                Whether to compute the whitening matrix immediately or defer
             sample_size: int, default: 10000
                 Number of samples to use for computing covariance matrix
             use_parallel: bool
@@ -105,7 +103,6 @@ class WhiteningRustProcessor(BaseProcessor):
             data = data.reshape(-1, 1)
 
         # Get parameters from kwargs
-        compute_now = kwargs.get("compute_now", False)
         sample_size = kwargs.get("sample_size", 10000)
         use_parallel = kwargs.get("use_parallel", self.use_parallel)
 
@@ -114,8 +111,8 @@ class WhiteningRustProcessor(BaseProcessor):
         cov_func = compute_covariance_parallel if use_parallel else compute_covariance
         mean_func = compute_mean_parallel if use_parallel else compute_mean
 
-        # Check if we need to compute the whitening matrix
-        if not self._is_fitted and compute_now:
+        # ALWAYS compute the whitening matrix first if not already fitted
+        if not self._is_fitted:
             # For immediate computation, take a random subset
             total_samples = data.shape[0]
             if total_samples > sample_size:
@@ -148,36 +145,13 @@ class WhiteningRustProcessor(BaseProcessor):
             # Convert to float32 for computation
             chunk_float = chunk.astype(np.float32) if chunk.dtype.kind == "u" else chunk
 
-            if not self._is_fitted:
-                # Compute on-the-fly for this chunk
-                if self.apply_mean:
-                    chunk_mean = mean_func(chunk_float)
-                    chunk_centered = chunk_float - chunk_mean
-                else:
-                    chunk_mean = None
-                    chunk_centered = chunk_float
-
-                # Compute covariance matrix using Rust implementation
-                chunk_cov = cov_func(chunk_centered)
-
-                # Compute whitening matrix using Rust implementation
-                chunk_whitening = compute_whitening_matrix(chunk_cov, self.eps)
-
-                # Apply whitening using Rust implementation
-                return whitening_func(
-                    chunk_float,
-                    chunk_whitening,
-                    chunk_mean if self.apply_mean else None,
-                    self.int_scale,
-                )
-            else:
-                # Use pre-computed whitening matrix
-                return whitening_func(
-                    chunk_float,
-                    self._whitening_matrix,
-                    self._mean if self.apply_mean else None,
-                    self.int_scale,
-                )
+            # Use pre-computed whitening matrix (we've already guaranteed it's computed)
+            return whitening_func(
+                chunk_float,
+                self._whitening_matrix,
+                self._mean if self.apply_mean else None,
+                self.int_scale,
+            )
 
         # Use map_blocks to maintain laziness
         return data.map_blocks(apply_chunk_whitening, dtype=np.float32)

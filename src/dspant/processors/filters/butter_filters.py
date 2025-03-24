@@ -110,7 +110,7 @@ class ButterFilter:
             )
 
     def filter(
-        self, data: np.ndarray, fs: Optional[float] = None, parallel: bool = False
+        self, data: np.ndarray, fs: Optional[float] = None, parallel: bool = True
     ) -> np.ndarray:
         """
         Apply the filter to input data.
