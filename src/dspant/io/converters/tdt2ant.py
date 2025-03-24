@@ -12,7 +12,10 @@ import pyarrow.parquet as pq
 import tdt
 from pydantic import BaseModel, Field, field_validator
 
+from dspant.core.internals import public_api
 
+
+@public_api
 class drvPathCarpenter(BaseModel):
     """
     Helper class for managing derived data directories.
@@ -84,6 +87,7 @@ class drvPathCarpenter(BaseModel):
         raise ValueError(f"❌ Path does not exist: {path_}")
 
 
+@public_api
 class tdtStream(BaseModel):
     """
     Handles conversion of TDT stream data to ANT format.
@@ -315,6 +319,7 @@ class tdtStream(BaseModel):
         return tdt_struct
 
 
+@public_api
 class tdtEpoc(BaseModel):
     """
     Handles conversion of TDT epoc data to ANT format.
@@ -469,6 +474,7 @@ class tdtEpoc(BaseModel):
         return None
 
 
+@public_api
 def convert_tdt_to_ant(
     tdt_block_path: Union[str, Path],
     output_path: Optional[Union[str, Path]] = None,
@@ -581,7 +587,7 @@ def convert_tdt_to_ant(
             print(f"❌ Error converting epoc '{epoc_name}': {str(e)}")
 
     # Print summary
-    print(f"\nConversion Summary:")
+    print("\nConversion Summary:")
     print(f"- Processed {len(processed_streams)}/{len(stream_names)} streams")
     print(f"- Processed {len(processed_epocs)}/{len(epoc_names)} epocs")
     print(f"✅ Conversion complete. Data saved to {drv_path}")

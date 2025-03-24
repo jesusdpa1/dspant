@@ -2,9 +2,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field  # , field_validator
+
+from dspant.core.internals import public_api
 
 
+@public_api
 class BaseNode(BaseModel):
     """
     Base class for handling data paths and metadata in dspant.

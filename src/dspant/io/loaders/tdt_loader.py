@@ -7,7 +7,10 @@ from typing import Any, Dict, List, Union
 
 import tdt
 
+from dspant.core.internals import public_api
 
+
+@public_api
 def load_tdt_block(block_path: Union[str, Path], **kwargs) -> tdt.StructType:
     """
     Load a TDT block into memory.
@@ -31,6 +34,7 @@ def load_tdt_block(block_path: Union[str, Path], **kwargs) -> tdt.StructType:
     return tdt.read_block(str(block_path), **kwargs)
 
 
+@public_api
 def get_available_streams(block: tdt.StructType) -> Dict[str, Dict[str, Any]]:
     """
     Get information about available streams in a TDT block.
@@ -54,6 +58,7 @@ def get_available_streams(block: tdt.StructType) -> Dict[str, Dict[str, Any]]:
     }
 
 
+@public_api
 def get_available_epocs(block: tdt.StructType) -> Dict[str, Dict[str, Any]]:
     """
     Get information about available epocs in a TDT block.
@@ -80,6 +85,7 @@ def get_available_epocs(block: tdt.StructType) -> Dict[str, Dict[str, Any]]:
     }
 
 
+@public_api
 def list_tdt_tanks(directory: Union[str, Path]) -> List[Path]:
     """
     List TDT tank directories in the specified directory.
