@@ -115,7 +115,7 @@ print(f"Whitening processing time Python: {python_time:.4f} seconds")
 
 whitening_processor_rs = create_whitening_processor_rs(eps=1e-6)
 start_rs = time.time()
-whitened_data_rs = whitening_processor_rs.process(test, fs, compute_now=True).persist()
+whitened_data_rs = whitening_processor_rs.process(test, fs).persist()
 end_rs = time.time()
 rust_time = end_rs - start_rs
 print(f"Whitening processing time Rust: {rust_time:.4f} seconds")
