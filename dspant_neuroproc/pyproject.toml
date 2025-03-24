@@ -1,0 +1,28 @@
+[project]
+name = "dspant-neuroproc"
+version = "0.1.0"
+description = "Neural processing functions for DSPANT"
+readme = "README.md"
+authors = [
+    { name = "Jesús Peñaloza", email = "jesus.penalozaa@ufl.edu" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "dspant==0.1.0"
+]
+
+[project.scripts]
+dspant-neuroproc = "dspant_neuroproc:main"
+
+[tool.maturin]
+module-name = "dspant_neuroproc._rs"
+python-packages = ["dspant_neuroproc"]
+python-source = "src"
+manifest-path = "./rust/Cargo.toml"
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.uv]
+cache-keys = [{file = "pyproject.toml"}, {file = "./rust/Cargo.toml"}, {file = "**/*.rs"}]

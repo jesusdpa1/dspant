@@ -34,8 +34,8 @@ from dspant.neuroproc.vizualization import (
     plot_spike_raster,
 )
 from dspant.nodes import StreamNode
-from dspant.processor.filters import ButterFilter, FilterProcessor
-from dspant.processor.spatial import create_cmr_processor, create_whitening_processor
+from dspant.processors.filters import ButterFilter, FilterProcessor
+from dspant.processors.spatial import create_cmr_processor, create_whitening_processor
 
 # Set up styles
 sns.set_theme(style="darkgrid")
@@ -132,14 +132,14 @@ plot_spike_events(
 a = plot_spike_raster(
     spike_df=spike_df,
     channels=np.arange(0, 4, 1),
-    time_window=[0.2, .8],
+    time_window=[0.2, 0.8],
     sort_spikes="time",
     color="black",
     color_mode="single",
     sort_channels=True,
     figsize=(10, 10),
     marker_width=2,
-    marker_size=50
+    marker_size=50,
 )
 # %%
 a = plot_multi_channel_data(

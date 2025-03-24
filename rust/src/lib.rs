@@ -1,9 +1,9 @@
 use pyo3::prelude::*;
 
-mod preprocessing;
+mod processors;
 
-// Re-export the TKEO functions directly from the preprocessing module
-use preprocessing::transforms::tkeo::{
+// Re-export the TKEO functions directly from the processors module
+use processors::transforms::tkeo::{
     compute_tkeo,
     compute_tkeo_parallel,
     compute_tkeo_classic,

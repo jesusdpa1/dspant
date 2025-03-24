@@ -3,9 +3,11 @@ from typing import Dict, List, Optional, Union
 
 import dask.array as da
 
-from ..base import BaseProcessor
+from dspant.core.internals import public_api
+from dspant.engine.base import BaseProcessor
 
 
+@public_api
 class StreamProcessingPipeline:
     """Class for managing a sequence of processors with group support"""
 

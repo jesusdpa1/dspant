@@ -10,20 +10,24 @@ import seaborn as sns
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
-from dspant.processor.basic import (
+from dspant.processors.basic import (
     TKEOProcessor,
     create_hilbert_envelope,
     create_rectify_smooth_envelope,
     create_rms_envelope,
     create_tkeo_envelope,
 )
-from dspant.processor.filters import (
+from dspant.processors.filters import (
     ButterFilter,
     FilterProcessor,
 )
-from dspant.processor.quality_metrics import create_noise_estimation_processor
-from dspant.processor.spatial import create_cmr_processor, create_whitening_processor
-from dspant.processor.spectral import LFCCProcessor, MFCCProcessor, SpectrogramProcessor
+from dspant.processors.quality_metrics import create_noise_estimation_processor
+from dspant.processors.spatial import create_cmr_processor, create_whitening_processor
+from dspant.processors.spectral import (
+    LFCCProcessor,
+    MFCCProcessor,
+    SpectrogramProcessor,
+)
 
 sns.set_theme(style="darkgrid")
 # %%
