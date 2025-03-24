@@ -27,11 +27,8 @@ use processors::basics::normalization::{
 // Re-export the whitening functions
 use processors::spatial::whitening::{
     compute_whitening_matrix,
-    apply_whitening,
     apply_whitening_parallel,
-    compute_covariance,
     compute_covariance_parallel,
-    compute_mean,
     compute_mean_parallel,
 };
 
@@ -87,11 +84,8 @@ fn _rs(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     
     // Add the whitening functions
     m.add_function(wrap_pyfunction!(compute_whitening_matrix, py)?)?;
-    m.add_function(wrap_pyfunction!(apply_whitening, py)?)?;
     m.add_function(wrap_pyfunction!(apply_whitening_parallel, py)?)?;
-    m.add_function(wrap_pyfunction!(compute_covariance, py)?)?;
     m.add_function(wrap_pyfunction!(compute_covariance_parallel, py)?)?;
-    m.add_function(wrap_pyfunction!(compute_mean, py)?)?;
     m.add_function(wrap_pyfunction!(compute_mean_parallel, py)?)?;
 
 

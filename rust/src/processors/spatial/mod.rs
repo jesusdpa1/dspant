@@ -17,10 +17,7 @@ pub use common_reference::{
 // Re-export whitening functions (already done)
 pub use whitening::{
     compute_whitening_matrix,
-    apply_whitening,
     apply_whitening_parallel,
-    compute_covariance,
     compute_covariance_parallel,
-    compute_mean,
     compute_mean_parallel,
 };

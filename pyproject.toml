@@ -15,6 +15,7 @@ dependencies = [
     "ipycytoscape>=1.3.3",
     "librosa>=0.10.2.post1",
     "matplotlib>=3.10.0",
+    "mkl-service>=2.4.2",
     "numba>=0.61.0",
     "pendulum>=3.0.0",
     "polars>=1.21.0",

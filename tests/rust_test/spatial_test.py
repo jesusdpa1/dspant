@@ -65,10 +65,10 @@ notch_filter = ButterFilter("bandstop", (59, 61), order=4, fs=fs)
 
 # Create common filter processors
 notch_processor = FilterProcessor(
-    filter_func=notch_filter.get_filter_function(), overlap_samples=40
+    filter_func=notch_filter.get_filter_function(), overlap_samples=40, parallel=True
 )
 bandpass_processor = FilterProcessor(
-    filter_func=bandpass_filter.get_filter_function(), overlap_samples=40
+    filter_func=bandpass_filter.get_filter_function(), overlap_samples=40, parallel=True
 )
 
 # %%
@@ -78,11 +78,13 @@ bandpass_processor = FilterProcessor(
 filter_processor = create_processing_node(stream_hd)
 filter_processor.add_processor([notch_processor, bandpass_processor], group="filters")
 # %%
-test = filter_processor.process().persist()
+test = filter_processor.process(parallel=True).persist()
 
 # %%
+
 cmr_processor_py = create_cmr_processor()
 cmr_processor_rs = create_cmr_processor_rs()
+
 # %%%
 start = time.time()
 cmr_data = cmr_processor_py.process(test, fs).persist()
@@ -110,7 +112,7 @@ whitened_data = whitening_processor_py.process(test, fs).persist()
 end_py = time.time()
 python_time = end_py - start_py
 print(f"Whitening processing time Python: {python_time:.4f} seconds")
-# %%
+
 whitening_processor_rs = create_whitening_processor_rs(eps=1e-6)
 start_rs = time.time()
 whitened_data_rs = whitening_processor_rs.process(test, fs).persist()
