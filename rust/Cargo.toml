@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ndarray = { version = "0.16.1", features = ["rayon"] }
+ndarray-linalg = "0.17.0"
 num-complex = "0.4.6"
 num-traits = "0.2.19"
 numpy = "0.23.0"
