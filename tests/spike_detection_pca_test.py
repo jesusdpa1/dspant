@@ -23,11 +23,11 @@ from dspant.neuroproc.sorters import (
 )
 from dspant.neuroproc.vizualization import plot_spike_events
 from dspant.nodes import StreamNode
-from dspant.processor.filters import (
+from dspant.processors.filters import (
     ButterFilter,
     FilterProcessor,
 )
-from dspant.processor.spatial import create_cmr_processor, create_whitening_processor
+from dspant.processors.spatial import create_cmr_processor, create_whitening_processor
 
 sns.set_theme(style="darkgrid")
 # %%

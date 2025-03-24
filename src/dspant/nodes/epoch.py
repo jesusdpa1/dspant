@@ -4,7 +4,8 @@ import polars as pl
 from rich.console import Console
 from rich.table import Table
 
-from .base import BaseNode
+from dspant.core.internals import public_api
+from dspant.nodes.base import BaseNode
 
 
 class BaseEpocNode(BaseNode):
@@ -13,6 +14,7 @@ class BaseEpocNode(BaseNode):
     name: Optional[str] = None
 
 
+@public_api
 class EpocNode(BaseEpocNode):
     """Class for loading and accessing epoch data"""
 

@@ -1,0 +1,25 @@
+[package]
+name = "dspant_rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "dspant_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+ndarray = { version = "0.16.1", features = ["rayon"] }
+num-complex = "0.4.6"
+num-traits = "0.2.19"
+numpy = "0.23.0"
+# "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
+# "abi3-py39" tells pyo3 (and maturin) to build using the stable ABI with minimum Python version 3.9
+pyo3 = {version = "^0.23.0", features = ["extension-module", "abi3-py39"] }
+rayon = "1.10.0"
+realfft = "3.4.0"
+rustfft = "6.2.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3

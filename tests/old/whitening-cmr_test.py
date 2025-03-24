@@ -25,7 +25,7 @@ from dspant.processing.time_frequency import (
     SpectrogramProcessor,
 )
 from dspant.processing.transforms import TKEOProcessor
-from dspant.processor.manager.stream_processing import ProcessingNode
+from dspant.processors.manager.stream_processing import ProcessingNode
 
 sns.set_theme(style="darkgrid")
 # %%

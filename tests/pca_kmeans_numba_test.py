@@ -28,10 +28,14 @@ from dspant.neuroproc.utils.template_utils import (
     compute_template_similarity,
     compute_templates,
 )
-from dspant.neuroproc.vizualization import plot_spike_events
+from dspant.neuroproc.vizualization import (
+    plot_multi_channel_data,
+    plot_spike_events,
+    plot_spike_raster,
+)
 from dspant.nodes import StreamNode
-from dspant.processor.filters import ButterFilter, FilterProcessor
-from dspant.processor.spatial import create_cmr_processor, create_whitening_processor
+from dspant.processors.filters import ButterFilter, FilterProcessor
+from dspant.processors.spatial import create_cmr_processor, create_whitening_processor
 
 # Set up styles
 sns.set_theme(style="darkgrid")
@@ -50,7 +54,7 @@ base_path = home_path.joinpath(
 emg_stream_path = base_path.joinpath(r"HDEG.ant")
 # %%
 # Load EMG data
-stream_emg = StreamNode(str(emg_stream_path))
+stream_emg = StreamNode(str(emg_stream_path), chunk_size=100000)
 stream_emg.load_metadata()
 stream_emg.load_data()
 # Print stream_emg summary
@@ -79,14 +83,16 @@ whiten_processor = create_whitening_processor(eps=1e-6)
 # Add processors to the processing node
 processor_hd.add_processor([notch_processor, bandpass_processor], group="filters")
 processor_hd.add_processor([cmr_processor, whiten_processor], group="spatial")
+
 # %%
 # Process data
 whiten_data = processor_hd.process().persist()
-
+# %%
 # ---- STEP 2: Detect spikes (using your code) ----
 # Rechunk data for processing
 data_to_process = whiten_data[:, :].rechunk((int(fs) * 10000, -1))
-threshold = 10
+# %%
+threshold = 15
 refractory_period = 0.002
 detector = create_negative_peak_detector(
     threshold=threshold, refractory_period=refractory_period
@@ -99,8 +105,8 @@ print(f"Detected {len(spike_df)} spikes across all channels")
 channel_idx = 16  # We'll use your channel 16 as in your example
 channel_to_process = data_to_process[:, channel_idx]
 data_length = data_to_process.shape[0]
-pre_samples = 10
-post_samples = 40
+pre_samples = 30
+post_samples = 80
 # %%
 # Filter spikes for the specific channel and within valid boundaries
 valid_spikes = spike_df.filter(
@@ -116,9 +122,37 @@ plot_spike_events(
     np.array(data_to_process),
     spike_df=spike_df,
     fs=fs,
-    channels=[1, 2, 3],
+    channels=[0, 1, 2, 3],
     time_window=[0.2, 0.8],
+    sort_spikes="time",
+    sort_channels=True,
+    sort_order="descending",
 )
+# %%
+a = plot_spike_raster(
+    spike_df=spike_df,
+    channels=np.arange(0, 4, 1),
+    time_window=[0.2, 0.8],
+    sort_spikes="time",
+    color="black",
+    color_mode="single",
+    sort_channels=True,
+    figsize=(10, 10),
+    marker_width=2,
+    marker_size=50,
+)
+# %%
+a = plot_multi_channel_data(
+    np.array(data_to_process),
+    channels=np.arange(0, 32, 1),
+    time_window=[0.2, 0.8],
+    fs=fs,
+    figsize=(10, 10),
+    color="black",
+    color_mode="single",
+    grid=True,
+)
+
 # %%
 # Extract waveforms using your settings
 waveforms, spike_times, metadata = extract_spike_waveforms(

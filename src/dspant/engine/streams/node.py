@@ -8,11 +8,13 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from ...nodes.stream import StreamNode  # Update this import
-from ..base import BaseProcessor
-from .pipeline import StreamProcessingPipeline
+from dspant.core.internals import public_api
+from dspant.engine.base import BaseProcessor
+from dspant.engine.streams.pipeline import StreamProcessingPipeline
+from dspant.nodes.stream import StreamNode  # Update this import
 
 
+@public_api
 class StreamProcessingNode:
     """Class for applying processing to a StreamNode"""
 

@@ -15,16 +15,16 @@ from dspant.emgproc.activity_detection import (
 )
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
-from dspant.processor.basic import (
+from dspant.processors.basic import (
     create_tkeo_envelope,
 )
-from dspant.processor.filters import (
+from dspant.processors.filters import (
     ButterFilter,
     FilterProcessor,
 )
 
 # Import the new segment extraction functionality
-from dspant.processor.segments import (
+from dspant.processors.segments import (
     create_centered_extractor,
     create_fixed_window_extractor,
     create_onset_offset_extractor,

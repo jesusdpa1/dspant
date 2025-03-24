@@ -18,10 +18,10 @@ from dspant.emgproc.activity_detection import (
 )
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
-from dspant.processor.basic import (
+from dspant.processors.basic import (
     create_tkeo_envelope,
 )
-from dspant.processor.filters import (
+from dspant.processors.filters import (
     ButterFilter,
     FilterProcessor,
 )
