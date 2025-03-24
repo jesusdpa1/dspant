@@ -6,43 +6,6 @@ from numba import jit, prange
 
 from ...engine.base import BaseProcessor
 
-# # JIT-compiled functions for reference calculation
-# @jit(nopython=True)
-# def _compute_channel_median(chunk):
-#     """Compute median across channels (axis=1)"""
-#     n_samples = chunk.shape[0]
-#     n_channels = chunk.shape[1]
-#     result = np.zeros(n_samples, dtype=np.float32)
-
-#     for i in range(n_samples):
-#         result[i] = np.median(chunk[i, :])
-
-#     return result.reshape(-1, 1)  # Return as column vector
-
-
-# JIT-compiled functions for reference calculation
-
-# @jit(nopython=True)
-# def _apply_group_median_reference(chunk, group_channels):
-#     """Apply median reference to a specific group of channels"""
-#     # Extract the channels for this group
-#     group_data = chunk[:, group_channels]
-
-#     # Compute median for this group
-#     n_samples = group_data.shape[0]
-#     median = np.zeros(n_samples, dtype=np.float32)
-
-#     for i in range(n_samples):
-#         median[i] = np.median(group_data[i, :])
-
-#     # Reshape median to column vector
-#     median = median.reshape(-1, 1)
-
-#     # Apply shift to group channels
-#     result = group_data - median
-
-#     return result, median
-
 
 @jit(nopython=True, parallel=True, cache=True)
 def _compute_channel_median(chunk):
