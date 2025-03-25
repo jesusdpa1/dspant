@@ -1,8 +1,6 @@
 // rust/src/lib.rs
 
 use pyo3::prelude::*;
-
-
 mod processors;
 
 // Re-export the TKEO functions directly from the processors module
@@ -55,6 +53,15 @@ use processors::filters::{
     apply_elliptic_filter,
     apply_bessel_filter,
     apply_cascaded_filters,
+    apply_moving_average,
+    apply_weighted_moving_average,
+    apply_moving_rms,
+    generate_sinc_window,
+    apply_sinc_filter,
+    apply_fir_filter,
+    apply_exponential_moving_average,
+    apply_median_filter,
+    apply_savgol_filter,
 };
 
 // Original functions
@@ -99,7 +106,6 @@ fn _rs(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compute_covariance_parallel, py)?)?;
     m.add_function(wrap_pyfunction!(compute_mean_parallel, py)?)?;
 
-
     // Add the common reference functions
     m.add_function(wrap_pyfunction!(compute_channel_median, py)?)?;
     m.add_function(wrap_pyfunction!(compute_channel_median_parallel, py)?)?;
@@ -110,13 +116,24 @@ fn _rs(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_channel_reference, py)?)?;
     m.add_function(wrap_pyfunction!(apply_group_reference, py)?)?;
 
-
+    // add iir_filters
     m.add_function(wrap_pyfunction!(parallel_filter_channels, py)?)?;
     m.add_function(wrap_pyfunction!(apply_butter_filter, py)?)?;
     m.add_function(wrap_pyfunction!(apply_cheby_filter, py)?)?;
     m.add_function(wrap_pyfunction!(apply_elliptic_filter, py)?)?;
     m.add_function(wrap_pyfunction!(apply_bessel_filter, py)?)?;
     m.add_function(wrap_pyfunction!(apply_cascaded_filters, py)?)?;
-    
+
+    //add fir_filters
+    m.add_function(wrap_pyfunction!(apply_moving_average, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_weighted_moving_average, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_exponential_moving_average, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_moving_rms, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_median_filter, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_savgol_filter, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_fir_filter, py)?)?;
+    m.add_function(wrap_pyfunction!(generate_sinc_window, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_sinc_filter, py)?)?;
+
     Ok(())
 }
