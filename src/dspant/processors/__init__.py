@@ -14,7 +14,6 @@ This module provides various signal processing components:
 # Expose all sub-packages
 from . import basic, filters, quality_metrics, spatial, spectral
 from .basic import (
-    create_moving_average,
     create_normalizer,
     create_rectifier,
     create_tkeo,

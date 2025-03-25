@@ -18,6 +18,7 @@ from dspant.nodes import StreamNode
 # Import Python implementations
 from dspant.processors.spatial import create_whitening_processor
 from dspant.processors.spatial.common_reference_rs import create_cmr_processor_rs
+from dspant.processors.spatial.whiten_rs import create_whitening_processor_rs
 from dspant.vizualization import plot_multi_channel_data
 
 # Import Rust implementation of IIR filters
@@ -93,6 +94,42 @@ print(f"Rust implementation time: {rust_time:.4f} seconds")
 # %%
 cmr_processor_rs = create_cmr_processor_rs()
 whitening_processor_py = create_whitening_processor(eps=1e-6)
+
+# %%
+
+# %%
+# Whitening Processor Comparison
+print("Comparing Whitening Processors...")
+
+# Timing for Python Whitening Processor
+whitening_processor_py = create_whitening_processor(eps=1e-6)
+start_py = time.time()
+whitened_data_py = whitening_processor_py.process(stream_hd.data, fs).persist()
+end_py = time.time()
+python_time = end_py - start_py
+print(f"Whitening processing time Python: {python_time:.4f} seconds")
+
+# Timing for Rust Whitening Processor
+whitening_processor_rs = create_whitening_processor_rs(eps=1e-6)
+start_rs = time.time()
+whitened_data_rs = whitening_processor_rs.process(stream_hd.data, fs).persist()
+end_rs = time.time()
+rust_time = end_rs - start_rs
+print(f"Whitening processing time Rust: {rust_time:.4f} seconds")
+
+# Calculate speedup
+speedup = python_time / rust_time
+print(f"Whitening speedup: {speedup:.2f}x")
+
+# Verify results are close
+difference = np.abs(whitened_data_py - whitened_data_rs)
+mean_diff = np.mean(difference)
+max_diff = np.max(difference)
+print(f"\nResult Comparison:")
+print(f"Mean absolute difference: {mean_diff:.8f}")
+print(f"Max absolute difference: {max_diff:.8f}")
+
+
 # %%
 rust_processor.add_processor(
     [cmr_processor_rs, whitening_processor_py], group="spatial"

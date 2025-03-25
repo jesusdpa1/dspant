@@ -5,7 +5,7 @@ This module provides high-performance implementations of various IIR filters
 (Butterworth, Chebyshev, Elliptic, Bessel) with Rust acceleration for multi-channel data.
 """
 
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
