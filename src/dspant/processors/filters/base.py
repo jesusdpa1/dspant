@@ -32,7 +32,7 @@ class FilterProcessor(BaseProcessor):
 
         return data.map_overlap(
             self.filter_func,
-            depth=(self.overlap_samples, 0),
+            depth={-2: self._overlap_samples},
             boundary="reflect",
             fs=fs,
             dtype=data.dtype,
