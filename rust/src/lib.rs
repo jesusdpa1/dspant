@@ -2,6 +2,7 @@
 
 use pyo3::prelude::*;
 
+
 mod processors;
 
 // Re-export the TKEO functions directly from the processors module
@@ -45,6 +46,16 @@ use processors::spatial::common_reference::{
     apply_group_reference,
 };
 
+
+// Re-export filter functions
+use processors::filters::{
+    parallel_filter_channels,
+    apply_butter_filter,
+    apply_cheby_filter,
+    apply_elliptic_filter,
+    apply_bessel_filter,
+    apply_cascaded_filters,
+};
 
 // Original functions
 #[pyfunction]
@@ -100,5 +111,12 @@ fn _rs(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_group_reference, py)?)?;
 
 
+    m.add_function(wrap_pyfunction!(parallel_filter_channels, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_butter_filter, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_cheby_filter, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_elliptic_filter, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_bessel_filter, py)?)?;
+    m.add_function(wrap_pyfunction!(apply_cascaded_filters, py)?)?;
+    
     Ok(())
 }
