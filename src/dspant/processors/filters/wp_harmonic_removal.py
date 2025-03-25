@@ -122,7 +122,7 @@ class WaveletPacketHarmonicRemoval(BaseProcessor):
 
     def __init__(
         self,
-        fundamental_freq: float = 50.0,
+        fundamental_freq: float = 60.0,
         wavelet: str = "db4",
         max_level: Optional[int] = None,
         window_size: Optional[int] = None,

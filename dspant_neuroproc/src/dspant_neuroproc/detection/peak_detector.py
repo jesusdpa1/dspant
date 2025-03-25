@@ -13,8 +13,8 @@ import numpy as np
 import polars as pl
 from numba import jit
 
-from ...processor.quality_metrics import NoiseEstimationProcessor
-from ..detection.base import ThresholdDetector
+from dspant.processors.quality_metrics import NoiseEstimationProcessor
+from dspant_neuroproc.detection.base import ThresholdDetector
 
 
 @jit(nopython=True, cache=True)

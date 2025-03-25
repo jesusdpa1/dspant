@@ -5,7 +5,7 @@ This module provides high-performance Rust implementations of whitening algorith
 with Python bindings, while preserving compatibility with Dask arrays for large datasets.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 import dask.array as da
 import numpy as np
@@ -37,121 +37,151 @@ class WhiteningRustProcessor(BaseProcessor):
     """
     Rust-accelerated whitening processor implementation.
 
-    Whitens the signal by decorrelating and normalizing the variance using
-    Rust-accelerated functions for better performance.
-
-    Parameters
-    ----------
-    apply_mean : bool, default: False
-        Whether to subtract the mean before applying whitening matrix
-    int_scale : float or None, default: None
-        Apply a scaling factor to fit integer range if needed
-    eps : float or None, default: None
-        Small epsilon to regularize SVD. If None, it's automatically determined
-    use_parallel : bool, default: True
-        Whether to use parallel processing for better performance
+    Key modifications to ensure lazy evaluation and consistent behavior
+    with the Python implementation.
     """
 
     def __init__(
         self,
+        mode: Literal["global"] = "global",
         apply_mean: bool = False,
         int_scale: Optional[float] = None,
         eps: Optional[float] = None,
-        use_parallel: bool = True,
+        W: Optional[np.ndarray] = None,
+        M: Optional[np.ndarray] = None,
+        regularize: bool = False,
+        regularize_kwargs: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize the Rust-accelerated whitening processor."""
-        if not _HAS_RUST:
-            raise ImportError(
-                "Rust extension not available. Install with 'pip install dspant[rust]'"
+        """
+        Initialize with more flexible configuration matching Python implementation.
+        """
+        # Add mode parameter to match Python implementation
+        if mode != "global":
+            raise ValueError("Only 'global' mode is currently supported")
+
+        # Validate parameters similarly to Python implementation
+        if not apply_mean and regularize:
+            raise ValueError(
+                "`apply_mean` must be `True` if regularizing. `assume_centered` is fixed to `True`."
             )
 
+        # Initialization similar to Python implementation
+        self.mode = mode
         self.apply_mean = apply_mean
         self.int_scale = int_scale
         self.eps = eps if eps is not None else 1e-6
-        self.use_parallel = use_parallel
+        self.regularize = regularize
+        self.regularize_kwargs = regularize_kwargs or {"method": "GraphicalLassoCV"}
         self._overlap_samples = 0  # No overlap needed for this operation
 
-        # Will be initialized during processing
-        self._whitening_matrix = None
-        self._mean = None
-        self._is_fitted = False
+        # Pre-computed matrices handling
+        if W is not None:
+            self._whitening_matrix = np.asarray(W)
+            self._mean = np.asarray(M) if M is not None else None
+            self._is_fitted = True
+        else:
+            self._whitening_matrix = None
+            self._mean = None
+            self._is_fitted = False
 
     def process(self, data: da.Array, fs: Optional[float] = None, **kwargs) -> da.Array:
         """
         Apply whitening to the data lazily using Rust implementation.
 
-        Parameters
-        ----------
-        data : da.Array
-            Input data as a Dask array
-        fs : float, optional
-            Sampling frequency (not used but required by interface)
-        **kwargs : dict
-            Additional keyword arguments
-            sample_size: int, default: 10000
-                Number of samples to use for computing covariance matrix
-            use_parallel: bool
-                Override the use_parallel setting from initialization
-
-        Returns
-        -------
-        whitened_data : da.Array
-            Whitened data as a Dask array
+        Enhanced to more closely match Python implementation's lazy evaluation.
         """
         # Ensure the data is 2D
         if data.ndim == 1:
             data = data.reshape(-1, 1)
 
-        # Get parameters from kwargs
+        # Get parameters from kwargs with defaults matching Python implementation
+        compute_now = kwargs.get("compute_now", False)
         sample_size = kwargs.get("sample_size", 10000)
-        use_parallel = kwargs.get("use_parallel", self.use_parallel)
+        use_parallel = kwargs.get("use_parallel", True)
 
         # Select appropriate Rust functions based on parallel setting
         whitening_func = apply_whitening_parallel if use_parallel else apply_whitening
         cov_func = compute_covariance_parallel if use_parallel else compute_covariance
         mean_func = compute_mean_parallel if use_parallel else compute_mean
 
-        # ALWAYS compute the whitening matrix first if not already fitted
-        if not self._is_fitted:
-            # For immediate computation, take a random subset
-            total_samples = data.shape[0]
-            if total_samples > sample_size:
-                # Take samples from different parts of the data
-                indices = np.linspace(0, total_samples - 1, sample_size, dtype=int)
-                sample_data = data[indices].compute().astype(np.float32)
-            else:
-                # Use all data if it's smaller than the sample size
-                sample_data = data.compute().astype(np.float32)
-
+        # Computation strategy mirroring Python implementation
+        def compute_whitening_matrix_for_data(sample_data):
+            """
+            Compute whitening matrix following Python implementation logic.
+            """
             # Compute mean if needed
             if self.apply_mean:
-                self._mean = mean_func(sample_data)
-                data_centered = sample_data - self._mean
+                mean = np.mean(sample_data, axis=0)
+                mean = mean[np.newaxis, :]
+                data_centered = sample_data - mean
             else:
-                self._mean = None
+                mean = None
                 data_centered = sample_data
 
-            # Compute covariance matrix using Rust implementation
-            cov = cov_func(data_centered)
+            # Compute covariance matrix
+            if not self.regularize:
+                cov = data_centered.T @ data_centered / data_centered.shape[0]
+            else:
+                # Placeholder for robust covariance computation if needed
+                cov = cov_func(data_centered)
 
-            # Compute whitening matrix using Rust implementation
-            self._whitening_matrix = compute_whitening_matrix(cov, self.eps)
+            # Determine epsilon for regularization
+            if self.eps is None:
+                median_data_sqr = np.median(data_centered**2)
+                eps = (
+                    max(1e-16, median_data_sqr * 1e-3)
+                    if 0 < median_data_sqr < 1
+                    else 1e-16
+                )
+            else:
+                eps = self.eps
 
-            # Mark as fitted
-            self._is_fitted = True
+            # Compute whitening matrix
+            whitening_matrix = compute_whitening_matrix(cov.astype(np.float32), eps)
+
+            return whitening_matrix, mean
+
+        # Compute whitening matrix if not already fitted
+        if not self._is_fitted:
+            # For immediate computation or when specifically requested
+            if compute_now:
+                total_samples = data.shape[0]
+                if total_samples > sample_size:
+                    # Take samples from different parts of the data
+                    indices = np.linspace(0, total_samples - 1, sample_size, dtype=int)
+                    sample_data = data[indices].compute().astype(np.float32)
+                else:
+                    # Use all data if it's smaller than the sample size
+                    sample_data = data.compute().astype(np.float32)
+
+                # Compute whitening matrix
+                self._whitening_matrix, self._mean = compute_whitening_matrix_for_data(
+                    sample_data
+                )
+                self._is_fitted = True
 
         # Define the whitening function for each chunk
         def apply_chunk_whitening(chunk: np.ndarray) -> np.ndarray:
             # Convert to float32 for computation
             chunk_float = chunk.astype(np.float32) if chunk.dtype.kind == "u" else chunk
 
-            # Use pre-computed whitening matrix (we've already guaranteed it's computed)
-            return whitening_func(
+            # Lazy computation of whitening matrix if not already fitted
+            if not self._is_fitted:
+                # Compute whitening matrix for this chunk
+                whitening_matrix, mean = compute_whitening_matrix_for_data(chunk_float)
+            else:
+                whitening_matrix = self._whitening_matrix
+                mean = self._mean
+
+            # Apply whitening
+            result = whitening_func(
                 chunk_float,
-                self._whitening_matrix,
-                self._mean if self.apply_mean else None,
+                whitening_matrix,
+                mean if self.apply_mean else None,
                 self.int_scale,
             )
+
+            return result
 
         # Use map_blocks to maintain laziness
         return data.map_blocks(apply_chunk_whitening, dtype=np.float32)
