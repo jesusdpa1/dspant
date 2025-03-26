@@ -59,14 +59,19 @@ cpu = [
     "torchaudio>=2.6.0",
 ]
 cu126 = [
-    "torch>=2.6.0",
-    "torchaudio>=2.6.0",
+    "torch>=2.6.0; sys_platform == 'win32' or sys_platform == 'linux'",
+    "torchaudio>=2.6.0; sys_platform == 'win32' or sys_platform == 'linux'",
+    "torch>=2.6.0; sys_platform == 'darwin'",
+    "torchaudio>=2.6.0; sys_platform == 'darwin'",
 ]
+
 emgproc = ["dspant-emgproc==0.1.0"]
 neuroproc = ["dspant-neuroproc==0.1.0"]
 all = [
     "dspant-emgproc==0.1.0", 
-    "dspant-neuroproc==0.1.0", 
+    "dspant-neuroproc==0.1.0",
+    "torch>=2.6.0",
+    "torchaudio>=2.6.0", 
 ]
 
 [tool.uv]
@@ -80,14 +85,16 @@ conflicts = [
 cache-keys = [{file = "pyproject.toml"}, {file = "./rust/Cargo.toml"}, {file = "**/*.rs"}]
 
 [tool.uv.sources]
+# CPU version
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu126", extra = "cu126" },
+    { index = "pytorch-cu126", extra = "cu126", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
 ]
 torchaudio = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu126", extra = "cu126" },
+    { index = "pytorch-cu126", extra = "cu126", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
 ]
+
 dspant-emgproc = [{ workspace = true }]
 dspant-neuroproc = [{ workspace = true }]
 
