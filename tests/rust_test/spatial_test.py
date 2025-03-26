@@ -22,8 +22,14 @@ from dspant.processors.filters import (
 # Import Python implementations
 from dspant.processors.spatial import create_cmr_processor, create_whitening_processor
 
+# Import Rust implementation of IIR filters
+
 # Import Rust implementations
 try:
+    from dspant.processors.filters.iir_filters import (
+        IIRFilterProcessor,
+        create_filter_processor,
+    )
     from dspant.processors.spatial.common_reference_rs import create_cmr_processor_rs
     from dspant.processors.spatial.whiten_rs import create_whitening_processor_rs
 
@@ -34,15 +40,18 @@ except ImportError:
     )
     HAS_RUST = False
 
-from dspant_neuroproc.vizualization import plot_multi_channel_data
+from dspant.vizualization import plot_multi_channel_data
 
 sns.set_theme(style="darkgrid")
 
 # %%
 # Configure paths
-home = Path(r"E:\jpenalozaa")  # Change to your path
-base_path = home.joinpath(r"camber_presentation\drv\drv_02_hemisection")
-hd_stream_path = base_path.joinpath(r"EMGM.ant")
+# /home/jesusdpa1/data/topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline
+home = Path().home()  # Change to your path
+base_path = home.joinpath(
+    r"data/topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
+)
+hd_stream_path = base_path.joinpath(r"HDEG.ant")
 
 # %%
 # Load HD data
@@ -59,26 +68,35 @@ fs = stream_hd.fs
 print(f"Sampling rate: {fs} Hz")
 
 # %%
-# Create basic filters for preprocessing (will be used by all processors)
-bandpass_filter = ButterFilter("bandpass", (300, 6000), order=4, fs=fs)
-notch_filter = ButterFilter("bandstop", (59, 61), order=4, fs=fs)
+rust_processor = create_processing_node(stream_hd, name="Rust Butterworth")
 
-# Create common filter processors
-notch_processor = FilterProcessor(
-    filter_func=notch_filter.get_filter_function(), overlap_samples=40, parallel=True
-)
-bandpass_processor = FilterProcessor(
-    filter_func=bandpass_filter.get_filter_function(), overlap_samples=40, parallel=True
+# Create IIR filters with Rust acceleration
+bandpass_rust = create_filter_processor(
+    filter_type="butter",
+    btype="bandpass",
+    cutoff=(300, 6000),
+    order=4,
+    filtfilt=True,
+    use_rust=True,
 )
 
+notch_rust = create_filter_processor(
+    filter_type="butter",
+    btype="bandstop",
+    cutoff=(59, 61),
+    order=4,
+    filtfilt=True,
+    use_rust=True,
+)
 # %%
 # Setup and test with different processor configurations
 
 # 1. Setup Python version of CMR
 filter_processor = create_processing_node(stream_hd)
-filter_processor.add_processor([notch_processor, bandpass_processor], group="filters")
+filter_processor.add_processor([notch_rust, bandpass_rust], group="filters")
+
 # %%
-test = filter_processor.process(parallel=True).persist()
+test = filter_processor.process().persist()
 
 # %%
 
@@ -112,7 +130,7 @@ whitened_data = whitening_processor_py.process(test, fs).persist()
 end_py = time.time()
 python_time = end_py - start_py
 print(f"Whitening processing time Python: {python_time:.4f} seconds")
-
+# %%
 whitening_processor_rs = create_whitening_processor_rs(eps=1e-6)
 start_rs = time.time()
 whitened_data_rs = whitening_processor_rs.process(test, fs).persist()
