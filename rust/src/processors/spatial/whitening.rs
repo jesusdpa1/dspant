@@ -1,10 +1,9 @@
 use ndarray::{Array1, Array2, ArrayView2, Axis};
-use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2};
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
-use rayon::prelude::*;
-use ndarray_linalg::{Eigh, UPLO};  // For eigendecomposition
+use ndarray_linalg::SVD;
 
-/// Improved compute_whitening_matrix with better performance
+/// Improved compute_whitening_matrix with SVD instead of Eigh
 #[pyfunction]
 pub fn compute_whitening_matrix(
     py: Python<'_>,
@@ -18,22 +17,22 @@ pub fn compute_whitening_matrix(
     let whitening = Python::allow_threads(py, || {
         let n = cov_array.shape()[0];
         
-        // Perform eigendecomposition
-        match cov_array.eigh(UPLO::Upper) {
-            Ok((eigvals, eigvecs)) => {
-                // Create diagonal matrix with 1/sqrt(S + eps) using parallel iterator
-                let s_inv: Vec<f32> = eigvals.iter()
+        // Perform SVD
+        match cov_array.svd(true, true) {
+            Ok((u, s, _vt)) => {
+                // Create diagonal matrix with 1/sqrt(S + eps)
+                let s_inv: Vec<f32> = s.iter()
                     .map(|&x| 1.0 / (x + eps).sqrt())
                     .collect();
                 
-                // Use ndarray's matrix multiplication for better performance
                 let diag_inv = Array2::from_diag(&Array1::from(s_inv));
-                let result = eigvecs.dot(&diag_inv).dot(&eigvecs.t());
                 
-                result
+                // Unwrap the u value and then use it
+                let u_unwrapped = u.expect("U matrix is None");
+                u_unwrapped.dot(&diag_inv).dot(&u_unwrapped.t())
             },
             Err(_) => {
-                // Fallback to a simple identity matrix if eigendecomposition fails
+                // Fallback to a simple identity matrix if SVD fails
                 Array2::<f32>::eye(n)
             }
         }
@@ -67,13 +66,27 @@ pub fn apply_whitening_parallel(
         // Prepare centered data
         let centered_data = match &mean_array {
             Some(mean) => {
-                // Create a 2D mean array if it's 1D
-                let mean_2d = mean.clone().into_shape((1, mean.len())).unwrap();
+                // Ensure mean is properly shaped
+                let mean_2d = if mean.ndim() == 1 {
+                    // Clone and expand 1D mean to 2D
+                    let cloned_mean = mean.clone();
+                    Array2::from_shape_vec(
+                        (1, cloned_mean.len()), 
+                        cloned_mean.into_raw_vec()
+                    ).expect("Failed to create 2D mean array")
+                } else {
+                    // Ensure mean is 2D and matches feature dimension
+                    let cloned_mean = mean.clone();
+                    if cloned_mean.shape()[1] != n_features {
+                        panic!("Mean array dimension does not match data features");
+                    }
+                    cloned_mean
+                };
                 
                 // Subtract mean from each row
-                Array2::from_shape_fn(data_array.dim(), |(i, j)| 
-                    data_array[[i, j]] - mean_2d[[0, j]]
-                )
+                Array2::from_shape_fn(data_array.dim(), |(i, j)| {
+                    data_array[[i, j]] - mean_2d[[0, j.min(mean_2d.shape()[1] - 1)]]
+                })
             },
             None => data_array.clone(),
         };
@@ -82,7 +95,8 @@ pub fn apply_whitening_parallel(
         let result = Array2::<f32>::from_shape_fn((n_samples, n_features), |(i, j)| {
             // Compute dot product for each cell
             let row_slice = centered_data.row(i);
-            let whitened_val = row_slice.dot(&whitening_array.column(j));
+            let col_slice = whitening_array.column(j);
+            let whitened_val = row_slice.dot(&col_slice);
             
             // Apply optional scaling
             int_scale.map_or(whitened_val, |scale| scale * whitened_val)
@@ -142,24 +156,24 @@ pub fn compute_mean_parallel(
     // Compute mean
     let mean = Python::allow_threads(py, || {
         // Compute mean along first axis
-        let result: Array2<f32> = data_array
-            .mean_axis(Axis(0))
-            .map(|mean_array| {
-                // Ensure result is 2D (1 row x n_features columns)
-                mean_array
-                    .into_shape((1, n_features))
-                    .unwrap_or_else(|_| Array2::zeros((1, n_features)))
-            })
-            .unwrap_or_else(|| Array2::zeros((1, n_features)));
-        
-        result
+        if let Some(mean_array) = data_array.mean_axis(Axis(0)) {
+            // Reshape to 2D (1 row x n_features columns)
+            let mut result = Array2::<f32>::zeros((1, n_features));
+            for j in 0..n_features {
+                result[[0, j]] = mean_array[j];
+            }
+            result
+        } else {
+            // Fallback if mean computation fails
+            Array2::<f32>::zeros((1, n_features))
+        }
     });
     
     // Convert back to Python
     Ok(mean.into_pyarray(py).into())
 }
 
-/// Optimized whitening function with combined mean and whitening
+/// Optimized whitening function with combined mean and whitening, now using SVD
 #[pyfunction]
 pub fn whiten_data(
     py: Python<'_>,
@@ -172,11 +186,12 @@ pub fn whiten_data(
     let data_array = data.as_array().to_owned();
     
     let whitened = Python::allow_threads(py, || {
+        let n_samples = data_array.shape()[0];
+        let n_features = data_array.shape()[1];
+        
         // Compute mean if required
         let mean_array = if apply_mean {
-            Some(data_array
-                .mean_axis(Axis(0))
-                .unwrap_or_else(|| Array1::zeros(data_array.ncols())))
+            data_array.mean_axis(Axis(0))
         } else {
             None
         };
@@ -184,31 +199,41 @@ pub fn whiten_data(
         // Center data if mean is computed
         let centered_data = match &mean_array {
             Some(mean) => {
-                // Create a 2D mean array if it's 1D
-                let mean_2d = mean.clone().into_shape((1, mean.len())).unwrap();
+                // Create 2D array to hold centered data
+                let mut centered = Array2::<f32>::zeros(data_array.dim());
                 
                 // Subtract mean from each row
-                Array2::from_shape_fn(data_array.dim(), |(i, j)| 
-                    data_array[[i, j]] - mean_2d[[0, j]]
-                )
+                for i in 0..n_samples {
+                    for j in 0..n_features {
+                        // Safely index mean to ensure we don't go out of bounds
+                        let mean_val = mean.get(j).copied().unwrap_or(0.0);
+                        centered[[i, j]] = data_array[[i, j]] - mean_val;
+                    }
+                }
+                centered
             },
             None => data_array.clone(),
         };
         
         // Compute covariance
-        let cov_matrix = centered_data.t().dot(&centered_data) / (data_array.nrows() as f32);
-        
-        // Compute whitening matrix
-        let whitening_matrix = match cov_matrix.eigh(UPLO::Upper) {
-            Ok((eigvals, eigvecs)) => {
-                let s_inv: Vec<f32> = eigvals.iter()
+        let cov_matrix = centered_data.t().dot(&centered_data) / (n_samples as f32);
+
+        // Compute whitening matrix using SVD
+        let whitening_matrix = match cov_matrix.svd(true, true) {
+            Ok((u, s, _vt)) => {
+                let s_inv: Vec<f32> = s.iter()
                     .map(|&x| 1.0 / (x + eps).sqrt())
                     .collect();
                 
                 let diag_inv = Array2::from_diag(&Array1::from(s_inv));
-                eigvecs.dot(&diag_inv).dot(&eigvecs.t())
+                
+                // Unwrap the u value first
+                let u_unwrapped = u.expect("U matrix is None");
+                // Then use it in the dot product operations
+                let temp = u_unwrapped.dot(&diag_inv);
+                temp.dot(&u_unwrapped.t())
             },
-            Err(_) => Array2::<f32>::eye(data_array.ncols()),
+            Err(_) => Array2::<f32>::eye(n_features),
         };
         
         // Apply whitening transformation
