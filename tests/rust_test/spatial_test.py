@@ -131,7 +131,7 @@ end_py = time.time()
 python_time = end_py - start_py
 print(f"Whitening processing time Python: {python_time:.4f} seconds")
 # %%
-whitening_processor_rs = create_whitening_processor_rs(eps=1e-6)
+whitening_processor_rs = create_whitening_processor_rs(eps=1e-6, use_parallel=False)
 start_rs = time.time()
 whitened_data_rs = whitening_processor_rs.process(test, fs).persist()
 end_rs = time.time()
@@ -147,8 +147,8 @@ if whitened_data is not None and whitened_data_rs is not None:
     difference = np.abs(whitened_data - whitened_data_rs)
     mean_diff = np.mean(difference)
     max_diff = np.max(difference)
-    print(f"Mean difference: {mean_diff:.8f}")
-    print(f"Max difference: {max_diff:.8f}")
+    print(f"Mean difference: {mean_diff.compute():.8f}")
+    print(f"Max difference: {max_diff.compute():.8f}")
 # %%
 # 2. Setup Python version of Whitening
 
