@@ -1,3 +1,10 @@
+"""
+/filters_explained.py
+Author: jpenalozaa
+Description: code to plot filter configurations
+
+"""
+
 # %%
 import matplotlib.pyplot as plt
 import numpy as np
