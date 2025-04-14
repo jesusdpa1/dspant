@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional, Tuple
 import dask.array as da
 import numpy as np
 import pywt
-from scipy import signal
+from scipy import ndimage, signal
 
 from ...engine.base import BaseProcessor
 
@@ -102,7 +102,7 @@ def estimate_baseline(
 
     # Further smooth with a Gaussian filter
     sigma = window_size / 6.0  # Heuristic: sigma = window_size/6
-    baseline = signal.gaussian_filter1d(baseline, sigma)
+    baseline = ndimage.gaussian_filter1d(baseline, sigma)
 
     return baseline
 
