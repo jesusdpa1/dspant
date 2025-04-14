@@ -15,5 +15,15 @@
         },
         "editor.formatOnSave": true, 
         "editor.defaultFormatter": "charliermarsh.ruff"
-    }
+    }, 
+    
+
+    "rust-analyzer.cargo.extraEnv": {
+        "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"
+    },
+    "terminal.integrated.env.windows": {
+        "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"
+    },
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe"
+
   }
