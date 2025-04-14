@@ -222,15 +222,5 @@ plt.suptitle(
 # Adjust layout
 plt.tight_layout(rect=[0, 0, 1, 0.95])  # Make room for the suptitle
 
-# # Add a caption/note if needed
-# plt.figtext(
-#     0.5,
-#     0.01,
-#     f"Channel {channel_to_plot} data, filtered with bandpass (10-2000 Hz) and notch (60 Hz) filters",
-#     ha="center",
-#     fontsize=CAPTION_SIZE,
-#     fontstyle="italic",
-# )
-
 plt.show()
 # %%
