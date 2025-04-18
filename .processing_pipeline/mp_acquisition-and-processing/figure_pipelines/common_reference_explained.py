@@ -4,12 +4,15 @@ Author: Jesus Penaloza (Updated with envelope detection and onset detection)
 """
 
 # %%
+import os
 import time
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import seaborn as sns
+from dotenv import load_dotenv
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
@@ -28,15 +31,21 @@ from dspant.processors.spatial.common_reference_rs import create_cmr_processor_r
 from dspant.vizualization.general_plots import plot_multi_channel_data
 
 sns.set_theme(style="darkgrid")
+load_dotenv()
 # %%
 
-base_path = r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+data_dir = Path(os.getenv("DATA_DIR"))
+
+base_path = data_dir.joinpath(
+    r"topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+)
 #     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
 
-hd_stream_path = base_path + r"/HDEG.ant"
+hd_stream_path = base_path.joinpath("HDEG.an")
+
 # %%
 # Load EMG data
-stream_hd = StreamNode(hd_stream_path)
+stream_hd = StreamNode(str(hd_stream_path))
 stream_hd.load_metadata()
 stream_hd.load_data()
 # Print stream_emg summary
