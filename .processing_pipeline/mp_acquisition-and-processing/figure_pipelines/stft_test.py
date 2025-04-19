@@ -1,4 +1,5 @@
 """
+/stft_test.py
 Example script for stft test
 Author: jpenalozaa
 """
@@ -17,9 +18,9 @@ from tqdm import tqdm
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
-from dspant.processor.filters import ButterFilter, FilterProcessor
-from dspant.processor.spatial import create_cmr_processor, create_whitening_processor
-from dspant.processor.spectral import SpectrogramProcessor
+from dspant.processors.filters import ButterFilter, FilterProcessor
+from dspant.processors.spatial import create_cmr_processor, create_whitening_processor
+from dspant.processors.spectral import SpectrogramProcessor
 
 # Set up styles
 sns.set_theme(style="darkgrid")

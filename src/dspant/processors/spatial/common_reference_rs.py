@@ -170,6 +170,96 @@ class CommonReferenceRustProcessor(BaseProcessor):
         # Use map_blocks to maintain laziness
         return data.map_blocks(apply_reference, dtype=np.float32)
 
+    def get_reference(self, data: da.Array, **kwargs) -> da.Array:
+        """
+        Compute the reference signal used for re-referencing.
+
+        Parameters
+        ----------
+        data : da.Array
+            The input data (same data passed to process)
+        **kwargs : dict
+            Additional keyword arguments
+            use_parallel: Whether to use parallel processing
+
+        Returns
+        -------
+        reference : da.Array
+            Reference signal (samples x 1) used for re-referencing
+        """
+        # Override parallel setting if specified in kwargs
+        use_parallel = kwargs.get("use_parallel", self.use_parallel)
+
+        # Select appropriate compute function based on operator
+        if self.operator == "median":
+            compute_func = (
+                compute_channel_median_parallel
+                if use_parallel
+                else compute_channel_median
+            )
+        else:  # average
+            compute_func = (
+                compute_channel_mean_parallel if use_parallel else compute_channel_mean
+            )
+
+        # Define function to compute reference for each chunk
+        def compute_reference(chunk: np.ndarray) -> np.ndarray:
+            # If data is 1D, expand to 2D
+            if chunk.ndim == 1:
+                chunk = chunk.reshape(-1, 1)
+
+            # Convert data to float32 for computation if needed
+            if chunk.dtype.kind in ["u", "i"]:
+                chunk = chunk.astype(np.float32)
+
+            # Ensure data is contiguous for better performance
+            if not chunk.flags.c_contiguous:
+                chunk = np.ascontiguousarray(chunk)
+
+            # Compute reference based on settings
+            if self.groups is None:
+                if self.reference == "global":
+                    if self.reference_channels is None:
+                        # Use all channels
+                        return compute_func(chunk)
+                    else:
+                        # Use only specified channels
+                        channels = np.array(self.reference_channels, dtype=np.int32)
+                        if self.operator == "median":
+                            # Extract channels for median calculation
+                            selected_data = np.zeros(
+                                (chunk.shape[0], len(channels)), dtype=np.float32
+                            )
+                            for i, chan in enumerate(channels):
+                                selected_data[:, i] = chunk[:, chan]
+                            return compute_func(selected_data)
+                        else:  # average
+                            # Extract channels for mean calculation
+                            selected_data = np.zeros(
+                                (chunk.shape[0], len(channels)), dtype=np.float32
+                            )
+                            for i, chan in enumerate(channels):
+                                selected_data[:, i] = chunk[:, chan]
+                            return compute_func(selected_data)
+                else:  # single reference
+                    # Return the specified reference channel as the reference
+                    ref_channel = self.reference_channels[0]
+                    return chunk[:, ref_channel].reshape(-1, 1)
+            else:
+                # For group-wise referencing, return None (not implemented)
+                # This would need a different approach for handling multiple references
+                # We could potentially return a dictionary of references per group
+                # or a matrix with one column per group
+                raise NotImplementedError(
+                    "get_reference for group-wise referencing is not implemented yet"
+                )
+
+        # Use map_blocks to compute reference
+        # We ensure the output has shape (n_samples, 1)
+        return data.map_blocks(
+            compute_reference, chunks=(data.chunks[0], 1), dtype=np.float32
+        )
+
     @property
     def overlap_samples(self) -> int:
         """Return the number of samples needed for overlap"""

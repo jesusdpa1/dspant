@@ -5,6 +5,8 @@ import numpy as np
 from numba import jit, prange
 from scipy import signal
 
+from dspant.core.internals import public_api
+
 from ...engine.base import BaseProcessor
 
 
@@ -137,7 +139,7 @@ class FFTMovingAverageProcessor(BaseProcessor):
         return base_summary
 
 
-@jit(nopython=True, parallel=True, cache=True, fastmath=True)
+@jit(nopython=True, parallel=False, cache=True, fastmath=True)
 def _apply_fft_ma_numba(
     data: np.ndarray, weights: np.ndarray, center: bool = True
 ) -> np.ndarray:
@@ -258,7 +260,7 @@ def _apply_fft_ma_scipy(
         return result
 
 
-@jit(nopython=True, parallel=True, cache=True, fastmath=True)
+@jit(nopython=True, parallel=False, cache=True, fastmath=True)
 def _apply_exponential_moving_average_parallel(
     data: np.ndarray, alpha: float
 ) -> np.ndarray:
@@ -468,7 +470,7 @@ def _apply_fft_rms_numba_single(
     return np.sqrt(result)
 
 
-@jit(nopython=True, parallel=True, cache=True, fastmath=True)
+@jit(nopython=True, parallel=False, cache=True, fastmath=True)
 def _apply_fft_rms_numba(
     data: np.ndarray, window_size: int, center: bool = True
 ) -> np.ndarray:
@@ -560,6 +562,7 @@ def _apply_fft_rms_numpy(
         return result
 
 
+@public_api
 def create_fft_rms_processor(
     window_size: int = 11,
     center: bool = True,
@@ -586,6 +589,7 @@ def create_fft_rms_processor(
     )
 
 
+@public_api
 def create_fft_moving_average(
     window_size: int = 11,
     method: str = "simple",

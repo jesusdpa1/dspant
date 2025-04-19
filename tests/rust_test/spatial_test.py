@@ -46,17 +46,19 @@ sns.set_theme(style="darkgrid")
 
 # %%
 # Configure paths
+# home = Path().home()  # Change to your path
 # /home/jesusdpa1/data/topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline
-home = Path().home()  # Change to your path
+# E:\jpenalozaa\topoMapping\25-03-22_4896-2_testSubject_topoMapping\drv\drv_17-02-16_meps
+home = Path(r"E:\jpenalozaa")
 base_path = home.joinpath(
-    r"data/topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
+    r"topoMapping\25-03-22_4896-2_testSubject_topoMapping\drv\drv_17-02-16_meps"
 )
 hd_stream_path = base_path.joinpath(r"HDEG.ant")
 
 # %%
 # Load HD data
 print("Loading data...")
-stream_hd = StreamNode(str(hd_stream_path), chunk_size=100000)
+stream_hd = StreamNode(str(hd_stream_path), chunk_size=500000)
 stream_hd.load_metadata()
 stream_hd.load_data()
 print("EMG data loaded successfully")
