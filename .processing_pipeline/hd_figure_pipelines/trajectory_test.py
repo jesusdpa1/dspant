@@ -17,9 +17,12 @@ from dotenv import load_dotenv
 from dspant.io.loaders.phy_kilosort_loarder import load_kilosort
 from dspant.processors.extractors.epoch_extractor import EpochExtractor
 from dspant.vizualization.general_plots import plot_multi_channel_data
+from dspant_neuroproc.processors.neural_trajectories import PCATrajectoryAnalyzer
 
 # Import the density estimation and plotting from dspant_neuroproc
-from dspant_neuroproc.extraction.density_estimation import SpikeDensityEstimator
+from dspant_neuroproc.processors.spike_analytics.density_estimation import (
+    SpikeDensityEstimator,
+)
 from dspant_neuroproc.visualization.spike_density_plot import (
     plot_combined_raster_density,
     plot_spike_density,
@@ -79,12 +82,12 @@ plt.tight_layout()
 plt.show()
 
 # %%
-onsets = np.arange(0, 299) # 10 evenly spaced onsets across the entire recording
+onsets = np.arange(0, 299)  # 10 evenly spaced onsets across the entire recording
 print("Synthetic Onsets:", onsets)
-#%%
+# %%
 # Use the time_bins and spike_density from previous estimation
 epoch_extractor = EpochExtractor(
-    time_bins, spike_density, fs=1 / np.mean(np.diff(time_bins))
+    time_bins, spike_density, fs=0.5 / np.mean(np.diff(time_bins))
 )
 
 # Test different epoch extraction strategies
@@ -102,7 +105,9 @@ selected_epoch = epochs_zero[1, :, :].compute()  # Compute the dask array to num
 # Use the plot_spike_density function
 plt.figure(figsize=(12, 8))
 fig, ax = plot_spike_density(
-    time_bins=np.linspace(0, 1, selected_epoch.shape[0]),  # Create time bins for the epoch
+    time_bins=np.linspace(
+        0, 1, selected_epoch.shape[0]
+    ),  # Create time bins for the epoch
     spike_density=selected_epoch,
     unit_ids=used_unit_ids,
     cmap="viridis",
@@ -111,4 +116,15 @@ fig, ax = plot_spike_density(
 )
 plt.tight_layout()
 plt.show()
+# %%
+
+trajectory_analyzer = PCATrajectoryAnalyzer(
+    n_components=3,
+    compute_immediately=True,
+)
+# %%
+a = trajectory_analyzer.fit_transform(epochs_zero)
+# %%
+b = trajectory_analyzer.plot_trajectories()
+
 # %%
