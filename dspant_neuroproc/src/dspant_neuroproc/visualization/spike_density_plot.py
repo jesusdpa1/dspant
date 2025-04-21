@@ -7,7 +7,7 @@ from matplotlib.figure import Figure
 
 from dspant.nodes.sorter import SorterNode
 
-from ..extraction.density_estimation import SpikeDensityEstimator
+from ..processors.spike_analytics.density_estimation import SpikeDensityEstimator
 
 
 def plot_spike_density(
