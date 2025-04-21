@@ -1,7 +1,7 @@
-# src/dspant/processors/neural_trajectories/pca.py
+# src/dspant_neuroproc/processors/neural_trajectories/pca_trajectory.py
 
 import numpy as np
-from sklearn.decomposition import PCA
+from sklearn.decomposition import IncrementalPCA
 
 from ...core.internals import public_api
 from .base import BaseTrajectoryAnalyzer
@@ -10,9 +10,10 @@ from .base import BaseTrajectoryAnalyzer
 @public_api
 class PCATrajectoryAnalyzer(BaseTrajectoryAnalyzer):
     """
-    Neural trajectory analysis using Principal Component Analysis (PCA).
+    Neural trajectory analysis using Incremental Principal Component Analysis (PCA).
 
-    PCA finds orthogonal dimensions that maximize variance in the data.
+    IncrementalPCA performs PCA with memory efficiency for large datasets by
+    using batches of samples instead of the whole dataset at once.
     """
 
     def __init__(
@@ -21,10 +22,11 @@ class PCATrajectoryAnalyzer(BaseTrajectoryAnalyzer):
         random_state: int = None,
         whiten: bool = False,
         compute_immediately: bool = False,
+        batch_size: int = None,
         **kwargs,
     ):
         """
-        Initialize PCA trajectory analyzer.
+        Initialize PCA trajectory analyzer using IncrementalPCA.
 
         Parameters
         ----------
@@ -36,8 +38,11 @@ class PCATrajectoryAnalyzer(BaseTrajectoryAnalyzer):
             Whether to whiten the data
         compute_immediately : bool
             Whether to compute results immediately when fit is called
+        batch_size : int, optional
+            Size of batches for incremental learning. If None, uses
+            the larger of 5 times n_components and 100.
         **kwargs
-            Additional arguments passed to sklearn PCA
+            Additional arguments passed to sklearn IncrementalPCA
         """
         super().__init__(
             n_components=n_components,
@@ -45,13 +50,15 @@ class PCATrajectoryAnalyzer(BaseTrajectoryAnalyzer):
             compute_immediately=compute_immediately,
         )
         self.whiten = whiten
+        self.batch_size = batch_size
         self.kwargs = kwargs
 
     def _create_model(self):
-        """Create the PCA model."""
-        return PCA(
+        """Create the IncrementalPCA model."""
+        return IncrementalPCA(
             n_components=self.n_components,
-            random_state=self.random_state,
             whiten=self.whiten,
+            batch_size=self.batch_size,
+            random_state=self.random_state,
             **self.kwargs,
         )

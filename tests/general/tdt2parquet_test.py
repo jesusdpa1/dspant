@@ -1,12 +1,17 @@
 # %%
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+import dotenv
 import tdt
 
 from dspant.io import convert_tdt_to_ant
 
+dotenv.load_dotenv()
+# %%
+home = Path(os.getenv("DATA_DIR"))
 # %% Set up paths
 
 
@@ -17,17 +22,16 @@ def ls(directory: Path):
         print(f"{i}. {entry.name} ({entry_type})")
 
 
-home = Path(r"E:\jpenalozaa")  # Path().home()
-tank_path = home.joinpath(r"camber_presentation")
+tank_path = home.joinpath(r"papers\2025_mp_emg diaphragm acquisition and processing")
 
 ls(tank_path)
 # %%
 
-block_path = tank_path.joinpath("02_hemisection")
+block_path = tank_path.joinpath("15-40-17_stim")
 convert_tdt_to_ant(block_path, start=0, end=-1)
 
 # %%
 
-tdt_block = tdt.read_block(str(block_path), t1=0, t2=1)
+# tdt_block = tdt.read_block(str(block_path), t1=0, t2=1)
 
 # %%

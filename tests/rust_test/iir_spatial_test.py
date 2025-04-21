@@ -19,7 +19,7 @@ from dspant.nodes import StreamNode
 from dspant.processors.spatial import create_whitening_processor
 from dspant.processors.spatial.common_reference_rs import create_cmr_processor_rs
 from dspant.processors.spatial.whiten_rs import create_whitening_processor_rs
-from dspant.vizualization import plot_multi_channel_data
+from dspant.visualization import plot_multi_channel_data
 
 # Import Rust implementation of IIR filters
 try:

@@ -14,7 +14,7 @@ import numpy as np
 import polars as pl
 from numba import jit, prange
 
-from ...engine.base import BaseProcessor
+from dspant.engine.base import BaseProcessor
 
 
 @jit(nopython=True, parallel=True, cache=True)

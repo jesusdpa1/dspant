@@ -4,8 +4,11 @@ Author: Jesus Penaloza (Updated with envelope detection and onset detection)
 """
 
 # %%
+import os
 import time
+from pathlib import Path
 
+import dotenv
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -28,18 +31,20 @@ from dspant.processors.filters.iir_filters import (
     create_bandpass_filter,
     create_notch_filter,
 )
-from dspant.vizualization.general_plots import plot_multi_channel_data
+from dspant.visualization.general_plots import plot_multi_channel_data
 
 sns.set_theme(style="darkgrid")
 # %%
-
-base_path = r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+data_path = Path(os.getenv("DATA_DIR"))
+base_path = data_path.joinpath(
+    r"topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+)
 #     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
 
-emg_stream_path = base_path + r"/RawG.ant"
+emg_stream_path = base_path.joinpath(r"RawG.ant")
 # %%
 # Load EMG data
-stream_emg = StreamNode(emg_stream_path)
+stream_emg = StreamNode(str(emg_stream_path))
 stream_emg.load_metadata()
 stream_emg.load_data()
 # Print stream_emg summary
@@ -88,8 +93,8 @@ base_data = data_rectified[start:end, :]
 plt.plot(base_data)
 # %%
 window_size = int(0.055 * fs)
-moving_envelope_processor = create_moving_average(window_size=window_size)
-rms_envelope_processor = create_moving_rms(window_size=window_size)
+moving_envelope_processor = create_moving_average(window_size=window_size, center=False)
+rms_envelope_processor = create_moving_rms(window_size=window_size, center=False)
 tkeo_envelope_processor = create_tkeo_envelope_rs(
     "modified", rectify=False, smooth=True
 )
