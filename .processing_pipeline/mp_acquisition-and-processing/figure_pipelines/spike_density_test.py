@@ -18,7 +18,9 @@ from dspant.io.loaders.phy_kilosort_loarder import load_kilosort
 from dspant.vizualization.general_plots import plot_multi_channel_data
 
 # Import the density estimation and plotting from dspant_neuroproc
-from dspant_neuroproc.extraction.density_estimation import SpikeDensityEstimator
+from dspant_neuroproc.processors.spike_analytics.density_estimation import (
+    SpikeDensityEstimator,
+)
 from dspant_neuroproc.visualization.spike_density_plot import (
     plot_combined_raster_density,
     plot_spike_density,

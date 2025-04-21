@@ -1,12 +1,23 @@
-from typing import Dict, List, Optional, Tuple, Union
+"""
+Spike density estimation methods for neural data analysis.
+
+This module provides classes for converting discrete spike events into
+continuous firing rate estimates using binning and Gaussian smoothing.
+"""
+
+from typing import List, Optional, Tuple
 
 import numpy as np
 from numba import jit, prange
 
+from dspant.core.internals import public_api
 from dspant.nodes.sorter import SorterNode
 
+from .base import BaseSpikeTransform
 
-class SpikeDensityEstimator:
+
+@public_api
+class SpikeDensityEstimator(BaseSpikeTransform):
     """
     Converts discrete spike events into continuous firing rate estimates
     using binning and Gaussian smoothing.
@@ -66,18 +77,15 @@ class SpikeDensityEstimator:
         used_unit_ids : list of int
             Unit IDs included in the analysis
         """
-        if sorter.sampling_frequency is None:
-            raise ValueError("Sorter node must have sampling frequency set")
-
+        # Validate the sorter
+        self._validate_sorter(sorter)
         sampling_rate = sorter.sampling_frequency
 
-        # Convert times to samples
-        start_frame = int(start_time_s * sampling_rate)
-        if end_time_s is None:
-            # Use the last spike time as the end time
-            end_frame = int(np.max(sorter.spike_times))
-        else:
-            end_frame = int(end_time_s * sampling_rate)
+        # Get time range and unit IDs
+        start_frame, end_frame = self._get_time_range_samples(
+            sorter, start_time_s, end_time_s
+        )
+        used_unit_ids = self._get_filtered_unit_ids(sorter, unit_ids)
 
         # Calculate bin edges and centers
         bin_size_samples = int(self.bin_size_ms * sampling_rate / 1000)
@@ -86,11 +94,6 @@ class SpikeDensityEstimator:
             start_frame, start_frame + (n_bins + 1) * bin_size_samples, bin_size_samples
         )
         bin_centers_samples = bin_edges_samples[:-1] + bin_size_samples // 2
-
-        # Use requested units or all units
-        if unit_ids is None:
-            unit_ids = sorter.unit_ids
-        used_unit_ids = [u for u in unit_ids if u in sorter.unit_ids]
 
         # Create output array
         binned_spikes = np.zeros(
@@ -207,6 +210,50 @@ class SpikeDensityEstimator:
 
         return smoothed_rates
 
+    def transform(
+        self,
+        sorter: SorterNode,
+        start_time_s: float = 0.0,
+        end_time_s: Optional[float] = None,
+        unit_ids: Optional[List[int]] = None,
+        **kwargs,
+    ) -> Tuple[np.ndarray, np.ndarray, List[int]]:
+        """
+        Estimate spike density from a sorter node.
+
+        Parameters
+        ----------
+        sorter : SorterNode
+            SorterNode containing spike data
+        start_time_s : float
+            Start time for analysis in seconds
+        end_time_s : float or None
+            End time for analysis in seconds. If None, use the end of the recording.
+        unit_ids : list of int or None
+            Units to include. If None, use all units.
+        **kwargs : dict
+            Additional keyword arguments (unused)
+
+        Returns
+        -------
+        time_bins : np.ndarray
+            Time bin centers in seconds
+        spike_density : np.ndarray
+            Smoothed spike density in Hz (shape: time_bins × units)
+        used_unit_ids : list of int
+            Unit IDs included in the analysis
+        """
+        # First bin the spikes
+        time_bins, binned_spikes, used_unit_ids = self.bin_spikes(
+            sorter, start_time_s, end_time_s, unit_ids
+        )
+
+        # Then smooth the binned data
+        smoothed_rates = self.smooth(binned_spikes)
+
+        return time_bins, smoothed_rates, used_unit_ids
+
+    # Keep the estimate method for backward compatibility
     def estimate(
         self,
         sorter: SorterNode,
@@ -216,6 +263,8 @@ class SpikeDensityEstimator:
     ) -> Tuple[np.ndarray, np.ndarray, List[int]]:
         """
         Estimate spike density from a sorter node.
+
+        This is an alias for transform() for backward compatibility.
 
         Parameters
         ----------
@@ -237,12 +286,4 @@ class SpikeDensityEstimator:
         used_unit_ids : list of int
             Unit IDs included in the analysis
         """
-        # First bin the spikes
-        time_bins, binned_spikes, used_unit_ids = self.bin_spikes(
-            sorter, start_time_s, end_time_s, unit_ids
-        )
-
-        # Then smooth the binned data
-        smoothed_rates = self.smooth(binned_spikes)
-
-        return time_bins, smoothed_rates, used_unit_ids
+        return self.transform(sorter, start_time_s, end_time_s, unit_ids)
