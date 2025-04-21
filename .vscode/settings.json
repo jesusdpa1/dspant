@@ -19,9 +19,7 @@
   
     // Ensure your virtualenv Python is picked up correctly
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
-    "python.envFile": "${workspaceFolder}/.env",
-    "python.terminal.executeInFileDir": true,
-  
+    "python.envFile": "${workspaceFolder}/.env",  
     // Rust with PyO3
     "rust-analyzer.cargo.extraEnv": {
       "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"
@@ -29,8 +27,6 @@
   
     // Environment variables for integrated terminal
     "terminal.integrated.env.windows": {
-      "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe",
-      "PYTHONSTARTUP": "${workspaceFolder}/.pythonrc"
-    },
+      "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"},
   }
   
