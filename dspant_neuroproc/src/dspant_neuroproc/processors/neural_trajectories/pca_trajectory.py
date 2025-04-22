@@ -19,7 +19,6 @@ class PCATrajectoryAnalyzer(BaseTrajectoryAnalyzer):
     def __init__(
         self,
         n_components: int = 3,
-        random_state: int = None,
         whiten: bool = False,
         compute_immediately: bool = False,
         batch_size: int = None,
@@ -46,7 +45,6 @@ class PCATrajectoryAnalyzer(BaseTrajectoryAnalyzer):
         """
         super().__init__(
             n_components=n_components,
-            random_state=random_state,
             compute_immediately=compute_immediately,
         )
         self.whiten = whiten
@@ -59,6 +57,5 @@ class PCATrajectoryAnalyzer(BaseTrajectoryAnalyzer):
             n_components=self.n_components,
             whiten=self.whiten,
             batch_size=self.batch_size,
-            random_state=self.random_state,
             **self.kwargs,
         )

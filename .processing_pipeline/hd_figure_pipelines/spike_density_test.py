@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from dspant.io.loaders.phy_kilosort_loarder import load_kilosort
 from dspant.processors.extractors.epoch_extractor import EpochExtractor
-from dspant.vizualization.general_plots import plot_multi_channel_data
+from dspant.visualization.general_plots import plot_multi_channel_data
 
 # Import the density estimation and plotting from dspant_neuroproc
 from dspant_neuroproc.processors.spike_analytics.density_estimation import (

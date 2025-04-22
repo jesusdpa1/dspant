@@ -22,12 +22,12 @@ def ls(directory: Path):
         print(f"{i}. {entry.name} ({entry_type})")
 
 
-tank_path = home.joinpath(r"papers\2025_mp_emg diaphragm acquisition and processing")
+tank_path = home.joinpath(r"E:\jpenalozaa\test_")
 
 ls(tank_path)
 # %%
 
-block_path = tank_path.joinpath("15-40-17_stim")
+block_path = tank_path.joinpath("00_baseline")
 convert_tdt_to_ant(block_path, start=0, end=-1)
 
 # %%
