@@ -29,7 +29,8 @@ class EMGOnsetDetector(BaseProcessor):
         self,
         threshold_method: Literal["absolute", "std", "rms", "percent_max"] = "std",
         threshold_value: float = 3.0,
-        min_duration: float = 0.01,  # seconds
+        min_contraction_duration: float = 0.01,  # seconds
+        min_event_spacing: float = 0.1,  # seconds
         baseline_window: Optional[Tuple[float, float]] = None,
     ):
         """
@@ -42,12 +43,14 @@ class EMGOnsetDetector(BaseProcessor):
                 "rms": Multiple of RMS value
                 "percent_max": Percentage of maximum value
             threshold_value: Threshold parameter value
-            min_duration: Minimum duration for a valid activation (seconds)
+            min_contraction_duration: Minimum duration for a valid contraction (seconds)
+            min_event_spacing: Minimum time between consecutive events (onset-to-onset or offset-to-offset) in seconds
             baseline_window: Optional window for baseline calculation (start_time, end_time) in seconds
         """
         self.threshold_method = threshold_method
         self.threshold_value = threshold_value
-        self.min_duration = min_duration
+        self.min_contraction_duration = min_contraction_duration
+        self.min_event_spacing = min_event_spacing
         self.baseline_window = baseline_window
 
         # Use overlap based on minimum duration to avoid missing events at chunk boundaries
@@ -110,8 +113,9 @@ class EMGOnsetDetector(BaseProcessor):
         if fs is None:
             raise ValueError("Sampling frequency (fs) is required for onset detection")
 
-        # Convert minimum duration to samples
-        min_samples = int(self.min_duration * fs)
+        # Convert minimum durations to samples
+        min_contraction_samples = int(self.min_contraction_duration * fs)
+        min_event_spacing_samples = int(self.min_event_spacing * fs)
 
         # Pre-compute threshold - use the provided absolute value for simplicity
         if (
@@ -126,7 +130,7 @@ class EMGOnsetDetector(BaseProcessor):
             threshold = self.compute_thresholds(sample_data)
 
         def detect_onsets_chunk(chunk: np.ndarray) -> np.ndarray:
-            """Process a chunk of data to detect onsets"""
+            """Process a chunk of data to detect onsets using a binary mask approach"""
             # Handle different input shapes by flattening if needed
             if chunk.ndim > 1:
                 # For now, just use the first channel if there are multiple
@@ -134,16 +138,10 @@ class EMGOnsetDetector(BaseProcessor):
             else:
                 chunk_data = chunk
 
-            # Calculate difference signal (signal - threshold)
+            # Calculate signs based on threshold
             signs = chunk_data >= threshold
 
             # Find all zero crossings (from negative to positive for onset, positive to negative for offset)
-            # Use sign function instead of just testing < 0 for more reliability with floating point
-            # signs = np.sign(diff_signal)
-
-            # Get indices where the sign changes
-            # Rising edge: -1 to 1 or -1 to 0 to 1
-            # Falling edge: 1 to -1 or 1 to 0 to -1
             zero_crossings = (
                 np.where(np.diff(signs) != 0)[0] + 1
             )  # +1 to correct for diff
@@ -167,55 +165,94 @@ class EMGOnsetDetector(BaseProcessor):
                     # First crossing and at edge, make an educated guess
                     crossing_directions.append(1 if chunk_data[zc] > threshold else -1)
 
-            # Group into onset-offset pairs
-            onset_indices = []
-            offset_indices = []
+            # Extract all onsets and offsets separately
+            all_onsets = []
+            all_offsets = []
 
-            current_onset = None
             for i, (zc, direction) in enumerate(
                 zip(zero_crossings, crossing_directions)
             ):
+                if direction > 0:  # onset
+                    all_onsets.append(zc)
+                elif direction < 0:  # offset
+                    all_offsets.append(zc)
+
+            # If we don't have any onsets or offsets, return empty
+            if not all_onsets or not all_offsets:
+                return np.array([], dtype=self._dtype)
+
+            # STEP 1: Clean the onsets - remove those that are too close together
+            filtered_onsets = [all_onsets[0]]  # Always keep the first onset
+
+            for onset in all_onsets[1:]:
+                # Check if this onset is far enough from the last kept onset
+                if onset - filtered_onsets[-1] >= min_event_spacing_samples:
+                    filtered_onsets.append(onset)
+
+            # STEP 2: Create binary masks
+            # Initialize onset and offset masks with zeros
+            onset_mask = np.zeros_like(signs, dtype=bool)
+            offset_mask = np.zeros_like(signs, dtype=bool)
+
+            # Set filtered onsets to True in the onset mask
+            for onset in filtered_onsets:
+                onset_mask[onset] = True
+
+            # Set all offsets to True in the offset mask
+            for offset in all_offsets:
+                offset_mask[offset] = True
+
+            # STEP 3: Reconstruct zero crossings from onset and offset masks
+            # Find indices where either mask is True
+            new_crossings = np.where(onset_mask | offset_mask)[0]
+
+            # Determine the direction of each crossing
+            new_directions = []
+            for i, idx in enumerate(new_crossings):
+                if onset_mask[idx]:
+                    new_directions.append(1)  # onset
+                else:
+                    new_directions.append(-1)  # offset
+
+            # STEP 4: Pair onsets with offsets and validate min contraction duration
+            valid_pairs = []
+
+            current_onset = None
+            for i, (idx, direction) in enumerate(zip(new_crossings, new_directions)):
                 if direction > 0 and current_onset is None:  # onset
-                    current_onset = zc
+                    current_onset = idx
                 elif direction < 0 and current_onset is not None:  # offset
-                    onset_indices.append(current_onset)
-                    offset_indices.append(zc)
+                    # Check if contraction meets minimum duration
+                    if idx - current_onset >= min_contraction_samples:
+                        valid_pairs.append((current_onset, idx))
+
+                    # Reset for next onset
                     current_onset = None
 
-            # Process each onset-offset pair
+            # STEP 5: Build final results
             results = []
-            for onset_idx, offset_idx in zip(onset_indices, offset_indices):
-                # Calculate duration
-                duration_samples = offset_idx - onset_idx
 
-                # Skip if shorter than minimum duration
-                if duration_samples < min_samples:
-                    continue
-
+            for onset_idx, offset_idx in valid_pairs:
                 # Calculate duration in seconds
-                duration_sec = duration_samples / fs
+                duration_sec = (offset_idx - onset_idx) / fs
 
-                # Calculate peak amplitude during the event
+                # Calculate amplitude
                 segment = chunk_data[onset_idx : offset_idx + 1]
-                amplitude = np.max(segment)
+                amplitude = float(np.max(segment))
 
-                # Create result record
+                # Add to results
                 results.append(
                     (
-                        onset_idx,  # Onset index
-                        offset_idx,  # Offset index
-                        0,  # Channel number (always 0 for single channel)
-                        amplitude,  # Peak amplitude
-                        duration_sec,  # Duration in seconds
+                        onset_idx,
+                        offset_idx,
+                        0,  # channel
+                        amplitude,
+                        duration_sec,
                     )
                 )
 
             # Convert results to structured array
-            return (
-                np.array(results, dtype=self._dtype)
-                if results
-                else np.array([], dtype=self._dtype)
-            )
+            return np.array(results, dtype=self._dtype)
 
         # Make empty array with the correct dtype for meta
         empty = np.array([], dtype=self._dtype)
@@ -230,7 +267,9 @@ class EMGOnsetDetector(BaseProcessor):
             proc_data = data[:, 0]
 
         # Set overlap depth to handle events that span chunk boundaries
-        overlap = max(self._overlap_samples, min_samples)
+        overlap = max(
+            self._overlap_samples, min_contraction_samples, min_event_spacing_samples
+        )
 
         # Use map_blocks with drop_axis to ensure output has correct shape
         result = proc_data.map_overlap(
@@ -286,7 +325,8 @@ class EMGOnsetDetector(BaseProcessor):
             {
                 "threshold_method": self.threshold_method,
                 "threshold_value": self.threshold_value,
-                "min_duration": self.min_duration,
+                "min_contraction_duration": self.min_contraction_duration,
+                "min_event_spacing": self.min_event_spacing,
                 "detection_method": "zero-crossing",
             }
         )
@@ -296,14 +336,16 @@ class EMGOnsetDetector(BaseProcessor):
 @public_api
 def create_absolute_threshold_detector(
     threshold: float,
-    min_duration: float = 0.01,
+    min_contraction_duration: float = 0.01,
+    min_event_spacing: float = 0.1,
 ) -> EMGOnsetDetector:
     """
     Create an EMG onset detector using absolute thresholding.
 
     Args:
         threshold: Absolute threshold value
-        min_duration: Minimum duration for valid activation in seconds
+        min_contraction_duration: Minimum duration for valid contraction in seconds
+        min_event_spacing: Minimum time between consecutive events in seconds
 
     Returns:
         Configured EMGOnsetDetector
@@ -311,5 +353,6 @@ def create_absolute_threshold_detector(
     return EMGOnsetDetector(
         threshold_method="absolute",
         threshold_value=threshold,
-        min_duration=min_duration,
+        min_contraction_duration=min_contraction_duration,
+        min_event_spacing=min_event_spacing,
     )
