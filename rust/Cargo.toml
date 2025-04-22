@@ -16,7 +16,7 @@ ndarray = { version = "0.16.1", features = ["rayon"] }
 ndarray-linalg = { version = "0.17.0", features = ["intel-mkl-static"] }
 num-complex = "0.4.6"
 num-traits = "0.2.19"
-numpy = "0.23.0"
+numpy = "0.24.0"
 # "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
 # "abi3-py39" tells pyo3 (and maturin) to build using the stable ABI with minimum Python version 3.9
 pyo3 = {version = "^0.24.1", features = ["extension-module", "abi3-py39"] }

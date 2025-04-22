@@ -1,8 +1,8 @@
 """
-EMG onset detection algorithms for identifying muscle activation.
+EMG onset detection algorithms for identifying muscle activation using zero-crossing.
 
 This module provides methods to detect the onset of muscle activity in EMG signals
-using threshold-based detection.
+using a zero-crossing approach for threshold detection.
 """
 
 from typing import Any, Dict, Literal, Optional, Tuple, Union
@@ -19,9 +19,10 @@ from ...core.internals import public_api
 @public_api
 class EMGOnsetDetector(BaseProcessor):
     """
-    EMG onset detection processor implementation.
+    EMG onset detection processor implementation using zero-crossing.
 
-    Detects onset of muscle activation in EMG signals using threshold crossing.
+    Detects onset of muscle activation in EMG signals by monitoring when the
+    difference between signal and threshold crosses zero.
     """
 
     def __init__(
@@ -126,8 +127,6 @@ class EMGOnsetDetector(BaseProcessor):
 
         def detect_onsets_chunk(chunk: np.ndarray) -> np.ndarray:
             """Process a chunk of data to detect onsets"""
-            # No need to access block_info directly, Dask handles the offsets with map_overlap
-
             # Handle different input shapes by flattening if needed
             if chunk.ndim > 1:
                 # For now, just use the first channel if there are multiple
@@ -135,33 +134,57 @@ class EMGOnsetDetector(BaseProcessor):
             else:
                 chunk_data = chunk
 
-            # Detect threshold crossings
-            above_threshold = chunk_data > threshold
+            # Calculate difference signal (signal - threshold)
+            signs = chunk_data >= threshold
 
-            # Find transitions (diff == 1 for rising edge, diff == -1 for falling edge)
-            transitions = np.diff(above_threshold.astype(int))
+            # Find all zero crossings (from negative to positive for onset, positive to negative for offset)
+            # Use sign function instead of just testing < 0 for more reliability with floating point
+            # signs = np.sign(diff_signal)
 
-            # Find rising and falling edges
-            onset_indices = np.where(transitions == 1)[0] + 1  # +1 to correct for diff
-            offset_indices = (
-                np.where(transitions == -1)[0] + 1
+            # Get indices where the sign changes
+            # Rising edge: -1 to 1 or -1 to 0 to 1
+            # Falling edge: 1 to -1 or 1 to 0 to -1
+            zero_crossings = (
+                np.where(np.diff(signs) != 0)[0] + 1
             )  # +1 to correct for diff
 
-            # If no transitions, return empty result
-            if len(onset_indices) == 0 or len(offset_indices) == 0:
+            # Classify as onset (rising) or offset (falling)
+            if len(zero_crossings) < 2:  # Need at least one onset and one offset
                 return np.array([], dtype=self._dtype)
 
-            # Process each onset
+            # Determine direction of each crossing
+            crossing_directions = []
+            for i, zc in enumerate(zero_crossings):
+                if zc > 0 and zc < len(signs) - 1:  # Ensure we're not at the edge
+                    # If the sign after the crossing is positive, it's a rising edge (onset)
+                    if signs[zc] > 0:
+                        crossing_directions.append(1)  # onset
+                    else:
+                        crossing_directions.append(-1)  # offset
+                elif i > 0:  # If at edge, assume opposite of previous
+                    crossing_directions.append(-crossing_directions[-1])
+                else:
+                    # First crossing and at edge, make an educated guess
+                    crossing_directions.append(1 if chunk_data[zc] > threshold else -1)
+
+            # Group into onset-offset pairs
+            onset_indices = []
+            offset_indices = []
+
+            current_onset = None
+            for i, (zc, direction) in enumerate(
+                zip(zero_crossings, crossing_directions)
+            ):
+                if direction > 0 and current_onset is None:  # onset
+                    current_onset = zc
+                elif direction < 0 and current_onset is not None:  # offset
+                    onset_indices.append(current_onset)
+                    offset_indices.append(zc)
+                    current_onset = None
+
+            # Process each onset-offset pair
             results = []
-
-            for onset_idx in onset_indices:
-                # Find the next offset after this onset
-                valid_offsets = offset_indices[offset_indices > onset_idx]
-                if len(valid_offsets) == 0:
-                    continue
-
-                offset_idx = valid_offsets[0]
-
+            for onset_idx, offset_idx in zip(onset_indices, offset_indices):
                 # Calculate duration
                 duration_samples = offset_idx - onset_idx
 
@@ -264,6 +287,7 @@ class EMGOnsetDetector(BaseProcessor):
                 "threshold_method": self.threshold_method,
                 "threshold_value": self.threshold_value,
                 "min_duration": self.min_duration,
+                "detection_method": "zero-crossing",
             }
         )
         return base_summary
