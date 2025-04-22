@@ -1,5 +1,5 @@
 """
-Functions to extract onset detection - Complete test script with Rust acceleration
+Functions to showcase stim closed loop
 Author: Jesus Penaloza (Updated with envelope detection and onset detection)
 """
 
@@ -109,26 +109,19 @@ tkeo_fig = plot_multi_channel_data(tkeo_data, fs=fs, time_window=[100, 110])
 # %%
 
 data_organized = da.concatenate(
-    [stream_stim.data[:, :1], tkeo_data[:, 1:2], filtered_emg[:, 1:2]], axis=1
+    [
+        stream_stim.data[:43200500, :1],
+        tkeo_data[:, 1:2].compute(),
+        filtered_emg[:43200500, 1:2],
+    ],
+    axis=1,
 )
 # %%
-agg_fig = plot_multi_channel_data(data_organized, fs=fs, time_window=[420, 445])
-# %%
-
-# %%
-"""
-time stamps
-baseline 415 to 435
-stime 435 to 455
-data struct [:, 0=stim;1=tkoe,2=filtered signal]
-"""
-
-
+agg_fig = plot_multi_channel_data(data_organized, fs=fs, time_window=[400, 800])
 # %%
 
 import matplotlib.pyplot as plt
 import numpy as np
-import polars as pl
 import seaborn as sns
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Rectangle
@@ -151,165 +144,160 @@ AXIS_LABEL_SIZE = 14
 TICK_SIZE = 12
 CAPTION_SIZE = 13
 
-# Convert st_epochs to DataFrame if not already
-if not isinstance(st_epochs, pl.DataFrame):
-    epochs_df = st_processor.to_dataframe(st_epochs)
-else:
-    epochs_df = st_epochs
+# Assuming we have these variables from the original code:
+# stream_stim.data, tkeo_data, filtered_emg, fs
+
+# Define data range for full view and zoomed view
+full_duration = 100  # seconds
+zoom_duration = 5  # seconds
+
+start = int(400 * fs)
+end = int(start + (full_duration * fs))
+
+# The key change: calculate zoom start/end in relation to the time axis, not sample indices
+zoom_start_sample = int(430 * fs)  # Start zoom at 440s in absolute time
+zoom_end_sample = int(zoom_start_sample + (zoom_duration * fs))
+
+# Convert to relative time for plotting - this is crucial
+zoom_start_time = (zoom_start_sample - start) / fs  # Time relative to the plotted start
+zoom_end_time = (zoom_end_sample - start) / fs
+zoom_width = zoom_end_time - zoom_start_time
+
+# Calculate time arrays
+time_array = np.arange(end - start) / fs
+zoom_time_array = np.arange(zoom_end_sample - zoom_start_sample) / fs
+
+# Define data arrays for plotting
+stim_data_full = stream_stim.data[start:end, 0]
+tkeo_data_full = tkeo_data[start:end, 1]
+emg_data_full = filtered_emg[start:end, 1]
+
+stim_data_zoom = stream_stim.data[zoom_start_sample:zoom_end_sample, 0]
+tkeo_data_zoom = tkeo_data[zoom_start_sample:zoom_end_sample, 1]
+emg_data_zoom = filtered_emg[zoom_start_sample:zoom_end_sample, 1]
 
 # Create figure with GridSpec for custom layout
-fig = plt.figure(figsize=(20, 10))
-gs = GridSpec(2, 1, height_ratios=[3, 1])
+# 6 rows, 6 columns with the right side being 1/3 of the width
+fig = plt.figure(figsize=(20, 12))
+gs = GridSpec(6, 6, width_ratios=[1, 1, 1, 1, 1, 1])
 
-# Select time range to visualize (same as your filtered data)
-plot_start_time = 1190  # seconds
-plot_end_time = 1220  # seconds - adjust as needed
+# Dark grey with navy tint for main lines
+dark_grey_navy = "#2D3142"
 
-# Convert times to sample indices
-plot_start_idx = int(plot_start_time * fs)
-plot_end_idx = int(plot_end_time * fs)
+# Choose a distinct color for the highlight box
+highlight_color = palette[3]  # Using a distinct color from the palette
 
-# Extract the filtered EMG data and inspiratory data for this time range
-emg_r_data = filtered_emg_r[plot_start_idx:plot_end_idx, 0]
-emg_l_data = filtered_emg_l[plot_start_idx:plot_end_idx, 0]
-insp_data = filtered_insp[plot_start_idx:plot_end_idx, 0]
+# Left column plots (spans first 4 columns)
 
-# Calculate time array
-time_array = np.arange(plot_end_idx - plot_start_idx) / fs
+# Plot 1: Stimulation Data (top)
+ax_stim = fig.add_subplot(gs[0:2, 0:4])
+ax_stim.plot(time_array, stim_data_full, color=dark_grey_navy, linewidth=2)
+ax_stim.set_xlim(0, full_duration)
+ax_stim.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
+ax_stim.tick_params(labelsize=TICK_SIZE)
+ax_stim.set_title("Stimulation Signal", fontsize=SUBTITLE_SIZE, weight="bold")
 
-# ----- Upper plot: EMG signals with detections -----
-ax_signals = fig.add_subplot(gs[0])
-
-# Plot the filtered EMG signals
-# Define vertical spacing parameters
-y_spread = 1.0
-y_offset = 0.0
-norm_scale = 0.4
-
-# Store channel positions for tick labels
-channel_positions = []
-
-# Normalize and plot each signal (use same approach as your existing code)
-signals = [filtered_insp, filtered_emg_r, filtered_emg_l]
-signal_labels = ["Insp. Pressure", "Right EMG", "Left EMG"]
-colors = [palette[0], palette[1], palette[2]]
-
-for idx, signal_data in enumerate(signals):
-    # Calculate vertical offset for this channel
-    channel_offset = y_offset + (len(signals) - 1 - idx) * y_spread
-    channel_positions.append(channel_offset)
-
-    # Extract data for this signal
-    subset_data = signal_data[plot_start_idx:plot_end_idx, 0]
-
-    # Normalize and apply offset
-    max_amplitude = np.max(np.abs(subset_data))
-    if max_amplitude > 0:
-        norm_data = (
-            subset_data / max_amplitude * (y_spread * norm_scale) + channel_offset
-        )
-    else:
-        norm_data = np.zeros_like(subset_data) + channel_offset
-
-    # Plot the data
-    ax_signals.plot(
-        time_array,
-        norm_data,
-        color=colors[idx],
-        linewidth=1.2,
-        label=signal_labels[idx],
-        alpha=0.8,
-    )
-
-# Set up the signal plot
-# ax_signals.set_xlim(plot_start_time, plot_end_time)
-y_min = 0 - y_spread * 0.6
-y_max = channel_positions[0] + y_spread * 0.6
-ax_signals.set_ylim(y_min, y_max)
-ax_signals.set_ylabel("Normalized Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_signals.tick_params(labelsize=TICK_SIZE)
-ax_signals.set_title(
-    "EMG Signals with Onset Detections", fontsize=SUBTITLE_SIZE, weight="bold"
+# Add highlight box for zoomed region - now using correct time positioning
+y_min, y_max = ax_stim.get_ylim()
+height = y_max - y_min
+stim_rect = Rectangle(
+    (zoom_start_time, y_min),
+    zoom_width,
+    height,
+    linewidth=2,
+    edgecolor=highlight_color,
+    facecolor=highlight_color,
+    alpha=0.2,
 )
-ax_signals.legend(fontsize=TICK_SIZE, loc="upper right")
+ax_stim.add_patch(stim_rect)
 
-# Add y-tick labels at channel positions
-ax_signals.set_yticks(channel_positions)
-ax_signals.set_yticklabels(signal_labels)
+# Plot 2: TKEO Data (middle)
+ax_tkeo = fig.add_subplot(gs[2:4, 0:4])
+ax_tkeo.plot(time_array, tkeo_data_full, color=palette[1], linewidth=2)
+ax_tkeo.set_xlim(0, full_duration)
+ax_tkeo.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
+ax_tkeo.tick_params(labelsize=TICK_SIZE)
+ax_tkeo.set_title("TKEO Envelope", fontsize=SUBTITLE_SIZE, weight="bold")
 
-# ----- Lower plot: Raster plot of detected onsets -----
-ax_raster = fig.add_subplot(gs[1], sharex=ax_signals)
-
-# Filter onsets within the plotting time range
-mask = (epochs_df["onset_idx"] >= plot_start_idx) & (
-    epochs_df["onset_idx"] < plot_end_idx
+# Add highlight box for zoomed region
+y_min, y_max = ax_tkeo.get_ylim()
+height = y_max - y_min
+tkeo_rect = Rectangle(
+    (zoom_start_time, y_min),
+    zoom_width,
+    height,
+    linewidth=2,
+    edgecolor=highlight_color,
+    facecolor=highlight_color,
+    alpha=0.2,
 )
-filtered_epochs = epochs_df.filter(mask)
+ax_tkeo.add_patch(tkeo_rect)
 
-# Normalize the amplitudes for visualization
-if len(filtered_epochs) > 0:
-    max_amp = filtered_epochs["amplitude"].max()
-    min_amp = filtered_epochs["amplitude"].min()
-    amp_range = max_amp - min_amp if max_amp > min_amp else 1.0
+# Plot 3: EMG Channel (bottom)
+ax_emg = fig.add_subplot(gs[4:6, 0:4])
+ax_emg.plot(time_array, emg_data_full, color=palette[2], linewidth=2)
+ax_emg.set_xlim(0, full_duration)
+ax_emg.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE, weight="bold")
+ax_emg.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
+ax_emg.tick_params(labelsize=TICK_SIZE)
+ax_emg.set_title("Filtered EMG Signal", fontsize=SUBTITLE_SIZE, weight="bold")
 
-    # Plot scaled bars for each onset
-    for i, row in enumerate(filtered_epochs.iter_rows(named=True)):
-        onset_time = row["onset_idx"] / fs - plot_start_time
-        duration = row["duration"]
+# Add highlight box for zoomed region
+y_min, y_max = ax_emg.get_ylim()
+height = y_max - y_min
+emg_rect = Rectangle(
+    (zoom_start_time, y_min),
+    zoom_width,
+    height,
+    linewidth=2,
+    edgecolor=highlight_color,
+    facecolor=highlight_color,
+    alpha=0.2,
+)
+ax_emg.add_patch(emg_rect)
 
-        # Normalize amplitude to control bar height (0.3 to 1.0 range)
-        normalized_height = (
-            0.3 + ((row["amplitude"] - min_amp) / amp_range) * 0.7
-            if amp_range > 0
-            else 0.7
-        )
+# Right column plots (spans last 2 columns)
 
-        # Plot the onset as a vertical line/bar
-        ax_raster.plot(
-            [onset_time, onset_time],
-            [0, normalized_height],
-            linewidth=2,
-            color=palette[1],
-            solid_capstyle="round",
-        )
+# Plot 4: Stimulation Zoomed (top)
+ax_stim_zoom = fig.add_subplot(gs[0:2, 4:6])
+ax_stim_zoom.plot(zoom_time_array, stim_data_zoom, color=dark_grey_navy, linewidth=2)
+ax_stim_zoom.set_xlim(0, zoom_duration)
+ax_stim_zoom.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
+ax_stim_zoom.tick_params(labelsize=TICK_SIZE)
+ax_stim_zoom.set_title(
+    "Stimulation Signal (Zoomed)", fontsize=SUBTITLE_SIZE, weight="bold"
+)
 
-        # Add small marker at the top of each line to make it more visible
-        ax_raster.scatter(
-            onset_time, normalized_height, color=palette[1], s=20, zorder=10
-        )
+# Plot 5: TKEO Zoomed (middle)
+ax_tkeo_zoom = fig.add_subplot(gs[2:4, 4:6])
+ax_tkeo_zoom.plot(zoom_time_array, tkeo_data_zoom, color=palette[1], linewidth=2)
+ax_tkeo_zoom.set_xlim(0, zoom_duration)
+ax_tkeo_zoom.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
+ax_tkeo_zoom.tick_params(labelsize=TICK_SIZE)
+ax_tkeo_zoom.set_title("TKEO Envelope (Zoomed)", fontsize=SUBTITLE_SIZE, weight="bold")
 
-# Set up the raster plot
-ax_raster.set_xlim(plot_start_time, plot_end_time)
-ax_raster.set_ylim(0, 1.1)
-ax_raster.set_ylabel("Detection\nAmplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_raster.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_raster.tick_params(labelsize=TICK_SIZE)
-ax_raster.set_yticks([0, 0.5, 1.0])
-ax_raster.set_yticklabels(["Low", "Medium", "High"])
-ax_raster.grid(True, axis="x", alpha=0.3)
-
-# Add the detection count
-detection_count = len(filtered_epochs)
-ax_raster.text(
-    0.98,
-    0.92,
-    f"Detected onsets: {detection_count}",
-    transform=ax_raster.transAxes,
-    ha="right",
-    fontsize=12,
-    bbox=dict(facecolor="white", alpha=0.8, boxstyle="round,pad=0.5"),
+# Plot 6: EMG Zoomed (bottom)
+ax_emg_zoom = fig.add_subplot(gs[4:6, 4:6])
+ax_emg_zoom.plot(zoom_time_array, emg_data_zoom, color=palette[2], linewidth=2)
+ax_emg_zoom.set_xlim(0, zoom_duration)
+ax_emg_zoom.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE, weight="bold")
+ax_emg_zoom.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
+ax_emg_zoom.tick_params(labelsize=TICK_SIZE)
+ax_emg_zoom.set_title(
+    "Filtered EMG Signal (Zoomed)", fontsize=SUBTITLE_SIZE, weight="bold"
 )
 
 # Add overall title
 plt.suptitle(
-    "EMG Onset Detection Analysis",
+    "EMG Signal Processing with Stimulation",
     fontsize=TITLE_SIZE,
     fontweight="bold",
     y=0.98,
 )
 
-plt.tight_layout(rect=[0, 0, 1, 0.96])
-plt.show()
+# Adjust layout
+plt.tight_layout(rect=[0, 0, 1, 0.96])  # Make room for the suptitle
 
+plt.show()
 
 # %%

@@ -32,6 +32,9 @@ from dspant.processors.filters.iir_filters import (
     create_notch_filter,
 )
 from dspant.visualization.general_plots import plot_multi_channel_data
+from dspant_emgproc.processors.activity_detection.double_threshold import (
+    create_double_threshold_detector,
+)
 from dspant_emgproc.processors.activity_detection.single_threshold import (
     create_absolute_threshold_detector,
 )
@@ -122,13 +125,23 @@ multichannel_fig = plot_multi_channel_data(filtered_data, fs=fs, time_window=[10
 
 tkeo_processor = create_tkeo_envelope_rs(method="modified", cutoff_freq=4)
 tkeo_data = tkeo_processor.process(filtered_emg_l, fs=fs).persist()
-zscore_processor = create_normalizer("zscore")
+zscore_processor = create_normalizer("minmax")
 zscore_tkeo = zscore_processor.process(tkeo_data).persist()
 zscore_insp = zscore_processor.process(filtered_insp).persist()
 
-st_tkeo_processor = create_absolute_threshold_detector(0.045, min_duration=0.02)
+st_tkeo_processor = create_double_threshold_detector(
+    primary_threshold=0.045,
+    secondary_threshold=0.1,
+    min_event_spacing=0.01,
+    min_contraction_duration=0.01,
+)
 
-st_insp_processor = create_absolute_threshold_detector(0, min_duration=0.01)
+st_insp_processor = create_double_threshold_detector(
+    primary_threshold=0.2,
+    secondary_threshold=0.25,
+    min_event_spacing=0.001,
+    min_contraction_duration=0.001,
+)
 
 tkeo_epochs = st_tkeo_processor.process(zscore_tkeo, fs=fs).compute()
 tkeo_epochs = st_tkeo_processor.to_dataframe(tkeo_epochs)
@@ -147,8 +160,196 @@ neural triggered tidal volume increased = 1090 - 1120
 neural triggered tidal volume decreased = 1245 - 1275
 """
 
+# %%
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def plot_onset_detection_results(
+    signal,
+    onsets_df,
+    fs,
+    time_window=None,
+    figsize=(12, 6),
+    title="EMG Onset Detection Results",
+    threshold=None,
+    signal_label="Signal",
+    highlight_color="red",
+    show_threshold=True,
+    debug_mode=False,  # Add debug mode to visualize the zero-crossing detection
+):
+    """
+    Plot signal with highlighted onset/offset regions.
+
+    Args:
+        signal: The signal data (numpy or dask array)
+        onsets_df: DataFrame with onset_idx, offset_idx columns
+        fs: Sampling frequency in Hz
+        time_window: Optional [start, end] in seconds to zoom
+        figsize: Figure size tuple
+        title: Plot title
+        threshold: Optional threshold value to show
+        signal_label: Label for the signal
+        highlight_color: Color for highlighting detected events
+        show_threshold: Whether to show threshold line
+        debug_mode: Show additional debug information
+
+    Returns:
+        matplotlib figure
+    """
+    import matplotlib.pyplot as plt
+    import polars as pl
+
+    # Compute signal if it's a dask array
+    if hasattr(signal, "compute"):
+        signal = signal.compute()
+
+    # Ensure signal is a 1D array
+    if signal.ndim > 1:
+        signal = signal[:, 0]  # Take first channel
+
+    # Create time array
+    t = np.arange(len(signal)) / fs
+
+    # Create figure
+    if debug_mode:
+        fig, (ax, ax_debug) = plt.subplots(
+            2, 1, figsize=(figsize[0], figsize[1] * 1.5), sharex=True
+        )
+    else:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    # Apply time window if specified
+    start_idx = 0
+    if time_window is not None:
+        start_idx = max(0, int(time_window[0] * fs))
+        end_idx = min(len(signal), int(time_window[1] * fs))
+        view_signal = signal[start_idx:end_idx]
+        view_t = t[start_idx:end_idx]
+
+        # Filter onsets within the window
+        window_onsets = onsets_df.filter(
+            (pl.col("onset_idx") >= start_idx) & (pl.col("onset_idx") <= end_idx)
+        )
+    else:
+        view_signal = signal
+        view_t = t
+        window_onsets = onsets_df
+
+    # Plot signal
+    ax.plot(view_t, view_signal, label=signal_label, color="blue", linewidth=1.5)
+
+    # Plot threshold if provided
+    if threshold is not None and show_threshold:
+        ax.axhline(
+            y=threshold,
+            color="green",
+            linestyle="--",
+            label=f"Threshold ({threshold:.2f})",
+        )
+
+    # Highlight onset-offset regions
+    if len(window_onsets) > 0:
+        for row in window_onsets.iter_rows(named=True):
+            onset_idx = row["onset_idx"]
+            offset_idx = row["offset_idx"]
+
+            # Calculate correct time values, accounting for the window offset
+            onset_time = (onset_idx - start_idx) / fs + (
+                time_window[0] if time_window else 0
+            )
+            offset_time = (offset_idx - start_idx) / fs + (
+                time_window[0] if time_window else 0
+            )
+
+            duration = row["duration"]
+
+            # Shade the activation region
+            ax.axvspan(onset_time, offset_time, alpha=0.3, color=highlight_color)
+
+            # Mark the onset with a vertical line
+            ax.axvline(x=onset_time, color=highlight_color, linestyle="-", linewidth=1)
+
+            # Add annotation
+            ax.annotate(
+                f"{duration:.2f}s",
+                xy=(onset_time, np.max(view_signal)),
+                xytext=(0, 10),
+                textcoords="offset points",
+                fontsize=8,
+                color=highlight_color,
+            )
+
+            # Debug: Mark actual signal value at onset and offset points
+            if debug_mode:
+                rel_onset_idx = onset_idx - start_idx
+                rel_offset_idx = offset_idx - start_idx
+
+                if 0 <= rel_onset_idx < len(view_signal):
+                    onset_value = view_signal[rel_onset_idx]
+                    ax.plot(onset_time, onset_value, "o", color="red", markersize=6)
+
+                if 0 <= rel_offset_idx < len(view_signal):
+                    offset_value = view_signal[rel_offset_idx]
+                    ax.plot(
+                        offset_time, offset_value, "s", color="purple", markersize=6
+                    )
+
+    # Add labels and legend
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    ax.set_title(title)
+    ax.legend(loc="upper right")
+
+    # Add grid for better readability
+    ax.grid(True, linestyle="--", alpha=0.7)
+
+    # Debug mode: Show the difference signal (signal - threshold)
+    if debug_mode and threshold is not None:
+        diff_signal = view_signal - threshold
+        ax_debug.plot(view_t, diff_signal, label="Signal - Threshold", color="purple")
+        ax_debug.axhline(y=0, color="red", linestyle="-", label="Zero line")
+
+        # Mark zero-crossings
+        zero_crossings = np.where(np.diff(np.signbit(diff_signal)))[0]
+        for zc in zero_crossings:
+            ax_debug.axvline(x=view_t[zc], color="green", linestyle="--", alpha=0.5)
+
+        ax_debug.set_ylabel("Difference (Signal - Threshold)")
+        ax_debug.legend(loc="upper right")
+        ax_debug.grid(True, linestyle="--", alpha=0.7)
+
+    # Tight layout for better appearance
+    plt.tight_layout()
+
+    return fig
+
 
 # %%
+
+plot_ = plot_onset_detection_results(
+    zscore_insp,
+    insp_epochs,
+    fs=fs,
+    time_window=[1240, 1250],  # 10-second window
+    title="TKEO EMG Signal with Detected Onsets",
+    threshold=0.2,
+    signal_label="Normalized TKEO EMG",
+    highlight_color="red",
+)
+
+plot_ = plot_onset_detection_results(
+    zscore_tkeo,
+    tkeo_epochs,
+    fs=fs,
+    time_window=[1240, 1250],  # 10-second window
+    title="TKEO EMG Signal with Detected Onsets",
+    threshold=0.045,
+    signal_label="Normalized TKEO EMG",
+    highlight_color="red",
+)
+# %%
+
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -435,190 +636,6 @@ plt.suptitle(
 plt.tight_layout(rect=[0, 0, 1, 0.96])  # Make room for the suptitle
 
 plt.show()
-
-# %%
-
-# %%
-import matplotlib.pyplot as plt
-import numpy as np
-
-
-def plot_onset_detection_results(
-    signal,
-    onsets_df,
-    fs,
-    time_window=None,
-    figsize=(12, 6),
-    title="EMG Onset Detection Results",
-    threshold=None,
-    signal_label="Signal",
-    highlight_color="red",
-    show_threshold=True,
-    debug_mode=False,  # Add debug mode to visualize the zero-crossing detection
-):
-    """
-    Plot signal with highlighted onset/offset regions.
-
-    Args:
-        signal: The signal data (numpy or dask array)
-        onsets_df: DataFrame with onset_idx, offset_idx columns
-        fs: Sampling frequency in Hz
-        time_window: Optional [start, end] in seconds to zoom
-        figsize: Figure size tuple
-        title: Plot title
-        threshold: Optional threshold value to show
-        signal_label: Label for the signal
-        highlight_color: Color for highlighting detected events
-        show_threshold: Whether to show threshold line
-        debug_mode: Show additional debug information
-
-    Returns:
-        matplotlib figure
-    """
-    import matplotlib.pyplot as plt
-
-    # Compute signal if it's a dask array
-    if hasattr(signal, "compute"):
-        signal = signal.compute()
-
-    # Ensure signal is a 1D array
-    if signal.ndim > 1:
-        signal = signal[:, 0]  # Take first channel
-
-    # Create time array
-    t = np.arange(len(signal)) / fs
-
-    # Create figure
-    if debug_mode:
-        fig, (ax, ax_debug) = plt.subplots(
-            2, 1, figsize=(figsize[0], figsize[1] * 1.5), sharex=True
-        )
-    else:
-        fig, ax = plt.subplots(figsize=figsize)
-
-    # Apply time window if specified
-    if time_window is not None:
-        start_idx = max(0, int(time_window[0] * fs))
-        end_idx = min(len(signal), int(time_window[1] * fs))
-        view_signal = signal[start_idx:end_idx]
-        view_t = t[start_idx:end_idx]
-
-        # Filter onsets within the window
-        window_onsets = onsets_df.filter(
-            (pl.col("onset_idx") >= start_idx) & (pl.col("onset_idx") <= end_idx)
-        )
-    else:
-        view_signal = signal
-        view_t = t
-        window_onsets = onsets_df
-
-    # Plot signal
-    ax.plot(view_t, view_signal, label=signal_label, color="blue", linewidth=1.5)
-
-    # Plot threshold if provided
-    if threshold is not None and show_threshold:
-        ax.axhline(
-            y=threshold,
-            color="green",
-            linestyle="--",
-            label=f"Threshold ({threshold:.2f})",
-        )
-
-    # Highlight onset-offset regions
-    if len(window_onsets) > 0:
-        for row in window_onsets.iter_rows(named=True):
-            onset_idx = row["onset_idx"]
-            offset_idx = row["offset_idx"]
-            onset_time = onset_idx / fs
-            offset_time = offset_idx / fs
-            duration = row["duration"]
-
-            # Shade the activation region
-            ax.axvspan(onset_time, offset_time, alpha=0.3, color=highlight_color)
-
-            # Mark the onset with a vertical line
-            ax.axvline(x=onset_time, color=highlight_color, linestyle="-", linewidth=1)
-
-            # Add annotation
-            ax.annotate(
-                f"{duration:.2f}s",
-                xy=(onset_time, np.max(view_signal)),
-                xytext=(0, 10),
-                textcoords="offset points",
-                fontsize=8,
-                color=highlight_color,
-            )
-
-            # Debug: Mark actual signal value at onset and offset points
-            if (
-                debug_mode
-                and onset_idx - start_idx >= 0
-                and onset_idx - start_idx < len(view_signal)
-            ):
-                onset_value = view_signal[onset_idx - start_idx]
-                offset_value = (
-                    view_signal[offset_idx - start_idx]
-                    if offset_idx - start_idx < len(view_signal)
-                    else 0
-                )
-                ax.plot(onset_time, onset_value, "o", color="red", markersize=6)
-                ax.plot(offset_time, offset_value, "s", color="purple", markersize=6)
-
-    # Add labels and legend
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Amplitude")
-    ax.set_title(title)
-    ax.legend(loc="upper right")
-
-    # Add grid for better readability
-    ax.grid(True, linestyle="--", alpha=0.7)
-
-    # Debug mode: Show the difference signal (signal - threshold)
-    if debug_mode and threshold is not None:
-        diff_signal = view_signal - threshold
-        ax_debug.plot(view_t, diff_signal, label="Signal - Threshold", color="purple")
-        ax_debug.axhline(y=0, color="red", linestyle="-", label="Zero line")
-
-        # Mark zero-crossings
-        zero_crossings = np.where(np.diff(np.signbit(diff_signal)))[0]
-        for zc in zero_crossings:
-            ax_debug.axvline(x=view_t[zc], color="green", linestyle="--", alpha=0.5)
-
-        ax_debug.set_ylabel("Difference (Signal - Threshold)")
-        ax_debug.legend(loc="upper right")
-        ax_debug.grid(True, linestyle="--", alpha=0.7)
-
-    # Tight layout for better appearance
-    plt.tight_layout()
-
-    return fig
-
-
-# %%
-
-plot_ = plot_onset_detection_results(
-    zscore_insp,
-    insp_epochs,
-    fs=fs,
-    time_window=[365, 400],  # 10-second window
-    title="TKEO EMG Signal with Detected Onsets",
-    threshold=0.2,
-    signal_label="Normalized TKEO EMG",
-    highlight_color="red",
-)
-
-plot_ = plot_onset_detection_results(
-    zscore_tkeo,
-    tkeo_epochs,
-    fs=fs,
-    time_window=[365, 400],  # 10-second window
-    title="TKEO EMG Signal with Detected Onsets",
-    threshold=0.045,
-    signal_label="Normalized TKEO EMG",
-    highlight_color="red",
-)
-# %%
-
 
 # %%
 import matplotlib.colors as mcolors
