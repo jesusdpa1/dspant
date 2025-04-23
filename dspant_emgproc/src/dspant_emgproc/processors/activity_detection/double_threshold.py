@@ -1,8 +1,8 @@
 """
-EMG onset detection algorithms for identifying muscle activation using double-threshold.
+EMG Onset Detection Module: Double Threshold Implementation
 
-This module provides methods to detect the onset of muscle activity in EMG signals
-using a double-threshold approach for more robust detection.
+This module provides a robust method for detecting muscle activation
+events in EMG signals using a double-threshold approach.
 """
 
 from typing import Any, Dict, Literal, Optional, Tuple, Union
@@ -11,13 +11,12 @@ import dask.array as da
 import numpy as np
 import polars as pl
 
+from dspant.core.internals import public_api
 from dspant.engine.base import BaseProcessor
-
-from ...core.internals import public_api
 
 
 @public_api
-class EMGDoubleThresholdDetector(BaseProcessor):
+class DoubleThresholdDetector(BaseProcessor):
     """
     EMG onset detection processor implementation using double-threshold.
 
@@ -32,7 +31,7 @@ class EMGDoubleThresholdDetector(BaseProcessor):
         primary_threshold_value: float = 3.0,
         secondary_threshold_value: float = 1.5,  # Lower threshold value
         min_contraction_duration: float = 0.01,  # seconds
-        min_event_spacing: float = 0.1,  # seconds
+        refractory_period: float = 0.1,  # seconds
         secondary_points_required: int = 3,  # Minimum consecutive points above secondary threshold
         baseline_window: Optional[Tuple[float, float]] = None,
     ):
@@ -48,7 +47,7 @@ class EMGDoubleThresholdDetector(BaseProcessor):
             primary_threshold_value: Higher threshold parameter value
             secondary_threshold_value: Lower threshold parameter value
             min_contraction_duration: Minimum duration for a valid contraction (seconds)
-            min_event_spacing: Minimum time between consecutive events (onset-to-onset or offset-to-offset) in seconds
+            refractory_period: Minimum time between detections (seconds)
             secondary_points_required: Number of consecutive points required above secondary threshold
             baseline_window: Optional window for baseline calculation (start_time, end_time) in seconds
         """
@@ -56,16 +55,16 @@ class EMGDoubleThresholdDetector(BaseProcessor):
         self.primary_threshold_value = primary_threshold_value
         self.secondary_threshold_value = secondary_threshold_value
         self.min_contraction_duration = min_contraction_duration
-        self.min_event_spacing = min_event_spacing
+        self.refractory_period = refractory_period
         self.secondary_points_required = secondary_points_required
         self.baseline_window = baseline_window
 
-        # Use overlap based on minimum duration to avoid missing events at chunk boundaries
-        self._overlap_samples = 20  # Somewhat larger than needed for safety
+        # Dynamically adjust overlap to ensure sufficient context for detection
+        self._overlap_samples = 0
 
-        # Store computed thresholds
-        self.primary_threshold = None
-        self.secondary_threshold = None
+        # Store computed thresholds per channel
+        self.primary_thresholds = None
+        self.secondary_thresholds = None
 
         # Define dtype for output
         self._dtype = np.dtype(
@@ -128,186 +127,202 @@ class EMGDoubleThresholdDetector(BaseProcessor):
         if fs is None:
             raise ValueError("Sampling frequency (fs) is required for onset detection")
 
-        # Convert minimum durations to samples
-        min_contraction_samples = int(self.min_contraction_duration * fs)
-        min_event_spacing_samples = int(self.min_event_spacing * fs)
+        # Convert time-based parameters to sample counts
+        min_samples = max(int(self.min_contraction_duration * fs), 1)
+        refractory_samples = max(int(self.refractory_period * fs), 1)
 
-        # Pre-compute thresholds
-        if (
-            isinstance(self.primary_threshold_value, (int, float))
-            and isinstance(self.secondary_threshold_value, (int, float))
-            and self.threshold_method == "absolute"
-        ):
-            primary_threshold = self.primary_threshold_value
-            secondary_threshold = self.secondary_threshold_value
-        else:
-            # Sample a small portion for threshold calculation
-            sample_size = min(int(1e6), data.shape[0])  # Use at most 1M samples
-            sample_data = data[:sample_size].compute()
-            primary_threshold, secondary_threshold = self.compute_thresholds(
-                sample_data
-            )
+        # Dynamically calculate overlap to ensure sufficient context
+        max_overlap = min(
+            data.shape[0] // 10,  # No more than 10% of total data
+            max(
+                refractory_samples * 2,  # Ensure enough context for refractory period
+                min_samples * 2,  # Ensure enough context for minimum duration
+                int(0.5 * fs),  # Additional buffer (half a second)
+            ),
+        )
+        self._overlap_samples = max_overlap
 
-        # Store computed thresholds for reference
-        self.primary_threshold = primary_threshold
-        self.secondary_threshold = secondary_threshold
+        def detect_events_in_chunk(
+            chunk: np.ndarray, chunk_loc: Optional[Tuple[int, int]] = None
+        ) -> np.ndarray:
+            """
+            Detect events within a chunk, with optional global context.
 
-        def detect_onsets_chunk(chunk: np.ndarray) -> np.ndarray:
-            """Process a chunk of data to detect onsets using a double threshold approach"""
-            # Handle different input shapes by flattening if needed
-            if chunk.ndim > 1:
-                # For now, just use the first channel if there are multiple
-                chunk_data = chunk[:, 0] if chunk.shape[1] > 0 else chunk.flatten()
-            else:
-                chunk_data = chunk
+            Args:
+                chunk: Input data chunk
+                chunk_loc: Optional tuple of (start_idx, end_idx) for global context
 
-            # Initialize masks for primary and secondary thresholds
-            primary_mask = chunk_data >= primary_threshold
-            secondary_mask = chunk_data >= secondary_threshold
+            Returns:
+                Array of detected events
+            """
+            n_samples, n_channels = chunk.shape
 
-            # Find all potential onset candidates (where signal crosses primary threshold)
-            primary_crossings = np.where(np.diff(primary_mask))[0] + 1
+            # Adjust global index tracking
+            global_start = chunk_loc[0] if chunk_loc else 0
 
-            # If no primary crossings, return empty result
-            if len(primary_crossings) < 2:  # Need at least one onset and one offset
-                return np.array([], dtype=self._dtype)
+            # Pre-allocate a list to store detected events
+            events_list = []
 
-            # Determine direction of each primary crossing (onset or offset)
-            crossing_directions = []
-            for i, pc in enumerate(primary_crossings):
-                if pc > 0 and pc < len(primary_mask) - 1:
-                    if primary_mask[pc]:
-                        crossing_directions.append(1)  # onset
-                    else:
-                        crossing_directions.append(-1)  # offset
-                elif i > 0:
-                    crossing_directions.append(-crossing_directions[-1])
+            # Ensure thresholds are computed per channel
+            if self.primary_thresholds is None:
+                self.primary_thresholds = {}
+                self.secondary_thresholds = {}
+
+            # Process each channel separately
+            for channel in range(n_channels):
+                channel_data = chunk[:, channel]
+
+                # Calculate threshold based on selected method
+                if self.baseline_window is not None:
+                    # Use specified baseline window if provided
+                    start_idx = max(0, int(self.baseline_window[0] * fs))
+                    end_idx = min(n_samples, int(self.baseline_window[1] * fs))
+                    baseline_data = channel_data[start_idx:end_idx]
                 else:
-                    crossing_directions.append(
-                        1 if chunk_data[pc] > primary_threshold else -1
-                    )
+                    # Use entire signal for baseline
+                    baseline_data = channel_data
 
-            # Extract all primary onsets and offsets
-            primary_onsets = []
-            primary_offsets = []
-
-            for i, (pc, direction) in enumerate(
-                zip(primary_crossings, crossing_directions)
-            ):
-                if direction > 0:  # onset
-                    primary_onsets.append(pc)
-                elif direction < 0:  # offset
-                    primary_offsets.append(pc)
-
-            # If no onsets or offsets, return empty
-            if not primary_onsets or not primary_offsets:
-                return np.array([], dtype=self._dtype)
-
-            # Validate each primary onset using the secondary threshold criteria
-            valid_onsets = []
-
-            for onset in primary_onsets:
-                # Find potential offset after this onset
-                potential_offsets = [off for off in primary_offsets if off > onset]
-                if not potential_offsets:
-                    continue
-
-                offset = potential_offsets[0]
-
-                # Double threshold validation: Check if at least N consecutive points
-                # are above the secondary threshold in the segment
-                segment = secondary_mask[onset:offset]
-
-                # Use a sliding window approach to check for consecutive points
-                consecutive_count = 0
-                max_consecutive = 0
-
-                for point in segment:
-                    if point:
-                        consecutive_count += 1
-                        max_consecutive = max(max_consecutive, consecutive_count)
-                    else:
-                        consecutive_count = 0
-
-                # If we have enough consecutive points above secondary threshold
-                if max_consecutive >= self.secondary_points_required:
-                    valid_onsets.append((onset, offset))
-
-            # Filter for minimum contraction duration and event spacing
-            filtered_pairs = []
-
-            if valid_onsets:
-                # Add first valid pair
-                filtered_pairs.append(valid_onsets[0])
-
-                # Filter subsequent pairs based on spacing
-                for pair in valid_onsets[1:]:
-                    onset, offset = pair
-                    prev_onset, prev_offset = filtered_pairs[-1]
-
-                    # Check spacing between onsets
-                    if onset - prev_onset >= min_event_spacing_samples:
-                        # Check minimum contraction duration
-                        if offset - onset >= min_contraction_samples:
-                            filtered_pairs.append(pair)
-
-            # Build final results
-            results = []
-
-            for onset_idx, offset_idx in filtered_pairs:
-                # Calculate duration in seconds
-                duration_sec = (offset_idx - onset_idx) / fs
-
-                # Calculate amplitude
-                segment = chunk_data[onset_idx : offset_idx + 1]
-                amplitude = float(np.max(segment))
-
-                # Add to results
-                results.append(
-                    (
-                        onset_idx,
-                        offset_idx,
-                        0,  # channel
-                        amplitude,
-                        duration_sec,
-                    )
+                # Compute thresholds for this channel
+                primary_threshold, secondary_threshold = self.compute_thresholds(
+                    baseline_data
                 )
 
-            # Convert results to structured array
-            return np.array(results, dtype=self._dtype)
+                # Store thresholds for monitoring/debugging
+                self.primary_thresholds[channel] = primary_threshold
+                self.secondary_thresholds[channel] = secondary_threshold
 
-        # Make empty array with the correct dtype for meta
-        empty = np.array([], dtype=self._dtype)
+                # Find raw threshold crossings
+                primary_mask = channel_data > primary_threshold
+                secondary_mask = channel_data > secondary_threshold
 
-        # Prepare data shape
-        # Handle single channel case properly
-        if data.ndim == 1:
-            # Keep it as 1D
-            proc_data = data
-        else:
-            # Take first channel if multivariate
-            proc_data = data[:, 0]
+                # Find primary threshold crossings
+                primary_transitions = np.diff(primary_mask.astype(int), prepend=0)
+                primary_onsets = np.where(primary_transitions == 1)[0]
+                primary_offsets = np.where(primary_transitions == -1)[0]
 
-        # Set overlap depth to handle events that span chunk boundaries
-        overlap = max(
-            self._overlap_samples,
-            min_contraction_samples,
-            min_event_spacing_samples,
-            self.secondary_points_required
-            * 2,  # Additional overlap for secondary threshold checking
-        )
+                # Handle edge case: signal ends while still above threshold
+                if len(primary_onsets) > len(primary_offsets):
+                    primary_offsets = np.append(primary_offsets, n_samples - 1)
 
-        # Use map_blocks with drop_axis to ensure output has correct shape
-        result = proc_data.map_overlap(
-            detect_onsets_chunk,
-            depth=overlap,
-            boundary="reflect",
-            meta=empty,
-            drop_axis=0,  # Drop time axis
+                # Apply refractory period to primary onsets
+                if len(primary_onsets) > 0:
+                    # First onset is always kept
+                    filtered_primary_onsets = [primary_onsets[0]]
+
+                    # Filter subsequent onsets based on refractory period
+                    for i in range(1, len(primary_onsets)):
+                        if (
+                            primary_onsets[i] - filtered_primary_onsets[-1]
+                            >= refractory_samples
+                        ):
+                            filtered_primary_onsets.append(primary_onsets[i])
+
+                    primary_onsets = np.array(filtered_primary_onsets)
+                else:
+                    primary_onsets = np.array([])
+
+                # Apply refractory period to primary offsets
+                if len(primary_offsets) > 0:
+                    # First offset is always kept
+                    filtered_primary_offsets = [primary_offsets[0]]
+
+                    # Filter subsequent offsets based on refractory period
+                    for i in range(1, len(primary_offsets)):
+                        if (
+                            primary_offsets[i] - filtered_primary_offsets[-1]
+                            >= refractory_samples
+                        ):
+                            filtered_primary_offsets.append(primary_offsets[i])
+
+                    primary_offsets = np.array(filtered_primary_offsets)
+                else:
+                    primary_offsets = np.array([])
+
+                # Validate events using secondary threshold
+                valid_events = []
+
+                # Skip if we don't have both onsets and offsets
+                if len(primary_onsets) == 0 or len(primary_offsets) == 0:
+                    continue
+
+                # Match each onset with the next offset
+                for onset_idx in primary_onsets:
+                    # Find the first offset after this onset
+                    valid_offsets = primary_offsets[primary_offsets > onset_idx]
+
+                    if len(valid_offsets) == 0:
+                        # No valid offset found for this onset
+                        continue
+
+                    offset_idx = valid_offsets[0]
+
+                    # Check minimum contraction duration
+                    duration_samples = offset_idx - onset_idx
+                    if duration_samples < min_samples:
+                        continue
+
+                    # Extract segment for secondary threshold analysis
+                    segment = secondary_mask[onset_idx:offset_idx]
+
+                    # Count consecutive points above secondary threshold
+                    consecutive_count = 0
+                    max_consecutive = 0
+
+                    for point in segment:
+                        if point:
+                            consecutive_count += 1
+                            max_consecutive = max(max_consecutive, consecutive_count)
+                        else:
+                            consecutive_count = 0
+
+                    # Validate using secondary threshold criteria
+                    if max_consecutive >= self.secondary_points_required:
+                        # Calculate duration
+                        duration_seconds = duration_samples / fs
+
+                        # Extract signal during contraction for amplitude
+                        contraction_segment = channel_data[onset_idx:offset_idx]
+                        peak_amplitude = np.max(contraction_segment)
+
+                        # Adjust onset and offset indices to global context
+                        global_onset_idx = global_start + onset_idx
+                        global_offset_idx = global_start + offset_idx
+
+                        # Add event to list
+                        valid_events.append(
+                            (
+                                global_onset_idx,
+                                global_offset_idx,
+                                channel,
+                                peak_amplitude,
+                                duration_seconds,
+                            )
+                        )
+
+                # Add validated events to the main list
+                events_list.extend(valid_events)
+
+            # Convert events list to structured array
+            if events_list:
+                return np.array(events_list, dtype=self._dtype)
+            else:
+                # Return empty array with correct dtype if no events
+                return np.array([], dtype=self._dtype)
+
+        # Apply detection function to dask array with improved overlap handling
+        events_da = data.map_overlap(
+            detect_events_in_chunk,
+            depth={-2: self._overlap_samples},  # Explicit overlap depth
+            boundary="none",  # No zero padding at boundaries
             dtype=self._dtype,
+            drop_axis=(
+                0,
+                1,
+            ),  # Input has shape [samples, channels], output is 1D array of events
+            new_axis=0,  # Output will be 1D array of event records
         )
 
-        return result
+        return events_da
 
     def to_dataframe(self, events_array: Union[np.ndarray, da.Array]) -> pl.DataFrame:
         """
@@ -353,11 +368,11 @@ class EMGDoubleThresholdDetector(BaseProcessor):
                 "primary_threshold_value": self.primary_threshold_value,
                 "secondary_threshold_value": self.secondary_threshold_value,
                 "min_contraction_duration": self.min_contraction_duration,
-                "min_event_spacing": self.min_event_spacing,
+                "refractory_period": self.refractory_period,
                 "secondary_points_required": self.secondary_points_required,
                 "detection_method": "double-threshold",
-                "primary_threshold": self.primary_threshold,
-                "secondary_threshold": self.secondary_threshold,
+                "primary_thresholds": self.primary_thresholds,
+                "secondary_thresholds": self.secondary_thresholds,
             }
         )
         return base_summary
@@ -367,28 +382,34 @@ class EMGDoubleThresholdDetector(BaseProcessor):
 def create_double_threshold_detector(
     primary_threshold: float,
     secondary_threshold: float,
+    threshold_method: Literal["absolute", "std", "rms", "percent_max"] = "std",
     secondary_points_required: int = 3,
     min_contraction_duration: float = 0.01,
-    min_event_spacing: float = 0.1,
-) -> EMGDoubleThresholdDetector:
+    refractory_period: float = 0.1,
+) -> DoubleThresholdDetector:
     """
     Create an EMG onset detector using double thresholding.
 
     Args:
+        threshold_method: Method for determining the activation threshold
+            "absolute": Fixed threshold values
+            "std": Multiple of standard deviation above mean
+            "rms": Multiple of RMS value
+            "percent_max": Percentage of maximum value
         primary_threshold: Higher absolute threshold value
         secondary_threshold: Lower absolute threshold value
         secondary_points_required: Minimum consecutive points required above secondary threshold
         min_contraction_duration: Minimum duration for valid contraction in seconds
-        min_event_spacing: Minimum time between consecutive events in seconds
+        refractory_period: Minimum time between consecutive events in seconds
 
     Returns:
         Configured EMGDoubleThresholdDetector
     """
-    return EMGDoubleThresholdDetector(
-        threshold_method="absolute",
+    return DoubleThresholdDetector(
+        threshold_method=threshold_method,
         primary_threshold_value=primary_threshold,
         secondary_threshold_value=secondary_threshold,
         secondary_points_required=secondary_points_required,
         min_contraction_duration=min_contraction_duration,
-        min_event_spacing=min_event_spacing,
+        refractory_period=refractory_period,
     )

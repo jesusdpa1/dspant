@@ -36,133 +36,11 @@ from dspant_emgproc.processors.activity_detection.double_threshold import (
     create_double_threshold_detector,
 )
 from dspant_emgproc.processors.activity_detection.single_threshold import (
-    create_absolute_threshold_detector,
+    create_single_threshold_detector,
 )
 
 sns.set_theme(style="darkgrid")
 dotenv.load_dotenv()
-# %%
-base_path = Path(os.getenv("DATA_DIR"))
-data_path = base_path.joinpath(
-    r"papers\2025_mp_emg diaphragm acquisition and processing\Sample Ventilator Trace"
-)
-#     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
-
-emg_right_path = data_path.joinpath(r"emg_r.ant")
-emg_left_path = data_path.joinpath(r"emg_l.ant")
-insp_path = data_path.joinpath(r"insp.ant")
-# %%
-# Load EMG data
-stream_emg_r = StreamNode(str(emg_right_path))
-stream_emg_r.load_metadata()
-stream_emg_r.load_data()
-# Print stream_emg summary
-stream_emg_r.summarize()
-
-
-stream_emg_l = StreamNode(str(emg_left_path))
-stream_emg_l.load_metadata()
-stream_emg_l.load_data()
-# Print stream_emg summary
-stream_emg_l.summarize()
-
-
-stream_insp = StreamNode(str(insp_path))
-stream_insp.load_metadata()
-stream_insp.load_data()
-# Print stream_emg summary
-stream_insp.summarize()
-
-
-# %%
-# Create and visualize filters before applying them
-fs = stream_emg_l.fs  # Get sampling rate from the stream node
-
-# Create filters with improved visualization
-bandpass_filter = create_bandpass_filter(10, 4000, fs=fs, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=fs)
-lowpass_filter = create_lowpass_filter(50, fs)
-# %%
-# bandpass_plot = bandpass_filter.plot_frequency_response()
-# notch_plot = notch_filter.plot_frequency_response()
-# lowpass_plot = lowpass_filter.plot_frequency_response()
-# %%
-
-# Create processing node with filters
-processor_emg_r = create_processing_node(stream_emg_r)
-processor_emg_l = create_processing_node(stream_emg_l)
-processor_insp = create_processing_node(stream_insp)
-# %%
-
-# Create processors
-notch_processor = FilterProcessor(
-    filter_func=notch_filter.get_filter_function(), overlap_samples=40
-)
-bandpass_processor = FilterProcessor(
-    filter_func=bandpass_filter.get_filter_function(), overlap_samples=40
-)
-lowpass_processor = FilterProcessor(
-    filter_func=lowpass_filter.get_filter_function(), overlap_samples=40
-)
-# %%
-
-# Add processors to the processing node
-processor_emg_r.add_processor([notch_processor, bandpass_processor], group="filters")
-processor_emg_l.add_processor([notch_processor, bandpass_processor], group="filters")
-processor_insp.add_processor([notch_processor, lowpass_processor], group="filters")
-# Apply filters and plot results
-filtered_emg_r = processor_emg_r.process(group=["filters"]).persist()
-filtered_emg_l = processor_emg_l.process(group=["filters"]).persist()
-filtered_insp = processor_insp.process(group=["filters"]).persist()
-
-# %%
-filtered_data = da.concatenate([filtered_emg_r, filtered_emg_l, filtered_insp], axis=1)
-
-# %%
-multichannel_fig = plot_multi_channel_data(filtered_data, fs=fs, time_window=[100, 110])
-
-# %%
-
-tkeo_processor = create_tkeo_envelope_rs(method="modified", cutoff_freq=4)
-tkeo_data = tkeo_processor.process(filtered_emg_l, fs=fs).persist()
-zscore_processor = create_normalizer("minmax")
-zscore_tkeo = zscore_processor.process(tkeo_data).persist()
-zscore_insp = zscore_processor.process(filtered_insp).persist()
-
-st_tkeo_processor = create_double_threshold_detector(
-    primary_threshold=0.045,
-    secondary_threshold=0.1,
-    min_event_spacing=0.01,
-    min_contraction_duration=0.01,
-)
-
-st_insp_processor = create_double_threshold_detector(
-    primary_threshold=0.2,
-    secondary_threshold=0.25,
-    min_event_spacing=0.001,
-    min_contraction_duration=0.001,
-)
-
-tkeo_epochs = st_tkeo_processor.process(zscore_tkeo, fs=fs).compute()
-tkeo_epochs = st_tkeo_processor.to_dataframe(tkeo_epochs)
-
-insp_epochs = st_insp_processor.process(zscore_insp, fs=fs).compute()
-insp_epochs = st_insp_processor.to_dataframe(insp_epochs)
-# %%
-tkeo_fig = plot_multi_channel_data(tkeo_data, fs=fs, time_window=[100, 110])
-
-# %%
-"""
-time stamps
-neural trigger on = 0 to 30
-neural trigger off = 365 to 395
-neural triggered tidal volume increased = 1090 - 1120
-neural triggered tidal volume decreased = 1245 - 1275
-"""
-
-# %%
-import matplotlib.pyplot as plt
-import numpy as np
 
 
 def plot_onset_detection_results(
@@ -326,6 +204,123 @@ def plot_onset_detection_results(
 
 
 # %%
+base_path = Path(os.getenv("DATA_DIR"))
+data_path = base_path.joinpath(
+    r"papers\2025_mp_emg diaphragm acquisition and processing\Sample Ventilator Trace"
+)
+#     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
+
+emg_right_path = data_path.joinpath(r"emg_r.ant")
+emg_left_path = data_path.joinpath(r"emg_l.ant")
+insp_path = data_path.joinpath(r"insp.ant")
+
+# %%
+
+# Load EMG data
+stream_emg_r = StreamNode(str(emg_right_path))
+stream_emg_r.load_metadata()
+stream_emg_r.load_data()
+# Print stream_emg summary
+stream_emg_r.summarize()
+
+
+stream_emg_l = StreamNode(str(emg_left_path))
+stream_emg_l.load_metadata()
+stream_emg_l.load_data()
+# Print stream_emg summary
+stream_emg_l.summarize()
+
+
+stream_insp = StreamNode(str(insp_path))
+stream_insp.load_metadata()
+stream_insp.load_data()
+# Print stream_emg summary
+stream_insp.summarize()
+
+
+# %%
+# Create and visualize filters before applying them
+fs = stream_emg_l.fs  # Get sampling rate from the stream node
+
+# Create filters with improved visualization
+bandpass_filter = create_bandpass_filter(10, 4000, fs=fs, order=5)
+notch_filter = create_notch_filter(60, q=60, fs=fs)
+lowpass_filter = create_lowpass_filter(50, fs)
+# %%
+# bandpass_plot = bandpass_filter.plot_frequency_response()
+# notch_plot = notch_filter.plot_frequency_response()
+# lowpass_plot = lowpass_filter.plot_frequency_response()
+# %%
+
+# Create processing node with filters
+processor_emg_r = create_processing_node(stream_emg_r)
+processor_emg_l = create_processing_node(stream_emg_l)
+processor_insp = create_processing_node(stream_insp)
+# %%
+
+# Create processors
+notch_processor = FilterProcessor(
+    filter_func=notch_filter.get_filter_function(), overlap_samples=40
+)
+bandpass_processor = FilterProcessor(
+    filter_func=bandpass_filter.get_filter_function(), overlap_samples=40
+)
+lowpass_processor = FilterProcessor(
+    filter_func=lowpass_filter.get_filter_function(), overlap_samples=40
+)
+# %%
+
+# Add processors to the processing node
+processor_emg_r.add_processor([notch_processor, bandpass_processor], group="filters")
+processor_emg_l.add_processor([notch_processor, bandpass_processor], group="filters")
+processor_insp.add_processor([notch_processor, lowpass_processor], group="filters")
+# Apply filters and plot results
+filtered_emg_r = processor_emg_r.process(group=["filters"]).persist()
+filtered_emg_l = processor_emg_l.process(group=["filters"]).persist()
+filtered_insp = processor_insp.process(group=["filters"]).persist()
+
+# %%
+filtered_data = da.concatenate([filtered_emg_r, filtered_emg_l, filtered_insp], axis=1)
+
+# %%
+multichannel_fig = plot_multi_channel_data(filtered_data, fs=fs, time_window=[100, 110])
+
+# %%
+
+tkeo_processor = create_tkeo_envelope_rs(method="modified", cutoff_freq=4)
+tkeo_data = tkeo_processor.process(filtered_emg_l, fs=fs).persist()
+zscore_processor = create_normalizer("minmax")
+zscore_tkeo = zscore_processor.process(tkeo_data).persist()
+zscore_insp = zscore_processor.process(filtered_insp).persist()
+
+st_tkeo_processor = create_double_threshold_detector(
+    primary_threshold=0.035,
+    secondary_threshold=0.045,
+    # threshold_method="absolute",
+    # threshold_value=0.045,
+    refractory_period=0.02,
+    min_contraction_duration=0.01,
+)
+# %%
+st_insp_processor = create_double_threshold_detector(
+    primary_threshold=0.1,
+    secondary_threshold=0.2,
+    # threshold_method="absolute",
+    # threshold_value=0.2,
+    secondary_points_required=100,
+    refractory_period=0.02,
+    min_contraction_duration=0.1,
+)
+
+tkeo_epochs = st_tkeo_processor.process(zscore_tkeo, fs=fs).compute()
+tkeo_epochs = st_tkeo_processor.to_dataframe(tkeo_epochs)
+
+insp_epochs = st_insp_processor.process(zscore_insp, fs=fs).compute()
+insp_epochs = st_insp_processor.to_dataframe(insp_epochs)
+# %%
+tkeo_fig = plot_multi_channel_data(tkeo_data, fs=fs, time_window=[100, 110])
+
+# %%
 
 plot_ = plot_onset_detection_results(
     zscore_insp,
@@ -349,6 +344,13 @@ plot_ = plot_onset_detection_results(
     highlight_color="red",
 )
 # %%
+"""
+time stamps
+neural trigger on = 0 to 30
+neural trigger off = 365 to 395
+neural triggered tidal volume increased = 1090 - 1120
+neural triggered tidal volume decreased = 1245 - 1275
+"""
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt

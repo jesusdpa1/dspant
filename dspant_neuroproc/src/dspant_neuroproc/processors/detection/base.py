@@ -12,7 +12,7 @@ import dask.array as da
 import numpy as np
 import polars as pl
 
-from ...engine.base import BaseProcessor
+from dspant.engine.base import BaseProcessor
 
 
 class BaseDetector(BaseProcessor):

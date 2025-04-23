@@ -5,8 +5,7 @@ This module implements various peak detection methods for identifying
 neural spikes and events in extracellular recordings.
 """
 
-import concurrent.futures
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
@@ -14,7 +13,7 @@ import polars as pl
 from numba import jit
 
 from dspant.processors.quality_metrics import NoiseEstimationProcessor
-from dspant_neuroproc.detection.base import ThresholdDetector
+from dspant_neuroproc.processors.detection.base import ThresholdDetector
 
 
 @jit(nopython=True, cache=True)
@@ -175,7 +174,7 @@ class PeakDetector(ThresholdDetector):
         self.detect_positive = polarity in ["positive", "both"]
         self.detect_negative = polarity in ["negative", "both"]
 
-    def detect(self, data: da.Array, fs: float, **kwargs) -> pl.DataFrame:
+    def detect(self, data: da.Array, fs: float, **kwargs) -> da.Array:
         """
         Detect peaks in the input data.
 
@@ -185,11 +184,7 @@ class PeakDetector(ThresholdDetector):
             **kwargs: Additional keyword arguments
 
         Returns:
-            Polars DataFrame with detection results containing:
-                - index: Sample index of the peak
-                - amplitude: Peak amplitude
-                - channel: Channel number
-                - time_sec: Time of the peak in seconds
+            Dask array with detection results
         """
         # Ensure data is 2D
         if data.ndim == 1:
@@ -205,36 +200,56 @@ class PeakDetector(ThresholdDetector):
         # Calculate adaptive thresholds if using MAD-based threshold
         if self.threshold_mode == "mad" and self.noise_estimator is not None:
             noise_levels = self.noise_estimator.process(data, fs=fs)
-
-            # Convert to numpy for easier handling
             noise_levels = noise_levels.compute()
-
-            # For simplicity, use the mean noise level across channels for threshold
             mean_noise = float(np.mean(noise_levels))
             pos_threshold = self.threshold * mean_noise
             neg_threshold = -self.threshold * mean_noise
         else:
             # Use compute_threshold from base class for other threshold types
             thresholds = self.compute_threshold(data.compute(), fs)
-            # Use the mean threshold across channels
             pos_threshold = float(np.mean(thresholds["positive"]))
             neg_threshold = float(np.mean(thresholds["negative"]))
 
-        # Function to apply to each chunk with specified overlap
-        def detect_peaks_chunk(chunk, block_info=None):
-            # Get chunk offset for correct indexing in the full array
-            chunk_offset = 0
-            if (
-                block_info
-                and len(block_info) > 0
-                and len(block_info[0]["array-location"]) > 0
-            ):
-                try:
-                    chunk_offset = block_info[0]["array-location"][0][0]
-                except (IndexError, KeyError):
-                    chunk_offset = 0
+        # Define struct dtype for consistent output
+        output_dtype = np.dtype(
+            [
+                ("index", np.int64),
+                ("amplitude", np.float32),
+                ("channel", np.int32),
+            ]
+        )
 
-            # Ensure chunk is contiguous and in correct layout
+        # For small data, just compute directly without chunks
+        if data.shape[1] < self._overlap_samples:
+            # Process the whole array at once for small data
+            computed_data = data.compute()
+            peak_indices, peak_amplitudes, peak_channels = _detect_peaks_numba(
+                computed_data,
+                pos_threshold,
+                neg_threshold,
+                self.detect_positive,
+                self.detect_negative,
+                min_distance_samples,
+            )
+
+            # Create empty result with correct structure when no peaks are found
+            if len(peak_indices) == 0:
+                empty_result = np.array([], dtype=output_dtype)
+                return da.from_array(empty_result, chunks=1)
+
+            # Create structured array for output
+            result = np.zeros(len(peak_indices), dtype=output_dtype)
+            result["index"] = peak_indices
+            result["amplitude"] = peak_amplitudes
+            result["channel"] = peak_channels
+
+            # Convert to dask array for consistent return type
+            return da.from_array(result, chunks=1)
+
+        # For larger data, use map_overlap with chunks
+        # Define the chunk processing function
+        def detect_peaks_chunk(chunk: np.ndarray) -> np.ndarray:
+            # Ensure chunk is contiguous
             chunk = np.ascontiguousarray(chunk)
 
             # Use numba-accelerated implementation
@@ -249,57 +264,30 @@ class PeakDetector(ThresholdDetector):
 
             # Create empty result with correct structure when no peaks are found
             if len(peak_indices) == 0:
-                # Return empty array but with the correct structured dtype
-                return np.array(
-                    [],
-                    dtype=[
-                        ("index", np.int64),
-                        ("amplitude", np.float32),
-                        ("channel", np.int32),
-                    ],
-                )
-
-            # Add chunk offset to indices
-            peak_indices = peak_indices + chunk_offset
+                return np.array([], dtype=output_dtype)
 
             # Create structured array for output
-            result = np.zeros(
-                len(peak_indices),
-                dtype=[
-                    ("index", np.int64),
-                    ("amplitude", np.float32),
-                    ("channel", np.int32),
-                ],
-            )
-
+            result = np.zeros(len(peak_indices), dtype=output_dtype)
             result["index"] = peak_indices
             result["amplitude"] = peak_amplitudes
             result["channel"] = peak_channels
 
             return result
 
+        # Create an empty array with the right structure for meta
+        empty_meta = np.array([], dtype=output_dtype)
+
+        # Calculate safe overlap depth - cannot be larger than the smallest dimension
+        safe_overlap = min(self._overlap_samples, data.shape[0] // 2, data.shape[1])
+
         # Apply detection to chunks with overlap
         result = data.map_overlap(
             detect_peaks_chunk,
-            depth={-2: self._overlap_samples},
+            depth=safe_overlap,
             boundary="reflect",
-            dtype=np.dtype(
-                [
-                    ("index", np.int64),
-                    ("amplitude", np.float32),
-                    ("channel", np.int32),
-                ]
-            ),
-            meta=np.array(
-                [],
-                dtype=np.dtype(
-                    [
-                        ("index", np.int64),
-                        ("amplitude", np.float32),
-                        ("channel", np.int32),
-                    ]
-                ),
-            ),
+            dtype=output_dtype,
+            drop_axis=0,  # Drop time dimension
+            meta=empty_meta,
         )
 
         # Update detection stats
@@ -308,15 +296,42 @@ class PeakDetector(ThresholdDetector):
             "positive_threshold": pos_threshold,
             "negative_threshold": neg_threshold,
             "min_distance_samples": min_distance_samples,
-            "overlap_samples": self._overlap_samples,
+            "overlap_samples": safe_overlap,
         }
 
-        # Compute the result
-        try:
-            result_data = result.compute()
-        except Exception as e:
-            print(f"Error computing peaks: {e}")
-            # Return empty DataFrame if computation fails
+        return result
+
+    def to_dataframe(
+        self, events_array: Union[np.ndarray, da.Array], fs: float
+    ) -> pl.DataFrame:
+        """
+        Convert events array to a Polars DataFrame.
+
+        Args:
+            events_array: Array of detected events
+            fs: Sampling frequency in Hz
+
+        Returns:
+            Polars DataFrame with onset events
+        """
+        # Convert dask array to numpy if needed
+        if isinstance(events_array, da.Array):
+            try:
+                events_array = events_array.compute()
+            except Exception as e:
+                print(f"Error computing events: {e}")
+                # Return empty DataFrame if computation fails
+                return pl.DataFrame(
+                    schema={
+                        "index": pl.Int64,
+                        "amplitude": pl.Float32,
+                        "channel": pl.Int32,
+                        "time_sec": pl.Float64,
+                    }
+                )
+
+        # Return empty DataFrame if no events found
+        if len(events_array) == 0:
             return pl.DataFrame(
                 schema={
                     "index": pl.Int64,
@@ -326,19 +341,8 @@ class PeakDetector(ThresholdDetector):
                 }
             )
 
-        # Return empty DataFrame if no peaks found
-        if len(result_data) == 0:
-            return pl.DataFrame(
-                schema={
-                    "index": pl.Int64,
-                    "amplitude": pl.Float32,
-                    "channel": pl.Int32,
-                    "time_sec": pl.Float64,
-                }
-            )
-
-        # Convert to Polars DataFrame
-        df = pl.from_numpy(result_data)
+        # Convert numpy structured array to Polars DataFrame
+        df = pl.from_numpy(events_array)
 
         # Add time in seconds column
         df = df.with_columns((pl.col("index") / fs).alias("time_sec"))
@@ -398,6 +402,7 @@ def create_threshold_detector(
 def create_negative_peak_detector(
     threshold: float = 4.0,
     refractory_period: float = 0.001,
+    threshold_mode: Literal["absolute", "std", "mad", "rms"] = "mad",
 ) -> PeakDetector:
     """
     Create a detector optimized for negative spikes (common in extracellular recordings).
@@ -405,13 +410,18 @@ def create_negative_peak_detector(
     Args:
         threshold: MAD threshold multiplier
         refractory_period: Minimum time between spikes
+        threshold_mode: How to interpret the threshold
+            "absolute": Use raw value
+            "std": Multiple of signal standard deviation
+            "mad": Multiple of median absolute deviation (more robust)
+            "rms": Multiple of root mean square
 
     Returns:
         Configured PeakDetector instance
     """
     return PeakDetector(
         threshold=threshold,
-        threshold_mode="mad",
+        threshold_mode=threshold_mode,
         polarity="negative",
         refractory_period=refractory_period,
         align_to_peak=True,
@@ -422,6 +432,7 @@ def create_negative_peak_detector(
 def create_positive_peak_detector(
     threshold: float = 4.0,
     refractory_period: float = 0.001,
+    threshold_mode: Literal["absolute", "std", "mad", "rms"] = "mad",
 ) -> PeakDetector:
     """
     Create a detector optimized for positive spikes.
@@ -429,13 +440,18 @@ def create_positive_peak_detector(
     Args:
         threshold: MAD threshold multiplier
         refractory_period: Minimum time between spikes
+        threshold_mode: How to interpret the threshold
+            "absolute": Use raw value
+            "std": Multiple of signal standard deviation
+            "mad": Multiple of median absolute deviation (more robust)
+            "rms": Multiple of root mean square
 
     Returns:
         Configured PeakDetector instance
     """
     return PeakDetector(
         threshold=threshold,
-        threshold_mode="mad",
+        threshold_mode=threshold_mode,
         polarity="positive",
         refractory_period=refractory_period,
         align_to_peak=True,
@@ -446,6 +462,7 @@ def create_positive_peak_detector(
 def create_bipolar_peak_detector(
     threshold: float = 4.0,
     refractory_period: float = 0.001,
+    threshold_mode: Literal["absolute", "std", "mad", "rms"] = "mad",
 ) -> PeakDetector:
     """
     Create a detector that finds both positive and negative peaks.
@@ -453,13 +470,18 @@ def create_bipolar_peak_detector(
     Args:
         threshold: MAD threshold multiplier
         refractory_period: Minimum time between spikes
+        threshold_mode: How to interpret the threshold
+            "absolute": Use raw value
+            "std": Multiple of signal standard deviation
+            "mad": Multiple of median absolute deviation (more robust)
+            "rms": Multiple of root mean square
 
     Returns:
         Configured PeakDetector instance
     """
     return PeakDetector(
         threshold=threshold,
-        threshold_mode="mad",
+        threshold_mode=threshold_mode,
         polarity="both",
         refractory_period=refractory_period,
         align_to_peak=True,
