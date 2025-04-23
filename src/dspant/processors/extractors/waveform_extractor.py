@@ -3,7 +3,7 @@ from typing import Dict, List, Literal, Optional, Tuple, Union
 import dask.array as da
 import numpy as np
 import polars as pl
-from numba import jit
+from numba import boolean, float64, int64, jit
 
 from dspant.core.internals import public_api
 
@@ -164,7 +164,11 @@ class WaveformExtractor(BaseExtractor):
         # Optional: Apply alignment
         if align_to_min:
             waveforms = self._align_waveforms(
-                waveforms, pre_samples, align_window, max_jitter, waveform_polarities
+                waveforms,
+                pre_samples,
+                align_window,
+                max_jitter,
+                waveform_polarities,
             )
 
         return waveforms, valid_spike_times, metadata
@@ -173,15 +177,35 @@ class WaveformExtractor(BaseExtractor):
     @jit(nopython=True, cache=True)
     def _align_waveform(
         waveform: np.ndarray,
-        pre_samples: int,
-        align_window: int,
-        max_jitter: int,
-        is_negative: bool,
-    ) -> Tuple[np.ndarray, int]:
+        pre_samples: int64,
+        align_window: int64,
+        max_jitter: int64,
+        is_negative: boolean,
+    ) -> Tuple[np.ndarray, int64]:
         """
         Align a single waveform to its peak.
 
-        Numba-accelerated alignment function.
+        Numba-accelerated alignment function with explicit type declarations.
+
+        Parameters:
+        -----------
+        waveform : np.ndarray
+            Input waveform array (samples × channels)
+        pre_samples : int64
+            Number of samples before spike peak
+        align_window : int64
+            Window size for peak alignment
+        max_jitter : int64
+            Maximum allowed shift during alignment
+        is_negative : boolean
+            Whether to align to negative peak
+
+        Returns:
+        --------
+        aligned_waveform : np.ndarray
+            Aligned waveform
+        shift : int64
+            Amount of shift applied
         """
         waveform_length = waveform.shape[0]
         n_channels = waveform.shape[1]
@@ -204,7 +228,8 @@ class WaveformExtractor(BaseExtractor):
 
         # Apply shift if within jitter limits
         if abs(shift) <= max_jitter:
-            aligned = np.zeros_like(waveform)
+            # Create aligned waveform with explicit shape and dtype
+            aligned = np.zeros((waveform_length, n_channels), dtype=waveform.dtype)
 
             # Apply shift
             if shift > 0:
@@ -212,12 +237,12 @@ class WaveformExtractor(BaseExtractor):
             elif shift < 0:
                 aligned[:shift, :] = waveform[-shift:, :]
             else:
-                aligned = waveform.copy()
+                aligned[:] = waveform[:]
 
             return aligned, shift
 
         # If shift is too large, return original waveform
-        return waveform, 0
+        return waveform.copy(), np.int64(0)  # Explicit type conversion
 
     def _align_waveforms(
         self,
@@ -230,22 +255,31 @@ class WaveformExtractor(BaseExtractor):
         """
         Align multiple waveforms using Numba-accelerated method.
         """
-        # Prepare list to store aligned waveforms
-        aligned_chunks = []
+        # Compute all waveforms at once for better performance
+        waveforms_np = waveforms.compute()
+
+        # Prepare array to store aligned waveforms
+        n_waveforms = len(waveforms_np)
+        aligned_waveforms_np = np.zeros_like(waveforms_np)
+
+        # Convert parameters to Numba-compatible types
+        pre_samples_nb = np.int64(pre_samples)
+        align_window_nb = np.int64(align_window)
+        max_jitter_nb = np.int64(max_jitter)
 
         # Align each waveform
-        for i, (waveform, is_negative) in enumerate(zip(waveforms, polarities)):
-            # Compute the waveform
-            waveform_np = waveform.compute()
+        for i in range(n_waveforms):
+            # Get waveform and polarity
+            waveform = waveforms_np[i]
+            is_negative = bool(polarities[i])  # Ensure boolean type
 
-            # Align
+            # Align using the Numba function
             aligned_waveform, _ = self._align_waveform(
-                waveform_np, pre_samples, align_window, max_jitter, is_negative
+                waveform, pre_samples_nb, align_window_nb, max_jitter_nb, is_negative
             )
 
-            aligned_chunks.append(
-                da.from_array(aligned_waveform, chunks=waveform.chunks)
-            )
+            # Store in the result array
+            aligned_waveforms_np[i] = aligned_waveform
 
-        # Stack aligned waveforms
-        return da.stack(aligned_chunks)
+        # Convert back to Dask array with same chunking as original
+        return da.from_array(aligned_waveforms_np, chunks=waveforms.chunks)

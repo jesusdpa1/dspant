@@ -11,6 +11,7 @@ import dask.array as da
 import numpy as np
 from numba import jit
 
+from dspant.core.internals import public_api
 from dspant.engine.base import BaseProcessor
 
 try:
@@ -58,6 +59,7 @@ except ImportError:
         return (data - median) / (k * mad)
 
 
+@public_api
 class NormalizationProcessor(BaseProcessor):
     """
     Normalization processor implementation with Rust and Numba acceleration.

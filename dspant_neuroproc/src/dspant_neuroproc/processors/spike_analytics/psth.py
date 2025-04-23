@@ -7,6 +7,7 @@ to stimulus or event triggers, useful for analyzing neural responses to stimuli.
 
 from typing import Dict, List, Optional, Tuple, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
 from numba import jit, prange
 
@@ -179,23 +180,12 @@ class PSTHAnalyzer(BaseSpikeTransform):
             Time after events to include (ms)
             If None, uses half of window_size_ms
         **kwargs : dict
-            Additional keyword arguments (unused)
+            Additional keyword arguments
 
         Returns
         -------
         result : dict
-            Dictionary with PSTH results:
-            - 'time_bins': Time bins relative to event onset (seconds)
-            - 'psth_counts': Raw spike counts per bin (shape: bins × units)
-            - 'psth_rates': Firing rates (Hz) per bin (shape: bins × units)
-            - 'psth_sem': Standard error of mean (shape: bins × units)
-            - 'unit_ids': List of unit IDs included in analysis
-            - 'event_count': Number of events used in analysis
-            - If smoothing was applied:
-              - 'psth_smoothed': Smoothed firing rates (Hz)
-            - If baseline normalization was applied:
-              - 'psth_normalized': Baseline-normalized rates
-              - 'baseline_window': Baseline window used (seconds)
+            Dictionary with PSTH results including raster data with multiple trials
         """
         # Validate the sorter
         self._validate_sorter(sorter)
@@ -236,50 +226,100 @@ class PSTHAnalyzer(BaseSpikeTransform):
 
         # Initialize output arrays
         n_units = len(used_unit_ids)
+        n_events = len(event_times_s)
         psth_counts = np.zeros((n_bins, n_units), dtype=np.int32)
+
+        # Storage for raster data
+        raster_data = []
 
         # Process each unit
         for i, unit_id in enumerate(used_unit_ids):
             # Get spike times for this unit (in samples)
             spike_train = sorter.get_unit_spike_train(unit_id)
 
-            # Bin spikes around events
-            unit_psth = self._bin_spikes_by_events(
-                spike_train,
-                event_times_samples,
-                pre_samples,
-                post_samples,
-                bin_edges_samples,
+            # Storage for this unit's raster data
+            unit_spike_times = []
+            unit_trial_indices = []
+
+            # Process each event/trial
+            for trial_idx, event_time in enumerate(event_times_samples):
+                # Calculate window boundaries
+                window_start = event_time - pre_samples
+                window_end = event_time + post_samples
+
+                # Find spikes within this window
+                mask = (spike_train >= window_start) & (spike_train < window_end)
+                window_spikes = spike_train[mask]
+
+                if len(window_spikes) > 0:
+                    # Convert to seconds relative to event onset
+                    rel_times_sec = (window_spikes - event_time) / sampling_rate
+
+                    # Store spikes for this trial
+                    unit_spike_times.extend(rel_times_sec.tolist())
+                    unit_trial_indices.extend([trial_idx] * len(rel_times_sec))
+
+                    # Bin spikes for PSTH calculation
+                    for rel_time in window_spikes - event_time:
+                        bin_idx = np.searchsorted(bin_edges_samples, rel_time) - 1
+                        if 0 <= bin_idx < n_bins:
+                            psth_counts[bin_idx, i] += 1
+
+            # Store raster data for this unit
+            raster_data.append(
+                {
+                    "unit_id": unit_id,
+                    "trials": np.array(unit_trial_indices),
+                    "spike_times": np.array(unit_spike_times),
+                }
             )
 
-            # Sum across events (unit_psth shape: bins × events)
-            psth_counts[:, i] = np.sum(unit_psth, axis=1)
+        # The rest of the function remains the same as in the previous implementation
+        # (PSTH rate calculation, SEM calculation, smoothing, baseline normalization)
 
         # Convert to firing rates (Hz)
-        n_events = len(event_times_s)
         bin_size_s = self.bin_size_ms / 1000
         psth_rates = psth_counts / (n_events * bin_size_s)
 
-        # Calculate standard error of the mean
+        # Calculate standard error of the mean across events/trials
         psth_sem = np.zeros_like(psth_rates)
         for i, unit_id in enumerate(used_unit_ids):
-            # Get spike times for this unit (in samples)
+            # Skip if no spikes for this unit
+            if np.sum(psth_counts[:, i]) == 0:
+                continue
+
+            # Get spike times for this unit
             spike_train = sorter.get_unit_spike_train(unit_id)
 
-            # Bin spikes around events
-            unit_psth = self._bin_spikes_by_events(
-                spike_train,
-                event_times_samples,
-                pre_samples,
-                post_samples,
-                bin_edges_samples,
-            )
+            # Calculate rates for each event/trial
+            event_rates = np.zeros((n_bins, n_events), dtype=np.float32)
 
-            # Calculate firing rates for each event (Hz)
-            event_rates = unit_psth / bin_size_s
+            for e, event_time in enumerate(event_times_samples):
+                window_start = event_time - pre_samples
+                window_end = event_time + post_samples
 
-            # Calculate SEM
-            psth_sem[:, i] = np.std(event_rates, axis=1) / np.sqrt(n_events)
+                # Find spikes within this window
+                window_mask = (spike_train >= window_start) & (spike_train < window_end)
+                window_spikes = spike_train[window_mask]
+
+                # Bin spikes for this event
+                if len(window_spikes) > 0:
+                    for rel_time in window_spikes - event_time:
+                        bin_idx = np.searchsorted(bin_edges_samples, rel_time) - 1
+                        if 0 <= bin_idx < n_bins:
+                            event_rates[bin_idx, e] += 1
+
+            # Convert counts to rates
+            event_rates = event_rates / bin_size_s
+
+            # Calculate SEM (avoiding division by zero)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                valid_trials = np.sum(event_rates > 0, axis=1)
+                valid_trials[valid_trials == 0] = 1  # Avoid division by zero
+                psth_sem[:, i] = np.std(event_rates, axis=1) / np.sqrt(valid_trials)
+
+            # Handle any NaN values
+            psth_sem[:, i] = np.nan_to_num(psth_sem[:, i])
 
         # Prepare result dictionary
         result = {
@@ -289,10 +329,11 @@ class PSTHAnalyzer(BaseSpikeTransform):
             "psth_sem": psth_sem,
             "unit_ids": used_unit_ids,
             "event_count": n_events,
+            "raster_data": raster_data,
         }
 
         # Apply smoothing if requested
-        if self.sigma_ms is not None:
+        if self.sigma_ms is not None and hasattr(self, "density_estimator"):
             # Transpose to match density estimator input shape (time × units)
             smoothed = self.density_estimator.smooth(psth_counts.T).T
 
@@ -330,3 +371,207 @@ class PSTHAnalyzer(BaseSpikeTransform):
                 result["baseline_window"] = (baseline_start_s, baseline_end_s)
 
         return result
+
+
+def plot_psth_with_raster(
+    psth_result: Dict,
+    unit_index: int = 0,
+    figsize: Tuple[float, float] = (10, 8),
+    raster_color: str = "#2D3142",
+    raster_alpha: float = 0.7,
+    psth_color: str = "orange",
+    show_sem: bool = True,
+    sem_alpha: float = 0.3,
+    show_smoothed: bool = True,
+    marker_size: float = 4,
+    marker_type: str = "|",
+    title: Optional[str] = None,
+    show_grid: bool = True,
+    normalize_psth: bool = False,
+    ylim_raster: Optional[Tuple[float, float]] = None,
+    ylim_psth: Optional[Tuple[float, float]] = None,
+    xlim: Optional[Tuple[float, float]] = None,
+    raster_height_ratio: float = 2.0,
+):
+    """
+    Create a combined raster plot and PSTH aligned to event onsets.
+
+    Parameters
+    ----------
+    psth_result : dict
+        Output from PSTHAnalyzer.transform()
+    unit_index : int
+        Index of the unit to display (if multiple units in result)
+    figsize : tuple
+        Figure size as (width, height)
+    raster_color : str
+        Color for raster plot markers
+    raster_alpha : float
+        Alpha transparency for raster markers
+    psth_color : str
+        Color for PSTH line
+    show_sem : bool
+        Whether to show standard error of mean
+    sem_alpha : float
+        Alpha transparency for SEM shading
+    show_smoothed : bool
+        Whether to show smoothed PSTH if available
+    marker_size : float
+        Size of raster markers
+    marker_type : str
+        Type of marker for raster plot
+    title : str or None
+        Title for the figure
+    show_grid : bool
+        Whether to show grid lines
+    normalize_psth : bool
+        Whether to show normalized PSTH (if available)
+    ylim_raster : tuple or None
+        Y-axis limits for raster plot
+    ylim_psth : tuple or None
+        Y-axis limits for PSTH plot
+    xlim : tuple or None
+        X-axis limits for both plots
+    raster_height_ratio : float
+        Ratio of raster height to PSTH height (default: 2.0)
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure containing both plots
+    axes : list of matplotlib.axes.Axes
+        List containing [raster_ax, psth_ax]
+    """
+    # Check if raster data is available
+    if "raster_data" not in psth_result:
+        raise ValueError("PSTH result does not contain raster data.")
+
+    # Get unit ID
+    unit_ids = psth_result["unit_ids"]
+    if unit_index >= len(unit_ids):
+        raise ValueError(
+            f"Unit index {unit_index} out of range (max: {len(unit_ids) - 1})"
+        )
+
+    unit_id = unit_ids[unit_index]
+
+    # Create figure with two subplots (shared x-axis)
+    fig, axes = plt.subplots(
+        2,
+        1,
+        figsize=figsize,
+        sharex=True,
+        gridspec_kw={"height_ratios": [raster_height_ratio, 1]},
+    )
+    raster_ax, psth_ax = axes
+
+    # Get time bins
+    time_bins = psth_result["time_bins"]
+
+    # Get raster data for this unit
+    raster_data = psth_result["raster_data"][unit_index]
+    spike_times = raster_data["spike_times"]
+    trial_indices = raster_data["trials"]
+
+    # Check if we have events
+    n_events = psth_result["event_count"]
+
+    # Plot raster
+    if len(spike_times) > 0:
+        raster_ax.scatter(
+            spike_times,
+            trial_indices,
+            marker=marker_type,
+            s=marker_size,
+            color=raster_color,
+            alpha=raster_alpha,
+            linewidths=marker_size / 4 if marker_type != "|" else 1,
+        )
+
+    # Set raster labels
+    raster_ax.set_ylabel("Trial")
+    if title:
+        raster_ax.set_title(title)
+    else:
+        raster_ax.set_title(f"Unit {unit_id} - {n_events} trials")
+
+    # Set y-limits for raster if provided
+    if ylim_raster is not None:
+        raster_ax.set_ylim(ylim_raster)
+    else:
+        # Set y-limits to show all trials, even if some have no spikes
+        raster_ax.set_ylim(-0.5, n_events - 0.5)
+
+    # Plot PSTH
+    if normalize_psth and "psth_normalized" in psth_result:
+        # Use normalized PSTH if requested and available
+        psth_data = psth_result["psth_normalized"][:, unit_index]
+        y_label = "Normalized firing rate"
+    elif show_smoothed and "psth_smoothed" in psth_result:
+        # Use smoothed PSTH if requested and available
+        psth_data = psth_result["psth_smoothed"][:, unit_index]
+        y_label = "Firing rate (Hz)"
+    else:
+        # Use binned PSTH
+        psth_data = psth_result["psth_rates"][:, unit_index]
+        y_label = "Firing rate (Hz)"
+
+    # Plot PSTH line
+    psth_ax.plot(time_bins, psth_data, color=psth_color, linewidth=2)
+
+    # Plot SEM if requested
+    if show_sem and not normalize_psth:  # SEM not applicable to normalized data
+        sem = psth_result["psth_sem"][:, unit_index]
+
+        # Make sure SEM values are valid
+        valid_sem = np.isfinite(sem)
+        if np.any(valid_sem):
+            psth_ax.fill_between(
+                time_bins[valid_sem],
+                psth_data[valid_sem] - sem[valid_sem],
+                psth_data[valid_sem] + sem[valid_sem],
+                color=psth_color,
+                alpha=sem_alpha,
+            )
+
+    # Add baseline window if available
+    if "baseline_window" in psth_result:
+        start, end = psth_result["baseline_window"]
+        # Add baseline shading to both plots
+        for ax in axes:
+            ax.axvspan(start, end, color="gray", alpha=0.2)
+            # Add text label if there's room
+            if end - start > 0.05:
+                ax.text(
+                    (start + end) / 2,
+                    ax.get_ylim()[1] * 0.9,
+                    "baseline",
+                    ha="center",
+                    va="top",
+                    fontsize=8,
+                    alpha=0.7,
+                )
+
+    # Set PSTH labels
+    psth_ax.set_xlabel("Time from event onset (s)")
+    psth_ax.set_ylabel(y_label)
+
+    # Set y-limits for PSTH if provided
+    if ylim_psth is not None:
+        psth_ax.set_ylim(ylim_psth)
+
+    # Set x-limits if provided
+    if xlim is not None:
+        for ax in axes:
+            ax.set_xlim(xlim)
+
+    # Add vertical line at event onset (time=0)
+    for ax in axes:
+        ax.axvline(x=0, color="r", linestyle="--", alpha=0.6)
+        if show_grid:
+            ax.grid(True, alpha=0.3)
+
+    # Improve layout
+    plt.tight_layout()
+
+    return fig, axes
