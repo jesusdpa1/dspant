@@ -14,7 +14,7 @@ import polars as pl
 from numba import jit, prange
 from scipy import stats
 
-from ...engine.base import BaseProcessor
+from dspant.engine.base import BaseProcessor
 
 
 @jit(nopython=True, cache=True)

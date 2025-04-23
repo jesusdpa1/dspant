@@ -4,8 +4,11 @@ Author: Jesus Penaloza (Updated with envelope detection and onset detection)
 """
 
 # %%
+import os
 import time
+from pathlib import Path
 
+import dotenv
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -26,20 +29,23 @@ from dspant.processors.filters.fir_filters import (
 )
 from dspant.processors.filters.iir_filters import (
     create_bandpass_filter,
+    create_lowpass_filter,
     create_notch_filter,
 )
-from dspant.vizualization.general_plots import plot_multi_channel_data
+from dspant.visualization.general_plots import plot_multi_channel_data
 
 sns.set_theme(style="darkgrid")
 # %%
-
-base_path = r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+data_path = Path(os.getenv("DATA_DIR"))
+base_path = data_path.joinpath(
+    r"topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+)
 #     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
 
-emg_stream_path = base_path + r"/RawG.ant"
+emg_stream_path = base_path.joinpath(r"RawG.ant")
 # %%
 # Load EMG data
-stream_emg = StreamNode(emg_stream_path)
+stream_emg = StreamNode(str(emg_stream_path))
 stream_emg.load_metadata()
 stream_emg.load_data()
 # Print stream_emg summary
@@ -52,9 +58,11 @@ fs = stream_emg.fs  # Get sampling rate from the stream node
 # Create filters with improved visualization
 bandpass_filter = create_bandpass_filter(10, 2000, fs=fs, order=5)
 notch_filter = create_notch_filter(60, q=60, fs=fs)
+lowpass_filter = create_lowpass_filter(20, fs)
 # %%
 bandpass_plot = bandpass_filter.plot_frequency_response()
 notch_plot = notch_filter.plot_frequency_response()
+lowpass_plot = lowpass_filter.plot_frequency_response()
 # %%
 # Create processing node with filters
 processor_emg = create_processing_node(stream_emg)
@@ -66,6 +74,11 @@ notch_processor = FilterProcessor(
 # %%
 bandpass_processor = FilterProcessor(
     filter_func=bandpass_filter.get_filter_function(), overlap_samples=40
+)
+
+
+lowpass_processor = FilterProcessor(
+    filter_func=lowpass_filter.get_filter_function(), overlap_samples=40
 )
 # %%
 # Add processors to the processing node
@@ -84,19 +97,18 @@ data_rectified = square_processor.process(filter_data)
 # %%
 start = int(fs * 5)
 end = int(fs * 10)
+base_raw_data = filter_data[start:end, :]
 base_data = data_rectified[start:end, :]
 plt.plot(base_data)
 # %%
-window_size = int(0.055 * fs)
-moving_envelope_processor = create_moving_average(window_size=window_size)
-rms_envelope_processor = create_moving_rms(window_size=window_size)
-tkeo_envelope_processor = create_tkeo_envelope_rs(
-    "modified", rectify=False, smooth=True
-)
+window_size = int(0.025 * fs)
+moving_envelope_processor = create_moving_average(window_size=window_size, center=True)
+rms_envelope_processor = create_moving_rms(window_size=window_size, center=True)
+
 # %%
 moving_envelope = moving_envelope_processor.process(base_data).compute()
-rms_envelope = rms_envelope_processor.process(base_data).compute()
-tkeo_envelope = tkeo_envelope_processor.process(base_data, fs=fs).compute()
+rms_envelope = rms_envelope_processor.process(base_raw_data).compute()
+tkeo_envelope = lowpass_processor.process(base_data, fs=fs).compute()
 
 # %%
 import matplotlib.pyplot as plt

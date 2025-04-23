@@ -45,6 +45,7 @@ class BaseTrajectoryAnalyzer(ABC):
         self._model = None
         self._components = None
         self._trajectories = None
+        self._explained_variance_ratio = None
 
     @abstractmethod
     def _create_model(self) -> BaseEstimator:
@@ -100,14 +101,21 @@ class BaseTrajectoryAnalyzer(ABC):
             # Regular numpy array
             self._model.fit(reshaped_data)
 
+        # Store components and explained variance if available
+        if hasattr(self._model, "components_"):
+            self._components = self._model.components_
+        elif hasattr(self._model, "components"):
+            self._components = self._model.components
+
+        if hasattr(self._model, "explained_variance_ratio_"):
+            self._explained_variance_ratio = self._model.explained_variance_ratio_
+
         self._is_fitted = True
         return self
 
-    def transform(
-        self, data: Union[np.ndarray, da.Array]
-    ) -> Union[np.ndarray, da.Array]:
+    def transform(self, data: Union[np.ndarray, da.Array]) -> "BaseTrajectoryAnalyzer":
         """
-        Transform data to the low-dimensional space.
+        Transform data to the low-dimensional space and store it internally.
 
         Parameters
         ----------
@@ -116,8 +124,8 @@ class BaseTrajectoryAnalyzer(ABC):
 
         Returns
         -------
-        array
-            Transformed data in low-dimensional space
+        self
+            The analyzer with stored trajectories
         """
         if not self._is_fitted:
             raise ValueError("Model not fitted. Call 'fit' before 'transform'.")
@@ -146,13 +154,13 @@ class BaseTrajectoryAnalyzer(ABC):
 
         # Store trajectories
         self._trajectories = low_dim_data
-        return low_dim_data
+        return self
 
     def fit_transform(
         self, data: Union[np.ndarray, da.Array]
-    ) -> Union[np.ndarray, da.Array]:
+    ) -> "BaseTrajectoryAnalyzer":
         """
-        Fit the model and transform the data in one step.
+        Fit the model and transform the data in one step, storing results internally.
 
         Parameters
         ----------
@@ -161,8 +169,8 @@ class BaseTrajectoryAnalyzer(ABC):
 
         Returns
         -------
-        array
-            Transformed data in low-dimensional space
+        self
+            The analyzer with stored trajectories
         """
         return self.fit(data).transform(data)
 
@@ -172,12 +180,7 @@ class BaseTrajectoryAnalyzer(ABC):
         if not self._is_fitted:
             raise ValueError("Model not fitted. Call 'fit' first.")
 
-        if hasattr(self._model, "components_"):
-            return self._model.components_
-        elif hasattr(self._model, "components"):
-            return self._model.components
-        else:
-            raise AttributeError("Model does not have components.")
+        return self._components
 
     @property
     def explained_variance_ratio_(self) -> np.ndarray:
@@ -185,12 +188,10 @@ class BaseTrajectoryAnalyzer(ABC):
         if not self._is_fitted:
             raise ValueError("Model not fitted. Call 'fit' first.")
 
-        if hasattr(self._model, "explained_variance_ratio_"):
-            return self._model.explained_variance_ratio_
-        else:
-            return None
+        return self._explained_variance_ratio
 
-    def get_trajectories(self) -> Union[np.ndarray, da.Array]:
+    @property
+    def trajectories(self) -> Union[np.ndarray, da.Array]:
         """
         Get the trajectories in the low-dimensional space.
 

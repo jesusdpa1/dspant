@@ -36,8 +36,8 @@ class BaseNode(BaseModel):
         path_ = Path(self.data_path)
 
         # Use glob to find matching files
-        data_pattern = str(path_ / f"data_{path_.stem}*.parquet")
-        metadata_pattern = str(path_ / f"metadata_{path_.stem}*.json")
+        data_pattern = str(path_ / f"data_*.parquet")
+        metadata_pattern = str(path_ / f"metadata_*.json")
 
         data_files = glob.glob(data_pattern)
         metadata_files = glob.glob(metadata_pattern)

@@ -40,7 +40,7 @@ except ImportError:
     )
     HAS_RUST = False
 
-from dspant.vizualization import plot_multi_channel_data
+from dspant.visualization import plot_multi_channel_data
 
 sns.set_theme(style="darkgrid")
 

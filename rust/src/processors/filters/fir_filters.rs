@@ -4,7 +4,112 @@ use ndarray::{Array1, Array2, Axis};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 use rayon::prelude::*;
+use rustfft::{FftPlanner, num_complex::Complex, num_traits::Zero};
 use std::f32::consts::PI;
+
+// === FFT Convolution Implementation ===
+
+/// Perform FFT-based convolution between signal and filter impulse response
+fn fft_convolve(
+    signal: &Array2<f32>,
+    filter: &Array1<f32>,
+    center: bool,
+) -> Array2<f32> {
+    let (n_samples, n_channels) = (signal.shape()[0], signal.shape()[1]);
+    let filter_len = filter.len();
+    
+    // Determine convolution output size
+    let output_size = n_samples + filter_len - 1;
+    
+    // Next power of 2 for FFT efficiency
+    let n_fft = output_size.next_power_of_two();
+    
+    // Set up FFT planner
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n_fft);
+    let ifft = planner.plan_fft_inverse(n_fft);
+    
+    // Process each channel in parallel
+    let output = (0..n_channels).into_par_iter().map(|c| {
+        // Create FFT buffer for the filter
+        let mut filter_complex = vec![Complex::zero(); n_fft];
+        for i in 0..filter_len {
+            filter_complex[i] = Complex::new(filter[i], 0.0);
+        }
+        
+        // Perform FFT on filter (in-place)
+        fft.process(&mut filter_complex);
+        
+        // Create FFT buffer for the signal
+        let mut signal_complex = vec![Complex::zero(); n_fft];
+        for i in 0..n_samples {
+            signal_complex[i] = Complex::new(signal[[i, c]], 0.0);
+        }
+        
+        // FFT of signal (in-place)
+        fft.process(&mut signal_complex);
+        
+        // Multiply in frequency domain (convolution in time domain)
+        let mut result_spectrum = Vec::with_capacity(n_fft);
+        for i in 0..n_fft {
+            result_spectrum.push(signal_complex[i] * filter_complex[i]);
+        }
+        
+        // IFFT to get back to time domain (in-place)
+        ifft.process(&mut result_spectrum);
+        
+        // Scale IFFT result (rustfft doesn't normalize)
+        let scale = 1.0 / n_fft as f32;
+        for i in 0..n_fft {
+            result_spectrum[i] = result_spectrum[i] * scale;
+        }
+        
+        // Extract real part of the result
+        let mut channel_result = vec![0.0; output_size];
+        for i in 0..output_size {
+            channel_result[i] = result_spectrum[i].re;
+        }
+        
+        // Center the result if requested
+        if center {
+            let delay = filter_len / 2;
+            let mut centered_result = vec![0.0; n_samples];
+            
+            for i in 0..n_samples {
+                // Apply the delay to center the filter
+                let idx = if i + delay < output_size { i + delay } else { output_size - 1 };
+                centered_result[i] = channel_result[idx];
+            }
+            
+            (c, centered_result)
+        } else {
+            // For non-centered, just take the valid convolution part
+            let mut valid_result = vec![0.0; n_samples];
+            for i in 0..n_samples {
+                valid_result[i] = channel_result[i];
+            }
+            
+            (c, valid_result)
+        }
+    }).collect::<Vec<_>>();
+    
+    // Create the output array and populate it
+    let mut result = Array2::<f32>::zeros((n_samples, n_channels));
+    for (c, channel_data) in output {
+        for i in 0..n_samples {
+            result[[i, c]] = channel_data[i];
+        }
+    }
+    
+    result
+}
+
+/// Determine whether to use FFT convolution based on filter length
+fn should_use_fft_convolution(filter_length: usize) -> bool {
+    // Based on research, FFT convolution is faster for filter lengths > 32-64
+    // We'll use a conservative estimate of 48
+    filter_length > 48
+}
 
 /// Apply a simple moving average filter to a signal
 #[pyfunction]
@@ -38,70 +143,78 @@ pub fn apply_moving_average(
     
     // Allow Python threads to run during computation
     let output = Python::allow_threads(py, || {
-        // Create output array
-        let mut output = Array2::<f32>::zeros((n_samples, n_channels));
+        // For moving average, create uniform weights
+        let weights = Array1::from(vec![1.0 / window_size as f32; window_size]);
         
-        // Process each channel in parallel
-        let channel_results: Vec<_> = (0..n_channels)
-            .into_par_iter()
-            .map(|c| {
-                // Create buffer for this channel
-                let mut channel_result = vec![0.0; n_samples];
-                
-                if use_center {
-                    // Centered moving average
-                    let half_window = window_size / 2;
+        // Decide whether to use FFT or direct convolution
+        if should_use_fft_convolution(window_size) {
+            fft_convolve(&data_array, &weights, use_center)
+        } else {
+            // Original direct convolution implementation
+            let mut output = Array2::<f32>::zeros((n_samples, n_channels));
+            
+            // Process each channel in parallel
+            let channel_results: Vec<_> = (0..n_channels)
+                .into_par_iter()
+                .map(|c| {
+                    // Create buffer for this channel
+                    let mut channel_result = vec![0.0; n_samples];
                     
-                    for i in 0..n_samples {
-                        let mut sum = 0.0;
-                        let mut count = 0;
+                    if use_center {
+                        // Centered moving average
+                        let half_window = window_size / 2;
                         
-                        // Determine window boundaries
-                        let start = if i >= half_window { i - half_window } else { 0 };
-                        let end = if i + half_window >= n_samples { n_samples } else { i + half_window + 1 };
-                        
-                        // Calculate sum for this window
-                        for j in start..end {
-                            sum += data_array[[j, c]];
-                            count += 1;
+                        for i in 0..n_samples {
+                            let mut sum = 0.0;
+                            let mut count = 0;
+                            
+                            // Determine window boundaries
+                            let start = if i >= half_window { i - half_window } else { 0 };
+                            let end = if i + half_window >= n_samples { n_samples } else { i + half_window + 1 };
+                            
+                            // Calculate sum for this window
+                            for j in start..end {
+                                sum += data_array[[j, c]];
+                                count += 1;
+                            }
+                            
+                            // Store result
+                            channel_result[i] = sum / count as f32;
                         }
-                        
-                        // Store result
-                        channel_result[i] = sum / count as f32;
-                    }
-                } else {
-                    // Causal (past-only) moving average
-                    for i in 0..n_samples {
-                        let mut sum = 0.0;
-                        let mut count = 0;
-                        
-                        // Determine window boundaries
-                        let start = if i >= window_size - 1 { i - (window_size - 1) } else { 0 };
-                        let end = i + 1;
-                        
-                        // Calculate sum for this window
-                        for j in start..end {
-                            sum += data_array[[j, c]];
-                            count += 1;
+                    } else {
+                        // Causal (past-only) moving average
+                        for i in 0..n_samples {
+                            let mut sum = 0.0;
+                            let mut count = 0;
+                            
+                            // Determine window boundaries
+                            let start = if i >= window_size - 1 { i - (window_size - 1) } else { 0 };
+                            let end = i + 1;
+                            
+                            // Calculate sum for this window
+                            for j in start..end {
+                                sum += data_array[[j, c]];
+                                count += 1;
+                            }
+                            
+                            // Store result
+                            channel_result[i] = sum / count as f32;
                         }
-                        
-                        // Store result
-                        channel_result[i] = sum / count as f32;
                     }
+                    
+                    (c, channel_result)
+                })
+                .collect();
+            
+            // Copy results back to output array
+            for (c, channel_data) in channel_results {
+                for i in 0..n_samples {
+                    output[[i, c]] = channel_data[i];
                 }
-                
-                (c, channel_result)
-            })
-            .collect();
-        
-        // Copy results back to output array
-        for (c, channel_data) in channel_results {
-            for i in 0..n_samples {
-                output[[i, c]] = channel_data[i];
             }
+            
+            output
         }
-        
-        output
     });
     
     // Return as Python array
@@ -142,89 +255,100 @@ pub fn apply_weighted_moving_average(
     
     // Calculate weights sum for normalization
     let weights_sum = weights_array.sum();
+    let normalized_weights = if weights_sum != 0.0 {
+        weights_array.mapv(|w| w / weights_sum)
+    } else {
+        weights_array
+    };
     
     // Allow Python threads to run during computation
     let output = Python::allow_threads(py, || {
-        // Create output array
-        let mut output = Array2::<f32>::zeros((n_samples, n_channels));
-        
-        // Process each channel in parallel
-        let channel_results: Vec<_> = (0..n_channels)
-            .into_par_iter()
-            .map(|c| {
-                // Create buffer for this channel
-                let mut channel_result = vec![0.0; n_samples];
-                
-                if use_center {
-                    // Centered weighted moving average
-                    let half_window = window_size / 2;
+        // Decide whether to use FFT or direct convolution
+        if should_use_fft_convolution(window_size) {
+            // Use FFT-based convolution
+            fft_convolve(&data_array, &normalized_weights, use_center)
+        } else {
+            // Use original direct convolution
+            let mut output = Array2::<f32>::zeros((n_samples, n_channels));
+            
+            // Process each channel in parallel
+            let channel_results: Vec<_> = (0..n_channels)
+                .into_par_iter()
+                .map(|c| {
+                    // Create buffer for this channel
+                    let mut channel_result = vec![0.0; n_samples];
                     
-                    for i in 0..n_samples {
-                        let mut weighted_sum = 0.0;
-                        let mut actual_weight_sum = 0.0;
+                    if use_center {
+                        // Centered weighted moving average
+                        let half_window = window_size / 2;
                         
-                        // Determine window boundaries
-                        let start = if i >= half_window { i - half_window } else { 0 };
-                        let end = if i + half_window >= n_samples { n_samples } else { i + half_window + 1 };
-                        
-                        // Calculate weighted sum for this window
-                        for (j_rel, j) in (start..end).enumerate() {
-                            let w_idx = j_rel + (if i < half_window { half_window - i } else { 0 });
-                            if w_idx < window_size {
-                                let weight = weights_array[w_idx];
-                                weighted_sum += data_array[[j, c]] * weight;
-                                actual_weight_sum += weight;
+                        for i in 0..n_samples {
+                            let mut weighted_sum = 0.0;
+                            let mut actual_weight_sum = 0.0;
+                            
+                            // Determine window boundaries
+                            let start = if i >= half_window { i - half_window } else { 0 };
+                            let end = if i + half_window >= n_samples { n_samples } else { i + half_window + 1 };
+                            
+                            // Calculate weighted sum for this window
+                            for (j_rel, j) in (start..end).enumerate() {
+                                let w_idx = j_rel + (if i < half_window { half_window - i } else { 0 });
+                                if w_idx < window_size {
+                                    let weight = normalized_weights[w_idx];
+                                    weighted_sum += data_array[[j, c]] * weight;
+                                    actual_weight_sum += weight;
+                                }
                             }
+                            
+                            // Store result (normalize by actual sum of weights used)
+                            channel_result[i] = if actual_weight_sum > 0.0 { 
+                                weighted_sum / actual_weight_sum 
+                            } else { 
+                                0.0 
+                            };
                         }
-                        
-                        // Store result (normalize by actual sum of weights used)
-                        channel_result[i] = if actual_weight_sum > 0.0 { 
-                            weighted_sum / actual_weight_sum 
-                        } else { 
-                            0.0 
-                        };
-                    }
-                } else {
-                    // Causal (past-only) weighted moving average
-                    for i in 0..n_samples {
-                        let mut weighted_sum = 0.0;
-                        let mut actual_weight_sum = 0.0;
-                        
-                        // Determine window boundaries
-                        let start = if i >= window_size - 1 { i - (window_size - 1) } else { 0 };
-                        let end = i + 1;
-                        
-                        // Calculate weighted sum for this window
-                        for (j_rel, j) in (start..end).enumerate() {
-                            let w_idx = window_size - 1 - j_rel;
-                            if w_idx < window_size {
-                                let weight = weights_array[w_idx];
-                                weighted_sum += data_array[[j, c]] * weight;
-                                actual_weight_sum += weight;
+                    } else {
+                        // Causal (past-only) weighted moving average
+                        for i in 0..n_samples {
+                            let mut weighted_sum = 0.0;
+                            let mut actual_weight_sum = 0.0;
+                            
+                            // Determine window boundaries
+                            let start = if i >= window_size - 1 { i - (window_size - 1) } else { 0 };
+                            let end = i + 1;
+                            
+                            // Calculate weighted sum for this window
+                            for (j_rel, j) in (start..end).enumerate() {
+                                let w_idx = window_size - 1 - j_rel;
+                                if w_idx < window_size {
+                                    let weight = normalized_weights[w_idx];
+                                    weighted_sum += data_array[[j, c]] * weight;
+                                    actual_weight_sum += weight;
+                                }
                             }
+                            
+                            // Store result (normalize by actual sum of weights used)
+                            channel_result[i] = if actual_weight_sum > 0.0 { 
+                                weighted_sum / actual_weight_sum 
+                            } else { 
+                                0.0 
+                            };
                         }
-                        
-                        // Store result (normalize by actual sum of weights used)
-                        channel_result[i] = if actual_weight_sum > 0.0 { 
-                            weighted_sum / actual_weight_sum 
-                        } else { 
-                            0.0 
-                        };
                     }
+                    
+                    (c, channel_result)
+                })
+                .collect();
+            
+            // Copy results back to output array
+            for (c, channel_data) in channel_results {
+                for i in 0..n_samples {
+                    output[[i, c]] = channel_data[i];
                 }
-                
-                (c, channel_result)
-            })
-            .collect();
-        
-        // Copy results back to output array
-        for (c, channel_data) in channel_results {
-            for i in 0..n_samples {
-                output[[i, c]] = channel_data[i];
             }
+            
+            output
         }
-        
-        output
     });
     
     // Return as Python array
@@ -263,6 +387,10 @@ pub fn apply_moving_rms(
     
     // Allow Python threads to run during computation
     let output = Python::allow_threads(py, || {
+        // For RMS, we need to square the signal first, then apply moving average, 
+        // then take the square root, which isn't a linear operation.
+        // Therefore, we'll use the direct implementation for this one.
+        
         // Create output array
         let mut output = Array2::<f32>::zeros((n_samples, n_channels));
         
@@ -478,10 +606,9 @@ pub fn apply_sinc_filter(
     let window_result = generate_sinc_window(py, cutoff_freq, window_size, Some(win_type), Some(sample_rate))?;
     let window_array = window_result.extract(py)?;
     
-    // Apply the window filter using weighted moving average function
+    // Apply the window filter using weighted moving average function with FFT option
     apply_weighted_moving_average(py, data, window_array, Some(use_center))
 }
-
 
 /// Apply a general FIR filter with custom coefficients
 #[pyfunction]
@@ -752,4 +879,19 @@ pub fn apply_savgol_filter(
     
     // Return as Python array
     Ok(output.into_pyarray(py).into())
+}
+
+/// Function to determine the optimal processing method based on filter length
+#[pyfunction]
+pub fn get_optimal_fir_method(
+    py: Python<'_>,
+    filter_length: usize,
+) -> PyResult<String> {
+    let method = if should_use_fft_convolution(filter_length) {
+        "fft".to_string()
+    } else {
+        "direct".to_string()
+    };
+    
+    Ok(method)
 }
