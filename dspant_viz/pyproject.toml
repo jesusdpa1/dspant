@@ -1,0 +1,40 @@
+[project]
+name = "dspant-viz"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "jpenalozaa", email = "jesus.penalozaa@ufl.edu" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "dash>=3.0.3",
+    "dask>=2025.4.0",
+    "matplotlib>=3.10.1",
+    "numpy>=2.2.5",
+    "plotly>=5.24.1",
+    "plotly-resampler>=0.10.0",
+]
+
+[project.scripts]
+dspant-viz = "dspant_viz:main"
+
+[tool.maturin]
+module-name = "dspant_viz._rs"
+python-packages = ["dspant_viz"]
+python-source = "src"
+manifest-path = "./rust/Cargo.toml"
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "ruff>=0.11.6",
+]
+
+
+[tool.uv]
+cache-keys = [{file = "pyproject.toml"}, {file = "./rust/Cargo.toml"}, {file = "**/*.rs"}]
