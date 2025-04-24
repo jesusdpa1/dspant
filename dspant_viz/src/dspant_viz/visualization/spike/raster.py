@@ -28,12 +28,22 @@ class RasterPlot(VisualizationComponent):
         self.marker_type = marker_type
 
     def get_data(self) -> Dict[str, Any]:
+        """
+        Prepare data for rendering.
+
+        Returns
+        -------
+        dict
+            Data and parameters for rendering
+        """
         spike_times, trial_indices, label_map = self.data.flatten()
+
         return {
             "data": {
                 "spike_times": spike_times,
-                "trial_indices": trial_indices,
-                "unit_id": self.data.unit_id,
+                "y_values": trial_indices,  # Keep y_values for backward compatibility
+                "trial_indices": trial_indices,  # Add trial_indices for clarity
+                "label_map": label_map,
             },
             "params": {
                 "marker_size": self.marker_size,
