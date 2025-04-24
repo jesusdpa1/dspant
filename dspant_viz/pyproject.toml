@@ -10,7 +10,9 @@ requires-python = ">=3.12"
 dependencies = [
     "dash>=3.0.3",
     "dask>=2025.4.0",
+    "ipykernel>=6.29.5",
     "matplotlib>=3.10.1",
+    "nbformat>=5.10.4",
     "numpy>=2.2.5",
     "plotly>=5.24.1",
     "plotly-resampler>=0.10.0",

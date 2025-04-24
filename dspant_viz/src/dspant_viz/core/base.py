@@ -1,64 +1,49 @@
-from typing import Optional, Union, List
-import numpy as np
-import dask.array as da
-from pydantic import BaseModel, ConfigDict, field_validator
+# core/base.py
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional, List, Union
 
-class BasePlotModel(BaseModel):
-    """
-    Base class for visualization data models.
-    Enforces 2D array shape of [samples, channels]
-    """
-    # Use model_config instead of Config in Pydantic v2
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+class VisualizationComponent(ABC):
+    """Base class for all visualization components in dspant_viz"""
 
-    data: Union[np.ndarray, da.Array]
-    channel: Optional[int] = None
-    fs: Optional[float] = None
+    @abstractmethod
+    def get_data(self) -> Dict[str, Any]:
+        """Return component data in format ready for rendering"""
+        pass
 
-    @field_validator('data')
-    @classmethod
-    def validate_data_shape(cls, data):
-        """
-        Ensure data is 2D with [samples, channels] shape
-        """
-        if data.ndim == 1:
-            # Reshape 1D to 2D
-            data = data.reshape(-1, 1)
+    @abstractmethod
+    def update(self, **kwargs) -> None:
+        """Update component parameters"""
+        pass
 
-        if data.ndim != 2:
-            raise ValueError(f"Data must be 2D. Current shape: {data.shape}")
 
-        return data
+class RenderBackend(ABC):
+    """Abstract interface for rendering backends"""
 
-    def get_channel_data(self, channel: Optional[int] = None) -> Union[np.ndarray, da.Array]:
-        """
-        Extract data for a specific channel
+    @abstractmethod
+    def render(self, component_data: Dict[str, Any], **kwargs) -> Any:
+        """Render the component data using this backend"""
+        pass
 
-        Args:
-            channel: Channel index. If None, uses self.channel
+    @abstractmethod
+    def create_figure(self, component_data: Dict[str, Any], **kwargs) -> Any:
+        """Create a figure containing the rendered component"""
+        pass
 
-        Returns:
-            Array of channel data
-        """
-        if channel is None:
-            channel = self.channel
 
-        if channel is None:
-            raise ValueError("No channel specified")
+class Widget(ABC):
+    """Base class for composite visualization widgets"""
 
-        if channel < 0 or channel >= self.data.shape[1]:
-            raise ValueError(f"Invalid channel index. Must be between 0 and {self.data.shape[1] - 1}")
+    @abstractmethod
+    def get_components(self) -> Dict[str, VisualizationComponent]:
+        """Return all component parts of this widget"""
+        pass
 
-        return self.data[:, channel]
+    @abstractmethod
+    def get_layout(self) -> Dict[str, Any]:
+        """Return layout configuration for the widget"""
+        pass
 
-    def get_time_array(self) -> Union[np.ndarray, da.Array]:
-        """
-        Generate time array based on sampling frequency
-
-        Returns:
-            Time array in seconds
-        """
-        if self.fs is None:
-            return np.arange(self.data.shape[0])
-
-        return np.arange(self.data.shape[0]) / self.fs
+    @abstractmethod
+    def update(self, **kwargs) -> None:
+        """Update widget parameters"""
+        pass
