@@ -1,113 +1,115 @@
-# backends/mpl/themes.py
-from typing import Dict, Any, List, Tuple, Optional
-import matplotlib as mpl
+# dspant_viz/backends/mpl/themes.py
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
+import seaborn as sns
+
 
 class Theme:
     """Matplotlib theme configuration for dspant_viz"""
 
-    # Color palettes
-    PALETTES = {
-        "default": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"],
-        "pastel": ["#a1c9f4", "#ffb482", "#8de5a1", "#ff9f9b", "#d0bbff", "#debb9b"],
-        "vibrant": ["#0077bb", "#ee7733", "#009988", "#cc3311", "#33bbee", "#ee3377"],
-        "muted": ["#4878d0", "#ee854a", "#6acc64", "#d65f5f", "#956cb4", "#8c613c"],
-        "dark": ["#001219", "#005f73", "#0a9396", "#94d2bd", "#e9d8a6", "#ee9b00"],
-    }
+    # Colorblind-friendly palette
+    COLOR_PALETTE = sns.color_palette("colorblind")
 
-    # Line styles
-    LINE_STYLES = ['-', '--', '-.', ':']
+    # Typography
+    FONT_FAMILY = "Montserrat"
 
-    # Marker styles
-    MARKER_STYLES = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h', 'H', '+', 'x']
-
-    # Default parameters
-    DEFAULTS = {
-        "figure.figsize": (10, 6),
-        "figure.dpi": 100,
-        "axes.grid": True,
-        "grid.alpha": 0.3,
-        "font.size": 12,
-        "axes.labelsize": 14,
-        "axes.titlesize": 16,
-        "xtick.labelsize": 12,
-        "ytick.labelsize": 12,
-    }
+    # Font sizes with scaling
+    SIZES = {"title": 18, "subtitle": 16, "axis_label": 14, "tick": 12, "caption": 13}
 
     @classmethod
-    def apply(cls, style: str = "default") -> None:
-        """Apply a predefined style to matplotlib"""
-        if style == "neuroscience":
-            # Neuroscience-specific styling
-            params = {
-                **cls.DEFAULTS,
-                "figure.facecolor": "white",
-                "axes.facecolor": "white",
-                "axes.edgecolor": "black",
-                "axes.linewidth": 1.5,
-                "xtick.major.width": 1.5,
-                "ytick.major.width": 1.5,
-                "xtick.major.size": 5,
-                "ytick.major.size": 5,
-                "lines.linewidth": 1.5,
+    def apply(cls, style: str = "neuroscience"):
+        """
+        Apply a comprehensive matplotlib theme with custom styling.
+
+        Parameters
+        ----------
+        style : str, optional
+            Theme style to apply. Defaults to "neuroscience".
+        """
+        # Attempt to load Montserrat font
+        try:
+            font_files = fm.findSystemFonts(fontpaths=None, fontext="ttf")
+            montserrat_fonts = [f for f in font_files if "Montserrat" in f]
+            if montserrat_fonts:
+                for font_path in montserrat_fonts:
+                    fm.fontManager.addfont(font_path)
+        except Exception:
+            print("Montserrat font not found. Using system default.")
+
+        # Matplotlib RC Parameters
+        plt.rcParams.update(
+            {
+                # Font Configuration
                 "font.family": "sans-serif",
-                "font.sans-serif": ["Arial", "DejaVu Sans", "Liberation Sans"],
-            }
-            plt.rcParams.update(params)
-
-        elif style == "publication":
-            # Publication-ready styling
-            params = {
-                **cls.DEFAULTS,
-                "figure.figsize": (8, 6),
+                "font.sans-serif": [cls.FONT_FAMILY, "Arial", "Helvetica"],
+                # Figure Properties
+                "figure.figsize": (15, 8),
                 "figure.dpi": 300,
-                "font.size": 10,
-                "axes.labelsize": 12,
-                "axes.titlesize": 14,
-                "xtick.labelsize": 10,
-                "ytick.labelsize": 10,
-                "lines.linewidth": 1.0,
-                "axes.linewidth": 1.0,
-                "xtick.major.width": 1.0,
-                "ytick.major.width": 1.0,
-                "savefig.format": "pdf",
-                "savefig.bbox": "tight",
-                "savefig.pad_inches": 0.05,
+                # Title and Label Sizes
+                "font.size": cls.SIZES["tick"],
+                "axes.titlesize": cls.SIZES["subtitle"],
+                "axes.labelsize": cls.SIZES["axis_label"],
+                "xtick.labelsize": cls.SIZES["tick"],
+                "ytick.labelsize": cls.SIZES["tick"],
+                # Line Properties
+                "lines.linewidth": 2,
+                # Grid
+                "axes.grid": True,
+                "axes.grid.linestyle": "--",
+                "axes.grid.alpha": 0.3,
+                # Spines
+                "axes.spines.top": False,
+                "axes.spines.right": False,
             }
-            plt.rcParams.update(params)
+        )
 
-        elif style == "presentation":
-            # Presentation styling
-            params = {
-                **cls.DEFAULTS,
-                "figure.figsize": (12, 8),
-                "figure.dpi": 150,
-                "font.size": 14,
-                "axes.labelsize": 16,
-                "axes.titlesize": 18,
-                "xtick.labelsize": 14,
-                "ytick.labelsize": 14,
-                "lines.linewidth": 2.0,
-                "axes.linewidth": 2.0,
-                "xtick.major.width": 2.0,
-                "ytick.major.width": 2.0,
-                "xtick.major.size": 6,
-                "ytick.major.size": 6,
-            }
-            plt.rcParams.update(params)
-
-        else:
-            # Default styling
-            plt.rcParams.update(cls.DEFAULTS)
+        # Seaborn style for additional aesthetics
+        sns.set_theme(style="darkgrid", palette="colorblind", font=cls.FONT_FAMILY)
 
     @classmethod
-    def get_color_palette(cls, palette_name: str = "default", n_colors: Optional[int] = None) -> List[str]:
-        """Get a list of colors from a named palette"""
-        if palette_name in cls.PALETTES:
-            palette = cls.PALETTES[palette_name]
-            if n_colors is not None:
-                # Cycle through the palette if more colors are needed
-                return [palette[i % len(palette)] for i in range(n_colors)]
-            return palette
-        else:
-            return cls.PALETTES["default"]
+    def get_color_palette(cls):
+        """
+        Return the colorblind-friendly color palette.
+
+        Returns
+        -------
+        list
+            List of color hex codes
+        """
+        return [
+            f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
+            for r, g, b in cls.COLOR_PALETTE
+        ]
+
+    @classmethod
+    def setup_figure(
+        cls, figsize: tuple = (15, 8), title: str = None, suptitle: str = None
+    ):
+        """
+        Create a figure with consistent styling.
+
+        Parameters
+        ----------
+        figsize : tuple, optional
+            Figure size
+        title : str, optional
+            Subplot title
+        suptitle : str, optional
+            Figure-level title
+
+        Returns
+        -------
+        tuple
+            Figure and axis objects
+        """
+        fig, ax = plt.subplots(figsize=figsize)
+
+        if title:
+            ax.set_title(title, fontsize=cls.SIZES["subtitle"], fontweight="bold")
+
+        if suptitle:
+            fig.suptitle(
+                suptitle, fontsize=cls.SIZES["title"], fontweight="bold", y=0.98
+            )
+
+        return fig, ax

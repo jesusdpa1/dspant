@@ -1,49 +1,45 @@
-# core/base.py
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Union
+from abc import ABC
+from typing import Any
+
 
 class VisualizationComponent(ABC):
-    """Base class for all visualization components in dspant_viz"""
+    """
+    Base class for visualization components with multi-backend support.
 
-    @abstractmethod
-    def get_data(self) -> Dict[str, Any]:
-        """Return component data in format ready for rendering"""
-        pass
+    This class provides a standardized interface for creating visualizations
+    that can be rendered across different backends.
+    """
 
-    @abstractmethod
-    def update(self, **kwargs) -> None:
-        """Update component parameters"""
-        pass
+    def __init__(self, data, **kwargs):
+        """
+        Initialize the visualization component.
 
+        Parameters
+        ----------
+        data : Any
+            Input data for visualization
+        **kwargs : dict
+            Additional configuration parameters
+        """
+        self.data = data
+        self.config = kwargs
 
-class RenderBackend(ABC):
-    """Abstract interface for rendering backends"""
+    def plot(self, backend: str = "mpl", **kwargs):
+        """
+        Generate a plot using the specified backend.
 
-    @abstractmethod
-    def render(self, component_data: Dict[str, Any], **kwargs) -> Any:
-        """Render the component data using this backend"""
-        pass
+        Parameters
+        ----------
+        backend : str, optional
+            Backend to use for plotting ('mpl', 'plotly')
+        **kwargs : dict
+            Additional plot-specific parameters
 
-    @abstractmethod
-    def create_figure(self, component_data: Dict[str, Any], **kwargs) -> Any:
-        """Create a figure containing the rendered component"""
-        pass
-
-
-class Widget(ABC):
-    """Base class for composite visualization widgets"""
-
-    @abstractmethod
-    def get_components(self) -> Dict[str, VisualizationComponent]:
-        """Return all component parts of this widget"""
-        pass
-
-    @abstractmethod
-    def get_layout(self) -> Dict[str, Any]:
-        """Return layout configuration for the widget"""
-        pass
-
-    @abstractmethod
-    def update(self, **kwargs) -> None:
-        """Update widget parameters"""
-        pass
+        Returns
+        -------
+        Any
+            Plot figure from the specified backend
+        """
+        raise NotImplementedError(
+            "Subclasses should implement their own plot() method that resolves the backend dynamically."
+        )
