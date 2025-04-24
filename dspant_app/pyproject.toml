@@ -1,0 +1,22 @@
+[project]
+name = "dspant-app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "jpenalozaa", email = "jesus.penalozaa@ufl.edu" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+dspant-app = "dspant_app:main"
+
+[tool.maturin]
+module-name = "dspant_app._core"
+python-packages = ["dspant_app"]
+python-source = "src"
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
