@@ -19,6 +19,7 @@ dependencies = [
     "neo>=0.14.1",
     "numba>=0.61.0",
     "pendulum>=3.0.0",
+    "plotly-resampler>=0.10.0",
     "polars>=1.21.0",
     "pyarrow>=19.0.0",
     "pydantic>=2.10.6",

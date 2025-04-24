@@ -1,5 +1,6 @@
-from abc import ABC
-from typing import Any
+# src/dspant_viz/core/base.py (extension)
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 class VisualizationComponent(ABC):
@@ -24,6 +25,7 @@ class VisualizationComponent(ABC):
         self.data = data
         self.config = kwargs
 
+    @abstractmethod
     def plot(self, backend: str = "mpl", **kwargs):
         """
         Generate a plot using the specified backend.
@@ -42,4 +44,104 @@ class VisualizationComponent(ABC):
         """
         raise NotImplementedError(
             "Subclasses should implement their own plot() method that resolves the backend dynamically."
+        )
+
+    @abstractmethod
+    def get_data(self) -> Dict:
+        """
+        Prepare data for rendering.
+
+        Returns
+        -------
+        dict
+            Data and parameters for rendering
+        """
+        raise NotImplementedError(
+            "Subclasses should implement their own get_data() method."
+        )
+
+    @abstractmethod
+    def update(self, **kwargs) -> None:
+        """
+        Update component parameters.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            Parameters to update
+        """
+        raise NotImplementedError(
+            "Subclasses should implement their own update() method."
+        )
+
+
+class CompositeVisualization(ABC):
+    """
+    Base class for composite visualizations that combine multiple visualization components.
+
+    This class provides a standardized interface for creating complex visualizations
+    that combine multiple simple components, with consistent rendering across backends.
+    """
+
+    def __init__(self, components: List[VisualizationComponent], **kwargs):
+        """
+        Initialize the composite visualization.
+
+        Parameters
+        ----------
+        components : List[VisualizationComponent]
+            List of visualization components to combine
+        **kwargs : dict
+            Additional configuration parameters
+        """
+        self.components = components
+        self.config = kwargs
+
+    @abstractmethod
+    def plot(self, backend: str = "mpl", **kwargs):
+        """
+        Generate a composite plot using the specified backend.
+
+        Parameters
+        ----------
+        backend : str, optional
+            Backend to use for plotting ('mpl', 'plotly')
+        **kwargs : dict
+            Additional plot-specific parameters
+
+        Returns
+        -------
+        Any
+            Composite figure from the specified backend
+        """
+        raise NotImplementedError(
+            "Subclasses should implement their own plot() method that resolves the backend dynamically."
+        )
+
+    @abstractmethod
+    def get_data(self) -> Dict:
+        """
+        Prepare data from all components for rendering.
+
+        Returns
+        -------
+        dict
+            Combined data and parameters for rendering
+        """
+        raise NotImplementedError(
+            "Subclasses should implement their own get_data() method."
+        )
+
+    @abstractmethod
+    def update(self, **kwargs) -> None:
+        """
+        Update component parameters.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            Parameters to update
+        """
+        raise NotImplementedError(
+            "Subclasses should implement their own update() method."
         )
