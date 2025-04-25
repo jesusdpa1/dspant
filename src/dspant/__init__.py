@@ -5,22 +5,19 @@ A Python package for processing and analyzing neural time-series data,
 with a focus on efficient computation and scalability.
 """
 
-"""
-DSPANT: Digital Signal Processing for Analysis Toolkit
-"""
-
-__version__ = "0.1.0"
-
-
 import importlib.metadata
-
-from dspant.engine import BaseProcessor
-from dspant.nodes import EpocNode, StreamNode
 
 try:
     __version__ = importlib.metadata.version("dspant")
 except importlib.metadata.PackageNotFoundError:
     __version__ = "unknown"
+
+# Import the hello_from_bin function from the Rust extension
+from dspant._rs import print_hello
+from dspant.engine import BaseProcessor
+
+# Import key components for easier access
+from dspant.nodes import EpocNode, StreamNode
 
 
 # Node creation helpers
@@ -38,20 +35,18 @@ def create_epoch_node(data_path, **kwargs):
     return EpocNode(data_path, **kwargs)
 
 
-# Optionally try to import extension modules
-try:
-    import dspant_emgproc
+# Process creation helper
+def create_processor_node(stream_node, name=None):
+    """Create a processing node for applying processors to data"""
+    from dspant.engine.stream import StreamProcessingNode
 
-    __emgproc_available__ = True
-except ImportError:
-    __emgproc_available__ = False
+    return StreamProcessingNode(stream_node, name=name)
 
-try:
-    import dspant_neuralproc
 
-    __neuralproc_available__ = False
-except ImportError:
-    __neuralproc_available__ = False
+def main() -> None:
+    """Main entry point for CLI"""
+    print(hello_from_bin())
+
 
 __all__ = [
     # Version info

@@ -7,7 +7,7 @@ This module provides functionality for:
 """
 
 # Re-export key functions for easier access
-from .exporters.tdt2ant import convert_tdt_to_ant, drvPathCarpenter
+from .converters.tdt2ant import convert_tdt_to_ant, drvPathCarpenter
 from .loaders.tdt_loader import load_tdt_block
 
 __all__ = [

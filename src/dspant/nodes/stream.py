@@ -1,13 +1,13 @@
 from typing import List, Optional, Union
 
 import dask.array as da
+import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 from rich.console import Console
 from rich.table import Table
 
-from dspant.core.internals import public_api
-from dspant.nodes.base import BaseNode
+from .base import BaseNode
 
 
 class BaseStreamNode(BaseNode):
@@ -22,7 +22,6 @@ class BaseStreamNode(BaseNode):
     channel_types: Optional[List[str]] = None
 
 
-@public_api
 class StreamNode(BaseStreamNode):
     """Class for loading and accessing stream data"""
 
