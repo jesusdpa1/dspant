@@ -145,7 +145,6 @@ def render_time_series(
         title=params.get("title", "Multi-Channel Time Series"),
         xaxis_title="Time (s)",
         yaxis_title="Channels" if show_channel_labels else None,
-        template="plotly_white",  # Clean white template
         hovermode="closest",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         autosize=True,

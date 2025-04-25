@@ -36,6 +36,7 @@ class RasterPSTHComposite(CompositeVisualization):
         ylim_raster: Optional[Tuple[float, float]] = None,
         ylim_psth: Optional[Tuple[float, float]] = None,
         raster_height_ratio: float = 2.0,
+        unit_id: Optional[int] = None,  # Add unit_id parameter
         **kwargs,
     ):
         """
@@ -77,16 +78,23 @@ class RasterPSTHComposite(CompositeVisualization):
             Y-axis limits for PSTH plot
         raster_height_ratio : float
             Ratio of raster height to PSTH height
+        unit_id : int or None
+            Specific unit ID to display. If None, uses the first unit in the data.
         **kwargs
             Additional configuration parameters
         """
-        # Create individual components
+        # Determine unit_id if not provided
+        if unit_id is None and spike_data.spikes:
+            unit_id = next(iter(spike_data.spikes.keys()))
+
+        # Create individual components with the same unit_id
         raster_plot = RasterPlot(
             data=spike_data,
             marker_size=marker_size,
             marker_color=raster_color,
             marker_alpha=raster_alpha,
             marker_type=marker_type,
+            unit_id=unit_id,  # Pass unit_id to RasterPlot
         )
 
         psth_plot = PSTHPlot(
@@ -97,6 +105,7 @@ class RasterPSTHComposite(CompositeVisualization):
             line_width=2.0,
             show_sem=show_sem,
             sem_alpha=sem_alpha,
+            unit_id=unit_id,  # Pass unit_id to PSTHPlot
         )
 
         # Initialize base class
@@ -111,6 +120,8 @@ class RasterPSTHComposite(CompositeVisualization):
         self.ylim_psth = ylim_psth
         self.raster_height_ratio = raster_height_ratio
         self.show_smoothed = show_smoothed
+        self.unit_id = unit_id  # Store unit_id
+        self.spike_data = spike_data
 
     def get_data(self) -> Dict:
         """
@@ -128,19 +139,25 @@ class RasterPSTHComposite(CompositeVisualization):
         raster_data = raster_plot.get_data()
         psth_data = psth_plot.get_data()
 
+        # Build title if not provided
+        computed_title = self.title
+        if not computed_title and self.unit_id is not None:
+            computed_title = f"Unit {self.unit_id}"
+
         # Combine into a single data structure
         return {
             "raster": raster_data,
             "psth": psth_data,
             "params": {
                 "time_window": self.time_window,
-                "title": self.title,
+                "title": computed_title,
                 "show_grid": self.show_grid,
                 "normalize_psth": self.normalize_psth,
                 "ylim_raster": self.ylim_raster,
                 "ylim_psth": self.ylim_psth,
                 "raster_height_ratio": self.raster_height_ratio,
                 "show_smoothed": self.show_smoothed,
+                "unit_id": self.unit_id,  # Include unit_id in params
                 **self.config,
             },
         }
@@ -167,7 +184,13 @@ class RasterPSTHComposite(CompositeVisualization):
 
         # Update raster plot parameters
         raster_updates = {}
-        for key in ["marker_size", "marker_color", "marker_alpha", "marker_type"]:
+        for key in [
+            "marker_size",
+            "marker_color",
+            "marker_alpha",
+            "marker_type",
+            "unit_id",
+        ]:
             if key in kwargs:
                 raster_updates[key] = kwargs[key]
 
@@ -183,6 +206,7 @@ class RasterPSTHComposite(CompositeVisualization):
             "line_width",
             "show_sem",
             "sem_alpha",
+            "unit_id",  # Include unit_id in PSTH updates
         ]:
             if key in kwargs:
                 psth_updates[key] = kwargs[key]
