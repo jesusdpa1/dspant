@@ -4,6 +4,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 from IPython.display import HTML, display
 
+# Import theme manager
+from dspant_viz.core.themes_manager import (
+    apply_matplotlib_theme,
+    apply_plotly_theme,
+    theme_manager,
+)
+
+# Apply the theme before creating the plot
+apply_matplotlib_theme()  # For Matplotlib backend
+apply_plotly_theme()  # For Plotly backend
+
 # Assuming the necessary components are installed or in the current path
 from dspant_viz.visualization.stream.time_series import TimeSeriesPlot
 

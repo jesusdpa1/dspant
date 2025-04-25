@@ -46,6 +46,7 @@ def render_raster_psth(
     raster_height_ratio = params.get("raster_height_ratio", 2.0)
     normalize_psth = params.get("normalize_psth", False)
     show_smoothed = params.get("show_smoothed", True)
+    unit_id = params.get("unit_id", None)
 
     # Set up figure
     if figsize is None:
@@ -61,98 +62,58 @@ def render_raster_psth(
     )
     raster_ax, psth_ax = axes
 
-    # Extract spike data
-    spike_data = raster_data["data"]
-    spike_times = spike_data["spike_times"]
+    # Render raster and PSTH
+    from dspant_viz.backends.mpl.psth import render_psth
+    from dspant_viz.backends.mpl.raster import render_raster
 
-    # Check if we have "y_values" or "trial_indices"
-    if "y_values" in spike_data:
-        trial_indices = spike_data["y_values"]
-    elif "trial_indices" in spike_data:
-        trial_indices = spike_data["trial_indices"]
-    else:
-        # Create default trial indices if neither field exists
-        trial_indices = np.zeros(len(spike_times), dtype=int)
-        print("Warning: No trial indices found in spike data. Using zeros as default.")
+    # Use the raster renderer to populate the top subplot
+    render_raster(raster_data, ax=raster_ax)
 
-    # Extract marker parameters
-    marker_type = raster_data["params"].get("marker_type", "|")
-    marker_size = raster_data["params"].get("marker_size", 4)
-    marker_color = raster_data["params"].get("marker_color", "#2D3142")
-    marker_alpha = raster_data["params"].get("marker_alpha", 0.7)
+    # Use the PSTH renderer to populate the bottom subplot
+    render_psth(psth_data, ax=psth_ax)
 
-    # Extract PSTH data
-    time_bins = psth_data["data"]["time_bins"]
-    firing_rates = psth_data["data"]["firing_rates"]
-    sem = psth_data["data"].get("sem", None)
-
-    # Extract PSTH parameters
-    psth_color = psth_data["params"].get("line_color", "orange")
-    line_width = psth_data["params"].get("line_width", 2)
-    show_sem = psth_data["params"].get("show_sem", True)
-    sem_alpha = psth_data["params"].get("sem_alpha", 0.3)
-
-    # Plot raster
-    if len(spike_times) > 0:
-        raster_ax.scatter(
-            spike_times,
-            trial_indices,
-            marker=marker_type,
-            s=marker_size,
-            color=marker_color,
-            alpha=marker_alpha,
-            linewidths=marker_size / 4 if marker_type != "|" else 1,
-        )
-
-    # Set raster labels
-    raster_ax.set_ylabel("Trial")
+    # Customize title if provided or if we have unit_id
     if title:
-        raster_ax.set_title(title)
+        fig.suptitle(title, fontsize=14, fontweight="bold")
+    elif unit_id is not None:
+        fig.suptitle(f"Unit {unit_id}", fontsize=14, fontweight="bold")
 
-    # Set y-limits for raster if provided
-    if ylim_raster is not None:
-        raster_ax.set_ylim(ylim_raster)
-    else:
-        # Set y-limits to show all trials, calculate from data
-        max_trial = max(trial_indices) if trial_indices else 0
-        raster_ax.set_ylim(-0.5, max_trial + 0.5)
+    # Remove redundant titles from subplots since we have a figure title
+    if title or unit_id is not None:
+        raster_ax.set_title("")
+        psth_ax.set_title("")
 
-    # Plot PSTH
-    psth_ax.plot(time_bins, firing_rates, color=psth_color, linewidth=line_width)
-
-    # Plot SEM if requested
-    if show_sem and sem is not None:
-        # Make sure SEM values are valid
-        valid_sem = np.isfinite(sem)
-        if np.any(valid_sem):
-            psth_ax.fill_between(
-                np.array(time_bins)[valid_sem],
-                np.array(firing_rates)[valid_sem] - np.array(sem)[valid_sem],
-                np.array(firing_rates)[valid_sem] + np.array(sem)[valid_sem],
-                color=psth_color,
-                alpha=sem_alpha,
-            )
-
-    # Set PSTH labels
+    # Ensure only bottom plot shows x-axis label
+    raster_ax.set_xlabel("")
     psth_ax.set_xlabel("Time (s)")
-    psth_ax.set_ylabel("Firing rate (Hz)")
 
-    # Set y-limits for PSTH if provided
-    if ylim_psth is not None:
-        psth_ax.set_ylim(ylim_psth)
-
-    # Set x-limits if provided
-    if time_window is not None:
+    # Set x-axis limits if provided
+    if time_window:
         for ax in axes:
             ax.set_xlim(time_window)
 
-    # Add vertical line at event onset (time=0)
+    # Set y-axis limits if provided
+    if ylim_raster:
+        raster_ax.set_ylim(ylim_raster)
+
+    if ylim_psth:
+        psth_ax.set_ylim(ylim_psth)
+
+    # Add event onset line
     for ax in axes:
-        ax.axvline(x=0, color="r", linestyle="--", alpha=0.6)
-        if show_grid:
+        if params.get("show_event_onset", True):
+            ax.axvline(x=0, color="r", linestyle="--", alpha=0.6)
+
+    # Add grid
+    if show_grid:
+        for ax in axes:
             ax.grid(True, alpha=0.3)
 
     # Improve layout
     plt.tight_layout()
+
+    # Adjust for suptitle if present
+    if title or unit_id is not None:
+        plt.subplots_adjust(top=0.92)
 
     return fig, axes

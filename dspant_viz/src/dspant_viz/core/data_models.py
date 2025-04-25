@@ -1,39 +1,78 @@
 # core/data_models.py
-from typing import Dict, List, Optional, Union, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 from pydantic import BaseModel, Field
 
 
 class SpikeData(BaseModel):
-    """Data model for spike times organized by groups"""
-    spikes: Dict[Union[str, int], List[float]] = Field(
-        ...,
-        description="Dictionary mapping labels (trial IDs, neuron IDs, etc.) to spike times"
+    """Data model for spike times organized by unit and trial"""
+
+    spikes: Dict[int, Dict[Union[str, int], List[float]]] = Field(
+        ..., description="Dictionary mapping unit IDs to trial labels to spike times"
     )
-    unit_id: Optional[int] = None
+    unit_labels: Optional[Dict[int, str]] = Field(
+        None, description="Optional custom labels for units"
+    )
 
-    def flatten(self) -> Tuple[List[float], List[Union[int, str]], Dict[int, str]]:
+    def get_unit_ids(self) -> List[int]:
+        """Get available unit IDs"""
+        return list(self.spikes.keys())
+
+    def get_unit_spikes(self, unit_id: int) -> Dict[Union[str, int], List[float]]:
         """
-        Flatten the spike data for rendering
+        Get spike data for a specific unit
 
-        Returns:
-            spike_times: List of all spike times
-            y_values: List of numeric y-values for each spike
-            y_labels: Dictionary mapping y-values to original labels
+        Parameters
+        ----------
+        unit_id : int
+            ID of the unit to retrieve
+
+        Returns
+        -------
+        Dict[Union[str, int], List[float]]
+            Dictionary mapping trial labels to spike times
         """
-        spike_times = []
-        y_values = []
-        y_labels = {}
+        return self.spikes.get(unit_id, {})
 
-        for i, (label, times) in enumerate(self.spikes.items()):
-            spike_times.extend(times)
-            y_values.extend([i] * len(times))
-            y_labels[i] = str(label)
+    def get_unit_label(self, unit_id: int) -> str:
+        """
+        Get label for a specific unit
 
-        return spike_times, y_values, y_labels
+        Parameters
+        ----------
+        unit_id : int
+            ID of the unit to get label for
+
+        Returns
+        -------
+        str
+            Label for the unit, or default if not set
+        """
+        if self.unit_labels and unit_id in self.unit_labels:
+            return self.unit_labels[unit_id]
+        return f"Unit {unit_id}"
+
+    def get_trial_count(self, unit_id: int) -> int:
+        """
+        Get number of trials for a specific unit
+
+        Parameters
+        ----------
+        unit_id : int
+            ID of the unit
+
+        Returns
+        -------
+        int
+            Number of trials for the unit
+        """
+        unit_data = self.get_unit_spikes(unit_id)
+        return len(unit_data)
 
 
 class PSTHData(BaseModel):
     """Data model for PSTH results"""
+
     time_bins: List[float] = Field(..., description="Time bin centers in seconds")
     firing_rates: List[float] = Field(..., description="Firing rates in Hz")
     sem: Optional[List[float]] = None
@@ -43,6 +82,7 @@ class PSTHData(BaseModel):
 
 class TimeSeriesData(BaseModel):
     """Data model for time series"""
+
     times: List[float] = Field(..., description="Time points in seconds")
     values: List[float] = Field(..., description="Signal values")
     sampling_rate: Optional[float] = None
@@ -52,9 +92,9 @@ class TimeSeriesData(BaseModel):
 
 class MultiChannelData(BaseModel):
     """Data model for multi-channel time series"""
+
     times: List[float] = Field(..., description="Time points in seconds")
     channels: Dict[Union[int, str], List[float]] = Field(
-        ...,
-        description="Dictionary mapping channel IDs to signal values"
+        ..., description="Dictionary mapping channel IDs to signal values"
     )
     sampling_rate: Optional[float] = None

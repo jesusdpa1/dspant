@@ -1,0 +1,57 @@
+# Neuroscience Visualization Theme
+
+[palette]
+primary = [
+    "#1F77B4",  # Muted Blue
+    "#FF7F0E",  # Safety Orange
+    "#2CA02C",  # Cooked Asparagus Green
+    "#D62728",  # Brick Red
+    "#9467BD",  # Muted Purple
+    "#8C564B"   # Chestnut Brown
+]
+
+sequential = [
+    "#F7FBFF",  # Lightest Blue
+    "#DEEBF7",  # Light Blue
+    "#C6DBEF",  # Muted Blue
+    "#9ECAE1",  # Medium Blue
+    "#6BAED6"   # Darker Blue
+]
+
+diverging = [
+    "#5E3C58",  # Deep Purple
+    "#B97A57",  # Warm Brown
+    "#F5F5F5",  # Neutral Gray
+    "#7CA1B4",  # Muted Blue-Gray
+    "#2A5783"   # Dark Blue
+]
+
+[typography]
+font_family = "Arial"
+
+[typography.sizes]
+title = 16
+subtitle = 14
+axis_label = 12
+tick = 10
+annotation = 9
+
+[typography.weights]
+title = "normal"
+axis_label = "normal"
+regular = "normal"
+
+[visualization]
+grid_style = "darkgrid"
+grid_alpha = 0.3
+line_width = 1.0
+marker_alpha = 0.8
+default_figsize = [15, 6]
+default_colormap = "Set1"
+
+[time_series]
+y_spread = 1.0
+y_offset = 0.0
+norm_scale = 0.4
+show_channel_labels = true
+default_color = "black"

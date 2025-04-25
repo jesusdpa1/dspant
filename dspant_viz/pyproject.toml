@@ -1,12 +1,9 @@
 [project]
 name = "dspant-viz"
 version = "0.1.0"
-description = "Add your description here"
+description = "Multi-backend visualization library for electrophysiology data"
 readme = "README.md"
-authors = [
-    { name = "jpenalozaa", email = "jesus.penalozaa@ufl.edu" }
-]
-requires-python = ">=3.12"
+requires-python = ">=3.9"
 dependencies = [
     "dash>=3.0.3",
     "dask>=2025.4.0",
@@ -16,7 +13,16 @@ dependencies = [
     "numpy>=2.2.5",
     "plotly>=5.24.1",
     "plotly-resampler>=0.10.0",
+    "seaborn>=0.13.2",
     "streamlit>=1.44.1",
+
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.11.6",
+    "mypy>=1.10.0",
+    "pytest>=8.1.1",
 ]
 
 [project.scripts]
@@ -31,13 +37,3 @@ manifest-path = "./rust/Cargo.toml"
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
-
-[dependency-groups]
-dev = [
-    "ipykernel>=6.29.5",
-    "ruff>=0.11.6",
-]
-
-
-[tool.uv]
-cache-keys = [{file = "pyproject.toml"}, {file = "./rust/Cargo.toml"}, {file = "**/*.rs"}]
