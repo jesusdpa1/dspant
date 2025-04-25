@@ -23,7 +23,7 @@ class PSTHRasterInspector:
         pre_time: float = 1.0,
         post_time: float = 1.0,
         bin_width: float = 0.05,
-        backend: str = "mpl",
+        backend: str = "plotly",
         **kwargs,
     ):
         self.spike_data = spike_data
