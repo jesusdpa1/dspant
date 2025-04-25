@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from dspant.core.internals import public_api
+from dspant_viz.core.internals import public_api
 from dspant_viz.visualization.stream.base import BaseStreamVisualization
 
 

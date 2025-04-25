@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import dask.array as da
 import numpy as np
 
-from dspant.core.internals import public_api
 from dspant_viz.core.base import VisualizationComponent
+from dspant_viz.core.internals import public_api
 
 
 @public_api(module_override="dspant_viz.visualization")

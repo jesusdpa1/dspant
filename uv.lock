@@ -588,7 +588,15 @@ cu126 = [
 ]
 dev = [
     { name = "ipykernel" },
+    { name = "pretty-errors" },
+    { name = "python-dotenv" },
     { name = "ruff" },
+]
+docs = [
+    { name = "mkdocs" },
+    { name = "mkdocs-autorefs" },
+    { name = "mkdocs-material" },
+    { name = "mkdocstrings", extra = ["python"] },
 ]
 emgproc = [
     { name = "dspant-emgproc" },
@@ -596,19 +604,15 @@ emgproc = [
 neuroproc = [
     { name = "dspant-neuroproc" },
 ]
-widgets = [
+viz = [
     { name = "dspant-viz" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "ipykernel" },
-    { name = "pretty-errors" },
     { name = "python-dotenv" },
     { name = "ruff" },
-]
-docs = [
-    { name = "mkdocs-material" },
 ]
 
 [package.metadata]
@@ -620,21 +624,27 @@ requires-dist = [
     { name = "dspant-neuroproc", marker = "extra == 'all'", editable = "dspant_neuroproc" },
     { name = "dspant-neuroproc", marker = "extra == 'neuroproc'", editable = "dspant_neuroproc" },
     { name = "dspant-viz", marker = "extra == 'all'", editable = "dspant_viz" },
-    { name = "dspant-viz", marker = "extra == 'widgets'", editable = "dspant_viz" },
+    { name = "dspant-viz", marker = "extra == 'viz'", editable = "dspant_viz" },
     { name = "graphviz", specifier = ">=0.20.3" },
     { name = "h5py", specifier = ">=3.13.0" },
     { name = "ipycytoscape", specifier = ">=1.3.3" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.5" },
     { name = "librosa", specifier = ">=0.10.2.post1" },
     { name = "matplotlib", specifier = ">=3.10.0" },
+    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.5.0" },
+    { name = "mkdocs-autorefs", marker = "extra == 'docs'", specifier = ">=0.5.0" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.6.12" },
+    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
     { name = "mkl-service", marker = "sys_platform != 'darwin'", specifier = ">=2.4.2" },
     { name = "neo", specifier = ">=0.14.1" },
     { name = "numba", specifier = ">=0.61.0" },
     { name = "pendulum", specifier = ">=3.0.0" },
     { name = "plotly-resampler", specifier = ">=0.10.0" },
     { name = "polars", specifier = ">=1.21.0" },
+    { name = "pretty-errors", marker = "extra == 'dev'", specifier = ">=1.2.25" },
     { name = "pyarrow", specifier = ">=19.0.0" },
     { name = "pydantic", specifier = ">=2.10.6" },
+    { name = "python-dotenv", marker = "extra == 'dev'", specifier = ">=1.1.0" },
     { name = "pywavelets", specifier = ">=1.8.0" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.5" },
@@ -653,16 +663,14 @@ requires-dist = [
     { name = "torchaudio", marker = "extra == 'cpu'", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "dspant", extra = "cpu" } },
     { name = "zarr", specifier = ">=3.0.2" },
 ]
-provides-extras = ["dev", "cpu", "cu126", "emgproc", "neuroproc", "widgets", "all"]
+provides-extras = ["dev", "docs", "cpu", "cu126", "emgproc", "neuroproc", "viz", "all"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "ipykernel", specifier = ">=6.29.5" },
-    { name = "pretty-errors", specifier = ">=1.2.25" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
-    { name = "ruff", specifier = ">=0.9.5" },
+    { name = "ruff", specifier = ">=0.11.7" },
 ]
-docs = [{ name = "mkdocs-material", specifier = ">=9.6.12" }]
 
 [[package]]
 name = "dspant-app"
@@ -853,6 +861,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/fa/83/5a40d19b8347f017e417710907f824915fba411a9befd092e52746b63e9f/graphviz-0.20.3.zip", hash = "sha256:09d6bc81e6a9fa392e7ba52135a9d49f1ed62526f96499325930e87ca1b5925d", size = 256455, upload_time = "2024-03-21T07:50:45.772Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/00/be/d59db2d1d52697c6adc9eacaf50e8965b6345cc143f671e1ed068818d5cf/graphviz-0.20.3-py3-none-any.whl", hash = "sha256:81f848f2904515d8cd359cc611faba817598d2feaac4027b266aa3eda7b3dde5", size = 47126, upload_time = "2024-03-21T07:50:43.091Z" },
+]
+
+[[package]]
+name = "griffe"
+version = "1.7.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/3e/5aa9a61f7c3c47b0b52a1d930302992229d191bf4bc76447b324b731510a/griffe-1.7.3.tar.gz", hash = "sha256:52ee893c6a3a968b639ace8015bec9d36594961e156e23315c8e8e51401fa50b", size = 395137, upload_time = "2025-04-23T11:29:09.147Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/c6/5c20af38c2a57c15d87f7f38bee77d63c1d2a3689f74fefaf35915dd12b2/griffe-1.7.3-py3-none-any.whl", hash = "sha256:c6b3ee30c2f0f17f30bcdef5068d6ab7a2a4f1b8bf1a3e74b56fffd21e1c5f75", size = 129303, upload_time = "2025-04-23T11:29:07.145Z" },
 ]
 
 [[package]]
@@ -1396,6 +1416,20 @@ wheels = [
 ]
 
 [[package]]
+name = "mkdocs-autorefs"
+version = "1.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markdown" },
+    { name = "markupsafe" },
+    { name = "mkdocs" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c2/44/140469d87379c02f1e1870315f3143718036a983dd0416650827b8883192/mkdocs_autorefs-1.4.1.tar.gz", hash = "sha256:4b5b6235a4becb2b10425c2fa191737e415b37aa3418919db33e5d774c9db079", size = 4131355, upload_time = "2025-03-08T13:35:21.232Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f8/29/1125f7b11db63e8e32bcfa0752a4eea30abff3ebd0796f808e14571ddaa2/mkdocs_autorefs-1.4.1-py3-none-any.whl", hash = "sha256:9793c5ac06a6ebbe52ec0f8439256e66187badf4b5334b5fde0b128ec134df4f", size = 5782047, upload_time = "2025-03-08T13:35:18.889Z" },
+]
+
+[[package]]
 name = "mkdocs-get-deps"
 version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1438,6 +1472,42 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/79/9b/9b4c96d6593b2a541e1cb8b34899a6d021d208bb357042823d4d2cabdbe7/mkdocs_material_extensions-1.3.1.tar.gz", hash = "sha256:10c9511cea88f568257f960358a467d12b970e1f7b2c0e5fb2bb48cab1928443", size = 11847, upload_time = "2023-11-22T19:09:45.208Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/54/662a4743aa81d9582ee9339d4ffa3c8fd40a4965e033d77b9da9774d3960/mkdocs_material_extensions-1.3.1-py3-none-any.whl", hash = "sha256:adff8b62700b25cb77b53358dad940f3ef973dd6db797907c49e3c2ef3ab4e31", size = 8728, upload_time = "2023-11-22T19:09:43.465Z" },
+]
+
+[[package]]
+name = "mkdocstrings"
+version = "0.29.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jinja2" },
+    { name = "markdown" },
+    { name = "markupsafe" },
+    { name = "mkdocs" },
+    { name = "mkdocs-autorefs" },
+    { name = "pymdown-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/41/e8/d22922664a627a0d3d7ff4a6ca95800f5dde54f411982591b4621a76225d/mkdocstrings-0.29.1.tar.gz", hash = "sha256:8722f8f8c5cd75da56671e0a0c1bbed1df9946c0cef74794d6141b34011abd42", size = 1212686, upload_time = "2025-03-31T08:33:11.997Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/98/14/22533a578bf8b187e05d67e2c1721ce10e3f526610eebaf7a149d557ea7a/mkdocstrings-0.29.1-py3-none-any.whl", hash = "sha256:37a9736134934eea89cbd055a513d40a020d87dfcae9e3052c2a6b8cd4af09b6", size = 1631075, upload_time = "2025-03-31T08:33:09.661Z" },
+]
+
+[package.optional-dependencies]
+python = [
+    { name = "mkdocstrings-python" },
+]
+
+[[package]]
+name = "mkdocstrings-python"
+version = "1.16.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "griffe" },
+    { name = "mkdocs-autorefs" },
+    { name = "mkdocstrings" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/c8/600c4201b6b9e72bab16802316d0c90ce04089f8e6bb5e064cd2a5abba7e/mkdocstrings_python-1.16.10.tar.gz", hash = "sha256:f9eedfd98effb612ab4d0ed6dd2b73aff6eba5215e0a65cea6d877717f75502e", size = 205771, upload_time = "2025-04-03T14:24:48.12Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/53/37/19549c5e0179785308cc988a68e16aa7550e4e270ec8a9878334e86070c6/mkdocstrings_python-1.16.10-py3-none-any.whl", hash = "sha256:63bb9f01f8848a644bdb6289e86dc38ceddeaa63ecc2e291e3b2ca52702a6643", size = 124112, upload_time = "2025-04-03T14:24:46.561Z" },
 ]
 
 [[package]]

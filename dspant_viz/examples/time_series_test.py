@@ -10,14 +10,15 @@ from dspant_viz.core.themes_manager import (
     apply_plotly_theme,
     theme_manager,
 )
+from dspant_viz.visualization.stream.time_series import TimeSeriesPlot
+from dspant_viz.visualization.stream.ts_raster import TimeSeriesRasterPlot
+from dspant_viz.widgets.waveform_inspector import WaveformInspector
 
 # Apply the theme before creating the plot
 apply_matplotlib_theme()  # For Matplotlib backend
 apply_plotly_theme()  # For Plotly backend
 
 # Import components
-from dspant_viz.visualization.stream.time_series import TimeSeriesPlot
-from dspant_viz.visualization.stream.ts_raster import TimeSeriesRasterPlot
 
 
 # %%
