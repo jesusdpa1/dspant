@@ -1,8 +1,7 @@
-from typing import List, Optional, Tuple, Union
+from typing import Tuple
 
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
-import numpy as np
 from IPython.display import display
 
 from dspant_viz.core.data_models import SpikeData
@@ -20,14 +19,18 @@ class PSTHRasterInspector:
     def __init__(
         self,
         spike_data: SpikeData,
+        event_times,
+        pre_time: float = 1.0,
+        post_time: float = 1.0,
         bin_width: float = 0.05,
-        time_window: Tuple[float, float] = (-1.0, 1.0),
         backend: str = "mpl",
         **kwargs,
     ):
         self.spike_data = spike_data
+        self.event_times = event_times
+        self.pre_time = pre_time
+        self.post_time = post_time
         self.bin_width = bin_width
-        self.time_window = time_window
         self.backend = backend
         self.composite_kwargs = kwargs
 
@@ -39,10 +42,12 @@ class PSTHRasterInspector:
         # Create composite with initial unit
         initial_unit_id = self.unit_ids[0]
         self.composite = RasterPSTHComposite(
-            spike_data=spike_data,  # Pass entire spike_data
+            spike_data=spike_data,
+            event_times=event_times,
+            pre_time=pre_time,
+            post_time=post_time,
             bin_width=bin_width,
-            time_window=time_window,
-            unit_id=initial_unit_id,  # Select unit to display
+            unit_id=initial_unit_id,
             **self.composite_kwargs,
         )
 
@@ -69,16 +74,11 @@ class PSTHRasterInspector:
     def _update_plot(self, change):
         """
         Update plot when unit is changed.
-
-        Parameters
-        ----------
-        change : dict
-            Widget change event details
         """
         self.output.clear_output(wait=True)
         new_unit_id = change["new"]
 
-        # Update the unit_id in the composite
+        # Update the composite with the new unit ID
         self.composite.update(unit_id=new_unit_id)
 
         with self.output:

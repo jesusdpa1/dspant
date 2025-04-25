@@ -1,17 +1,24 @@
+# src/dspant_viz/backends/plotly/psth.py
 from typing import Any, Dict
 
 import numpy as np
 import plotly.graph_objects as go
 
 
-def render_psth(data: Dict[str, Any], **kwargs) -> go.Figure:
+def render_psth(
+    data: Dict[str, Any],
+    use_webgl: bool = True,  # Add WebGL option
+    **kwargs,
+) -> go.Figure:
     """
-    Render PSTH (Peristimulus Time Histogram) using Plotly.
+    Render PSTH (Peristimulus Time Histogram) using Plotly with WebGL acceleration.
 
     Parameters
     ----------
     data : Dict
         Data dictionary from PSTHPlot.get_data()
+    use_webgl : bool
+        Whether to use WebGL acceleration for better performance
     **kwargs
         Additional parameters to override those in data
 
@@ -39,14 +46,17 @@ def render_psth(data: Dict[str, Any], **kwargs) -> go.Figure:
     # Create figure
     fig = go.Figure()
 
+    # Determine whether to use Scattergl (WebGL) or regular Scatter
+    ScatterType = go.Scattergl if use_webgl and len(time_bins) > 1000 else go.Scatter
+
     # Add firing rate trace
-    if time_bins and firing_rates:
+    if time_bins and firing_rates and len(time_bins) > 0 and len(firing_rates) > 0:
         # Convert to numpy arrays for calculations
         time_bins_array = np.array(time_bins)
         firing_rates_array = np.array(firing_rates)
 
         fig.add_trace(
-            go.Scatter(
+            ScatterType(
                 x=time_bins_array,
                 y=firing_rates_array,
                 mode="lines",
@@ -90,7 +100,7 @@ def render_psth(data: Dict[str, Any], **kwargs) -> go.Figure:
                         y=y_fill,
                         fill="toself",
                         fillcolor=f"rgba({int(int(line_color[1:3], 16) if line_color.startswith('#') else 220)}, "
-                        f"{int(int(line_color[3:5], 16) if line_color.startswith('#') else 20)}, "
+                        f"{int(int(line_color[3:5], 16) if line_color.startswith('#') else 160)}, "
                         f"{int(int(line_color[5:7], 16) if line_color.startswith('#') else 60)}, {sem_alpha})",
                         line=dict(width=0),  # No border line
                         showlegend=False,
@@ -100,7 +110,12 @@ def render_psth(data: Dict[str, Any], **kwargs) -> go.Figure:
 
     # Set title
     title = f"Unit {unit_id} PSTH" if unit_id is not None else "PSTH"
-    if not time_bins or not firing_rates:
+    if (
+        not time_bins
+        or len(time_bins) == 0
+        or not firing_rates
+        or len(firing_rates) == 0
+    ):
         title += " - No data"
 
     # Update layout
@@ -133,7 +148,13 @@ def render_psth(data: Dict[str, Any], **kwargs) -> go.Figure:
         )
 
         # Add text label if there's room
-        if end - start > 0.05 and time_bins and firing_rates:
+        if (
+            end - start > 0.05
+            and time_bins
+            and firing_rates
+            and len(time_bins) > 0
+            and len(firing_rates) > 0
+        ):
             y_max = max(firing_rates) * 0.9
             fig.add_annotation(
                 x=(start + end) / 2,
@@ -147,8 +168,25 @@ def render_psth(data: Dict[str, Any], **kwargs) -> go.Figure:
     # Set axis limits if provided
     if "xlim" in params:
         fig.update_xaxes(range=params["xlim"])
+    elif "time_window" in params and params["time_window"] is not None:
+        fig.update_xaxes(range=params["time_window"])
 
     if "ylim" in params:
         fig.update_yaxes(range=params["ylim"])
+
+    # If using WebGL with many points, add indicator
+    if use_webgl and time_bins and len(time_bins) > 1000:
+        fig.add_annotation(
+            text="WebGL acceleration enabled",
+            xref="paper",
+            yref="paper",
+            x=1,
+            y=0,
+            xanchor="right",
+            yanchor="bottom",
+            showarrow=False,
+            font=dict(size=8, color="gray"),
+            opacity=0.7,
+        )
 
     return fig

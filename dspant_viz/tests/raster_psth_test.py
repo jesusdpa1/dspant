@@ -1,11 +1,11 @@
 # %%
-# Multi-Unit Neural Spike Visualization Testing
+# Event-Triggered Neural Response Analysis
 # ============================================
 #
-# This notebook demonstrates a complete workflow for visualizing multi-unit neural spike data
-# using the dspant_viz package. We'll:
+# This notebook demonstrates a complete workflow for visualizing event-triggered
+# neural responses using the dspant_viz package:
 #
-# 1. Generate synthetic multi-unit spike data
+# 1. Generate synthetic unit spike data and event triggers
 # 2. Test individual components (RasterPlot, PSTHPlot)
 # 3. Test the composite visualization (RasterPSTHComposite)
 # 4. Test the interactive widget (PSTHRasterInspector)
@@ -23,133 +23,81 @@ from dspant_viz.visualization.spike.psth import PSTHPlot
 from dspant_viz.visualization.spike.raster import RasterPlot
 from dspant_viz.widgets.psth_raster_inspector import PSTHRasterInspector
 
-# Use default themes
-apply_matplotlib_theme()  # Uses 'seaborn-darkgrid' by default
-apply_plotly_theme()  # Uses 'seaborn' by default
-
-# Specify a specific theme
+# Apply themes
 apply_matplotlib_theme("ggplot")
 apply_plotly_theme("seaborn")
+
 # %%
 # Set random seed for reproducibility
 np.random.seed(42)
 
 
-# Create a function to generate synthetic spike data for multiple units
-def generate_synthetic_spikes(
-    n_units=2,
-    n_trials=20,
-    time_window=(-1.0, 1.0),
-    baseline_rates=[3, 5],
-    response_rates=[20, 35],
-    response_start=0.05,
-    response_duration=0.2,
-    jitter=0.01,
-):
-    """
-    Generate synthetic multi-unit spike data.
+# Generate continuous spike train data for multiple units
+def generate_spike_data(duration=30.0, n_units=3, rates=(3, 10)):
+    """Generate continuous spike data for multiple units with varying firing rates"""
+    spike_data = {}
 
-    Parameters
-    ----------
-    n_units : int
-        Number of units to generate
-    n_trials : int
-        Number of trials per unit
-    time_window : tuple of (float, float)
-        Time window for spike generation (pre_time, post_time)
-    baseline_rates : list of float
-        Baseline firing rates for each unit (Hz)
-    response_rates : list of float
-        Response firing rates for each unit (Hz)
-    response_start : float
-        Time after stimulus onset when response begins (s)
-    response_duration : float
-        Duration of the response (s)
-    jitter : float
-        Temporal jitter in the response timing (s)
+    # Create units with different firing rates
+    for unit_id in range(n_units):
+        # Random firing rate between min and max rates
+        rate = np.random.uniform(rates[0], rates[1])
 
-    Returns
-    -------
-    dict
-        Multi-unit spike data: {unit_id: {trial_id: [spike_times]}}
-    """
-    pre_time, post_time = time_window
-    total_duration = post_time - pre_time
+        # Generate spikes using Poisson process
+        n_spikes = np.random.poisson(rate * duration)
+        spikes = np.sort(np.random.uniform(0, duration, n_spikes))
 
-    multi_unit_spikes = {}
+        # Store spikes for this unit
+        spike_data[unit_id] = spikes
 
-    for unit_idx in range(n_units):
-        baseline_rate = baseline_rates[unit_idx % len(baseline_rates)]
-        response_rate = response_rates[unit_idx % len(response_rates)]
+        print(f"Unit {unit_id}: {n_spikes} spikes, mean rate = {rate:.2f} Hz")
 
-        unit_spikes = {}
-        for trial in range(n_trials):
-            # Baseline activity (random spikes at baseline_rate)
-            n_baseline_spikes = np.random.poisson(baseline_rate * total_duration)
-            baseline_spike_times = np.random.uniform(
-                pre_time, post_time, n_baseline_spikes
-            )
+    return spike_data
 
-            # Stimulus response (higher firing rate after stimulus onset)
-            n_response_spikes = np.random.poisson(response_rate * response_duration)
 
-            # Add jitter to response timing
-            response_jitter = response_start + np.random.normal(
-                0, jitter, n_response_spikes
-            )
-            response_spike_times = (
-                np.random.uniform(0, response_duration, n_response_spikes)
-                + response_jitter
-            )
+# Generate event times (e.g., stimulus onsets)
+def generate_event_times(duration=30.0, n_events=10, min_spacing=1.0):
+    """Generate event times with minimum spacing between events"""
+    events = []
+    last_event = 0
 
-            # Combine and sort all spike times
-            all_spikes = np.concatenate([baseline_spike_times, response_spike_times])
-            all_spikes = all_spikes[
-                (all_spikes >= pre_time) & (all_spikes <= post_time)
-            ]
-            all_spikes.sort()
+    while len(events) < n_events and last_event < duration:
+        # Add minimum spacing plus random additional time
+        next_event = last_event + min_spacing + np.random.exponential(2.0)
 
-            # Store spikes for this trial
-            unit_spikes[f"Trial {trial + 1}"] = all_spikes.tolist()
+        if next_event < duration:
+            events.append(next_event)
+            last_event = next_event
+        else:
+            break
 
-        multi_unit_spikes[unit_idx] = unit_spikes
-
-    return multi_unit_spikes
+    return np.array(events)
 
 
 # %%
-# Generate multi-unit spike data
-multi_unit_spikes = generate_synthetic_spikes(
-    n_units=3,
-    n_trials=15,
-    baseline_rates=[3, 5, 8],
-    response_rates=[25, 40, 60],
-    response_start=0.05,
-    response_duration=0.2,
-    jitter=0.01,
-)
+# Generate data
+duration = 30.0  # 30 seconds of recording
+spike_data = generate_spike_data(duration=duration, n_units=3)
+event_times = generate_event_times(duration=duration, n_events=15)
 
-# Create SpikeData object
-spike_data = SpikeData(spikes=multi_unit_spikes)
+# Create SpikeData object (continuous spike times)
+neural_data = SpikeData(spikes=spike_data)
 
-# Display a summary of the generated data
-print("Generated spike data summary:")
-for unit_id, trials in multi_unit_spikes.items():
-    total_spikes = sum(len(spikes) for spikes in trials.values())
-    print(f"Unit {unit_id}: {len(trials)} trials, {total_spikes} total spikes")
-
-    # Show sample of first few trials
-    for trial_id, spikes in list(trials.items())[:2]:
-        print(f"  {trial_id}: {len(spikes)} spikes")
-    print("  ...")
+print(f"\nGenerated {len(event_times)} events at times: {event_times}")
 
 # %%
-# 1. Test the RasterPlot component
-# --------------------------------
+# 1. Test the RasterPlot component (trial-based visualization)
+# ------------------------------------------------------------
+
+# Parameters for event-triggered analysis
+pre_time = 1.0  # 1 second before event
+post_time = 1.5  # 1.5 seconds after event
 
 # Initialize RasterPlot for Unit 0
 raster_plot = RasterPlot(
-    data=spike_data,
+    data=neural_data,
+    event_times=event_times,  # Add events
+    pre_time=pre_time,
+    post_time=post_time,
     marker_size=6,
     marker_color="blue",
     marker_alpha=0.8,
@@ -186,14 +134,17 @@ fig_plotly.show()
 
 # Initialize PSTHPlot for Unit 0
 psth_plot = PSTHPlot(
-    data=spike_data,
-    bin_width=0.05,
-    time_window=(-1.0, 1.0),
+    data=neural_data,
+    event_times=event_times,  # Add events
+    pre_time=pre_time,
+    post_time=post_time,
+    bin_width=0.05,  # 50ms bins
     line_color="crimson",
     line_width=2,
     show_sem=True,
     sem_alpha=0.3,
     unit_id=0,
+    sigma=0.1,  # Add smoothing (100ms Gaussian kernel)
 )
 
 # Plot with matplotlib
@@ -204,7 +155,7 @@ plt.tight_layout()
 plt.show()
 
 # Update to Unit 2 with different parameters
-psth_plot.update(unit_id=2, line_color="purple", bin_width=0.1)
+psth_plot.update(unit_id=2, line_color="purple", bin_width=0.1, sigma=0.15)
 plt.figure(figsize=(10, 5))
 fig, ax = psth_plot.plot(backend="mpl")
 plt.title("Unit 2 PSTH with 100ms bins (Matplotlib)")
@@ -225,9 +176,11 @@ fig_plotly.show()
 
 # Initialize RasterPSTHComposite for Unit 0
 composite = RasterPSTHComposite(
-    spike_data=spike_data,
+    spike_data=neural_data,
+    event_times=event_times,  # Add events
+    pre_time=pre_time,
+    post_time=post_time,
     bin_width=0.05,
-    time_window=(-1.0, 1.0),
     raster_color="navy",
     raster_alpha=0.8,
     psth_color="crimson",
@@ -239,6 +192,7 @@ composite = RasterPSTHComposite(
     show_grid=True,
     raster_height_ratio=2.0,
     unit_id=0,
+    sigma=0.1,  # Add smoothing
 )
 
 # Plot with matplotlib
@@ -267,7 +221,7 @@ fig_plotly.show()
 # -------------------------------------
 
 # Update parameters to show baseline period
-composite.update(time_window=(-1.0, 1.0), title="Unit 1 Response with Baseline")
+composite.update(unit_id=2, title="Unit 2 Response with Baseline")
 
 # Define baseline window
 baseline_window = (-0.8, -0.3)  # -800 to -300 ms before stimulus
@@ -294,30 +248,25 @@ plt.show()
 # %%
 # 5. Test the PSTHRasterInspector widget
 # -----------------------------------
-# Create more units for an interesting demo
-multi_unit_data = generate_synthetic_spikes(
-    n_units=5,
-    n_trials=20,
-    baseline_rates=[3, 5, 8, 2, 10],
-    response_rates=[25, 40, 60, 15, 80],
-    response_start=0.05,
-    response_duration=0.2,
-    jitter=0.01,
-)
+# Generate more spike data for an interesting demo
+more_units_data = generate_spike_data(duration=duration, n_units=5, rates=(2, 15))
 
 # Create SpikeData object with multiple units
-multi_unit_spike_data = SpikeData(spikes=multi_unit_data)
+multi_unit_data = SpikeData(spikes=more_units_data)
 
 # Create inspector widget with Matplotlib backend
 inspector_mpl = PSTHRasterInspector(
-    spike_data=multi_unit_spike_data,
+    spike_data=multi_unit_data,
+    event_times=event_times,  # Add events
+    pre_time=pre_time,
+    post_time=post_time,
     bin_width=0.05,
-    time_window=(-1.0, 1.0),
     backend="mpl",
     raster_color="navy",
     psth_color="crimson",
     show_sem=True,
     raster_height_ratio=2.5,
+    sigma=0.1,  # Add smoothing
 )
 
 # Display the widget
@@ -327,14 +276,17 @@ inspector_mpl.display()
 # %%
 # Alternatively, create inspector with Plotly backend for interactive visualization
 inspector_plotly = PSTHRasterInspector(
-    spike_data=multi_unit_spike_data,
+    spike_data=multi_unit_data,
+    event_times=event_times,  # Add events
+    pre_time=pre_time,
+    post_time=post_time,
     bin_width=0.05,
-    time_window=(-1.0, 1.0),
     backend="plotly",
     raster_color="darkblue",
     psth_color="firebrick",
     show_sem=True,
     raster_height_ratio=2.0,
+    sigma=0.1,  # Add smoothing
 )
 
 # Display the widget
@@ -342,14 +294,64 @@ print("Interactive Plotly version (use slider to switch units):")
 inspector_plotly.display()
 
 # %%
+# 6. Compare different event subsets
+# ---------------------------------
+
+# Create first half vs. second half of events comparison
+early_events = event_times[event_times < duration / 2]
+late_events = event_times[event_times >= duration / 2]
+
+print(f"Early events (n={len(early_events)}): {early_events}")
+print(f"Late events (n={len(late_events)}): {late_events}")
+
+# Create two composite plots with different event subsets
+early_composite = RasterPSTHComposite(
+    spike_data=neural_data,
+    event_times=early_events,
+    pre_time=pre_time,
+    post_time=post_time,
+    bin_width=0.05,
+    title="Early Events Response (Unit 0)",
+    unit_id=0,
+    raster_color="darkblue",
+    psth_color="darkred",
+    sigma=0.1,
+)
+
+late_composite = RasterPSTHComposite(
+    spike_data=neural_data,
+    event_times=late_events,
+    pre_time=pre_time,
+    post_time=post_time,
+    bin_width=0.05,
+    title="Late Events Response (Unit 0)",
+    unit_id=0,
+    raster_color="darkgreen",
+    psth_color="darkorange",
+    sigma=0.1,
+)
+
+# Plot both for comparison
+fig_early, _ = early_composite.plot(backend="mpl")
+plt.tight_layout()
+plt.show()
+
+fig_late, _ = late_composite.plot(backend="mpl")
+plt.tight_layout()
+plt.show()
+
+# %%
 # Summary
 # =======
-# We've demonstrated a complete workflow for multi-unit neural spike visualization:
+# We've demonstrated a complete workflow for event-triggered neural response analysis:
 #
-# 1. Created a SpikeData model that stores and organizes multi-unit spike data
-# 2. Tested individual visualization components (RasterPlot, PSTHPlot)
-# 3. Tested combined visualization (RasterPSTHComposite) showing both raster and PSTH together
-# 4. Created an interactive inspector widget for exploring multiple units
+# 1. Created continuous spike data and event triggers
+# 2. Used event times to create trial-based visualizations from continuous data
+# 3. Tested individual components (RasterPlot, PSTHPlot)
+# 4. Combined visualizations with the RasterPSTHComposite
+# 5. Created an interactive widget for exploring multiple units
+# 6. Demonstrated comparing responses to different event subsets
 #
-# This approach allows for efficient visualization and exploration of complex multi-unit
-# neural data with support for both static (Matplotlib) and interactive (Plotly) backends.
+# This architecture enables flexible analysis of neural responses to events
+# while maintaining a clear separation between continuous and event-triggered
+# visualizations.

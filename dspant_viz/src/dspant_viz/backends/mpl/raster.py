@@ -1,3 +1,4 @@
+# src/dspant_viz/backends/mpl/raster.py
 from typing import Any, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -6,11 +7,12 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 
+# needs a way to validate that the data is trail base
 def render_raster(
     data: Dict[str, Any], ax: Optional[Axes] = None, **kwargs
 ) -> Tuple[Figure, Axes]:
     """
-    Render a spike raster plot using matplotlib.
+    Render a trial-based spike raster plot using matplotlib.
 
     Parameters
     ----------
@@ -31,8 +33,11 @@ def render_raster(
     # Extract data
     spike_data = data["data"]
     spike_times = spike_data["spike_times"]
-    y_values = spike_data["y_values"]
+    trial_indices = spike_data[
+        "y_values"
+    ]  # In trial-based mode, y values are trial indices
     unit_id = spike_data.get("unit_id")
+    n_trials = spike_data.get("n_trials", 0)
 
     # Extract parameters
     params = data["params"]
@@ -52,28 +57,30 @@ def render_raster(
     # Check if we have data to plot
     if not spike_times:
         ax.set_ylabel("Trial")
+
         if unit_id is not None:
             ax.set_title(f"Unit {unit_id} - No spikes")
         else:
             ax.set_title("No spike data available")
 
-        if params.get("show_event_onset", True):
-            ax.axvline(x=0, color="r", linestyle="--", alpha=0.6)
+        # Always show event onset line in trial-based plots
+        ax.axvline(x=0, color="r", linestyle="--", alpha=0.6)
 
         if params.get("show_grid", True):
             ax.grid(True, alpha=0.3)
 
         return fig, ax
 
-    # Plot spike times
+    # Plot spike times - use rasterized for performance with many points
     ax.scatter(
         spike_times,
-        y_values,
+        trial_indices,
         marker=marker_type,
         s=marker_size,
         color=marker_color,
         alpha=marker_alpha,
         linewidths=marker_size / 4 if marker_type != "|" else 1,
+        rasterized=len(spike_times) > 1000,  # Rasterize for large datasets
     )
 
     # Set labels
@@ -82,39 +89,35 @@ def render_raster(
 
     # Set title if unit_id is available
     if unit_id is not None:
-        trial_count = len(set(y_values))
-        ax.set_title(f"Unit {unit_id} - {trial_count} trials")
+        ax.set_title(f"Unit {unit_id} - {n_trials} trials")
+    else:
+        ax.set_title("Raster Plot")
 
     # Add grid if requested
     if params.get("show_grid", True):
         ax.grid(True, alpha=0.3)
 
-    # Add event onset line
-    if params.get("show_event_onset", True):
-        ax.axvline(x=0, color="r", linestyle="--", alpha=0.6)
+    # Always show event onset line in trial-based plots
+    ax.axvline(x=0, color="r", linestyle="--", alpha=0.6)
 
     # Set axis limits if provided
     if "xlim" in params:
         ax.set_xlim(params["xlim"])
+    elif "time_window" in params and params["time_window"] is not None:
+        ax.set_xlim(params["time_window"])
 
     if "ylim" in params:
         ax.set_ylim(params["ylim"])
     else:
         # Auto-adjust y limits to show all trials with a small margin
-        if y_values:
-            ax.set_ylim(-0.5, max(y_values) + 0.5)
-
-    # Customize ticks if requested
-    if params.get("show_trial_labels", False):
-        label_map = spike_data.get("label_map", {})
-        if label_map:
-            # Get unique y values and their labels
-            unique_y = sorted(set(y_values))
-            ax.set_yticks(unique_y)
-            ax.set_yticklabels([label_map.get(y, str(y)) for y in unique_y])
+        if trial_indices:
+            ax.set_ylim(-0.5, max(trial_indices) + 0.5)
 
     # Make plot look nice
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+
+    # Tight layout for better appearance
+    plt.tight_layout()
 
     return fig, ax

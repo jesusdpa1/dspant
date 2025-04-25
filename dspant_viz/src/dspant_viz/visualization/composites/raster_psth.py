@@ -4,39 +4,40 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 
 from dspant_viz.core.base import CompositeVisualization
-from dspant_viz.core.data_models import PSTHData, SpikeData
+from dspant_viz.core.data_models import SpikeData
 from dspant_viz.visualization.spike.psth import PSTHPlot
 from dspant_viz.visualization.spike.raster import RasterPlot
 
 
 class RasterPSTHComposite(CompositeVisualization):
     """
-    Composite visualization that combines a raster plot and PSTH.
+    Composite visualization that combines a trial-based raster plot and PSTH.
 
     This component creates a synchronized visualization with the raster plot
-    on top and the PSTH below, both aligned to the same time scale.
+    on top and the PSTH below, both aligned to the same time scale around event times.
     """
 
     def __init__(
         self,
         spike_data: SpikeData,
+        event_times: np.ndarray,
+        pre_time: float,
+        post_time: float,
         bin_width: float = 0.05,
-        time_window: Tuple[float, float] = (-1.0, 1.0),
         raster_color: str = "#2D3142",
         raster_alpha: float = 0.7,
         psth_color: str = "orange",
         show_sem: bool = True,
         sem_alpha: float = 0.3,
-        show_smoothed: bool = True,
+        sigma: Optional[float] = None,
         marker_size: float = 4,
         marker_type: str = "|",
         title: Optional[str] = None,
         show_grid: bool = True,
-        normalize_psth: bool = False,
         ylim_raster: Optional[Tuple[float, float]] = None,
         ylim_psth: Optional[Tuple[float, float]] = None,
         raster_height_ratio: float = 2.0,
-        unit_id: Optional[int] = None,  # Add unit_id parameter
+        unit_id: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -45,11 +46,15 @@ class RasterPSTHComposite(CompositeVisualization):
         Parameters
         ----------
         spike_data : SpikeData
-            Spike data containing spike times for different trials/units
+            Spike data containing spike times for different units
+        event_times : ndarray
+            Event/trigger times in seconds
+        pre_time : float
+            Time before each event to include (seconds)
+        post_time : float
+            Time after each event to include (seconds)
         bin_width : float
             Width of PSTH bins in seconds
-        time_window : tuple of (float, float)
-            Time window to display (start_time, end_time) in seconds
         raster_color : str
             Color for raster plot markers
         raster_alpha : float
@@ -60,8 +65,8 @@ class RasterPSTHComposite(CompositeVisualization):
             Whether to show standard error of mean
         sem_alpha : float
             Alpha transparency for SEM shading
-        show_smoothed : bool
-            Whether to show smoothed PSTH if available
+        sigma : float, optional
+            Standard deviation for Gaussian smoothing (seconds)
         marker_size : float
             Size of raster markers
         marker_type : str
@@ -70,8 +75,6 @@ class RasterPSTHComposite(CompositeVisualization):
             Title for the figure
         show_grid : bool
             Whether to show grid lines
-        normalize_psth : bool
-            Whether to normalize PSTH
         ylim_raster : tuple or None
             Y-axis limits for raster plot
         ylim_psth : tuple or None
@@ -83,45 +86,69 @@ class RasterPSTHComposite(CompositeVisualization):
         **kwargs
             Additional configuration parameters
         """
+        # Input validation
+        if not isinstance(spike_data, SpikeData):
+            raise TypeError("spike_data must be a SpikeData instance")
+
+        if event_times is None or len(event_times) == 0:
+            raise ValueError("event_times must be provided for RasterPSTHComposite")
+
+        if pre_time <= 0 or post_time <= 0:
+            raise ValueError("pre_time and post_time must be positive values")
+
         # Determine unit_id if not provided
         if unit_id is None and spike_data.spikes:
-            unit_id = next(iter(spike_data.spikes.keys()))
+            unit_id = list(spike_data.spikes.keys())[0]
 
-        # Create individual components with the same unit_id
+        # Store time window for convenience
+        time_window = (-pre_time, post_time)
+
+        # Create individual components with shared parameters
         raster_plot = RasterPlot(
             data=spike_data,
+            event_times=event_times,
+            pre_time=pre_time,
+            post_time=post_time,
             marker_size=marker_size,
             marker_color=raster_color,
             marker_alpha=raster_alpha,
             marker_type=marker_type,
-            unit_id=unit_id,  # Pass unit_id to RasterPlot
+            unit_id=unit_id,
         )
 
         psth_plot = PSTHPlot(
             data=spike_data,
+            event_times=event_times,
+            pre_time=pre_time,
+            post_time=post_time,
             bin_width=bin_width,
-            time_window=time_window,
             line_color=psth_color,
             line_width=2.0,
             show_sem=show_sem,
             sem_alpha=sem_alpha,
-            unit_id=unit_id,  # Pass unit_id to PSTHPlot
+            unit_id=unit_id,
+            sigma=sigma,
         )
 
         # Initialize base class
         super().__init__(components=[raster_plot, psth_plot], **kwargs)
 
         # Store configuration
-        self.time_window = time_window
         self.title = title
         self.show_grid = show_grid
-        self.normalize_psth = normalize_psth
         self.ylim_raster = ylim_raster
         self.ylim_psth = ylim_psth
         self.raster_height_ratio = raster_height_ratio
-        self.show_smoothed = show_smoothed
-        self.unit_id = unit_id  # Store unit_id
+        self.unit_id = unit_id
+        self.time_window = time_window
+
+        # Store parameters for update method
         self.spike_data = spike_data
+        self.event_times = event_times
+        self.pre_time = pre_time
+        self.post_time = post_time
+        self.bin_width = bin_width
+        self.sigma = sigma
 
     def get_data(self) -> Dict:
         """
@@ -149,15 +176,14 @@ class RasterPSTHComposite(CompositeVisualization):
             "raster": raster_data,
             "psth": psth_data,
             "params": {
-                "time_window": self.time_window,
                 "title": computed_title,
                 "show_grid": self.show_grid,
-                "normalize_psth": self.normalize_psth,
                 "ylim_raster": self.ylim_raster,
                 "ylim_psth": self.ylim_psth,
                 "raster_height_ratio": self.raster_height_ratio,
-                "show_smoothed": self.show_smoothed,
-                "unit_id": self.unit_id,  # Include unit_id in params
+                "unit_id": self.unit_id,
+                "time_window": self.time_window,
+                "show_event_onset": True,  # Always show event onset in this composite
                 **self.config,
             },
         }
@@ -171,6 +197,12 @@ class RasterPSTHComposite(CompositeVisualization):
         **kwargs : dict
             Parameters to update
         """
+        # Special handling for time window parameters
+        if "pre_time" in kwargs or "post_time" in kwargs:
+            pre_time = kwargs.get("pre_time", self.pre_time)
+            post_time = kwargs.get("post_time", self.post_time)
+            self.time_window = (-pre_time, post_time)
+
         # Update composite parameters
         for key, value in kwargs.items():
             if hasattr(self, key):
@@ -182,34 +214,28 @@ class RasterPSTHComposite(CompositeVisualization):
         raster_plot = self.components[0]
         psth_plot = self.components[1]
 
-        # Update raster plot parameters
+        # Prepare parameter updates for each component
         raster_updates = {}
-        for key in [
-            "marker_size",
-            "marker_color",
-            "marker_alpha",
-            "marker_type",
-            "unit_id",
-        ]:
-            if key in kwargs:
-                raster_updates[key] = kwargs[key]
+        psth_updates = {}
 
+        # Map parameters to appropriate components
+        for key, value in kwargs.items():
+            # Parameters for both components
+            if key in ["event_times", "pre_time", "post_time", "unit_id"]:
+                raster_updates[key] = value
+                psth_updates[key] = value
+
+            # Raster-specific parameters
+            elif key in ["marker_size", "marker_color", "marker_alpha", "marker_type"]:
+                raster_updates[key] = value
+
+            # PSTH-specific parameters
+            elif key in ["bin_width", "line_color", "show_sem", "sem_alpha", "sigma"]:
+                psth_updates[key] = value
+
+        # Apply updates to components
         if raster_updates:
             raster_plot.update(**raster_updates)
-
-        # Update PSTH plot parameters
-        psth_updates = {}
-        for key in [
-            "bin_width",
-            "time_window",
-            "line_color",
-            "line_width",
-            "show_sem",
-            "sem_alpha",
-            "unit_id",  # Include unit_id in PSTH updates
-        ]:
-            if key in kwargs:
-                psth_updates[key] = kwargs[key]
 
         if psth_updates:
             psth_plot.update(**psth_updates)
@@ -238,5 +264,9 @@ class RasterPSTHComposite(CompositeVisualization):
             )
         else:
             raise ValueError(f"Unsupported backend: {backend}")
+
+        # Pass WebGL option if using plotly and not explicitly set
+        if backend == "plotly" and "use_webgl" not in kwargs:
+            kwargs["use_webgl"] = True
 
         return render_raster_psth(self.get_data(), **kwargs)

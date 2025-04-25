@@ -62,7 +62,7 @@ def render_raster_psth(
     )
     raster_ax, psth_ax = axes
 
-    # Render raster and PSTH
+    # Import renderers
     from dspant_viz.backends.mpl.psth import render_psth
     from dspant_viz.backends.mpl.raster import render_raster
 
@@ -99,7 +99,8 @@ def render_raster_psth(
     if ylim_psth:
         psth_ax.set_ylim(ylim_psth)
 
-    # Add event onset line
+    # Add event onset line - this is redundant as both renderers add it,
+    # but included here for clarity and potential future customization
     for ax in axes:
         if params.get("show_event_onset", True):
             ax.axvline(x=0, color="r", linestyle="--", alpha=0.6)
