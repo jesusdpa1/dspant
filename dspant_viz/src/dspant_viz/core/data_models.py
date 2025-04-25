@@ -4,7 +4,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 from pydantic import BaseModel, Field
 
+from dspant.core.internals import public_api
 
+
+@public_api(module_override="dspant_viz.core")
 class SpikeData(BaseModel):
     """Data model for spike times organized by units"""
 
@@ -39,6 +42,7 @@ class SpikeData(BaseModel):
         arbitrary_types_allowed = True
 
 
+@public_api(module_override="dspant_viz.core")
 class PSTHData(BaseModel):
     """Data model for PSTH results"""
 
@@ -49,6 +53,7 @@ class PSTHData(BaseModel):
     baseline_window: Optional[Tuple[float, float]] = None
 
 
+@public_api(module_override="dspant_viz.core")
 class TimeSeriesData(BaseModel):
     """Data model for time series"""
 
@@ -59,6 +64,7 @@ class TimeSeriesData(BaseModel):
     channel_name: Optional[str] = None
 
 
+@public_api(module_override="dspant_viz.core")
 class MultiChannelData(BaseModel):
     """Data model for multi-channel time series"""
 

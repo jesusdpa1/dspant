@@ -36,17 +36,9 @@ dependencies = [
 [project.scripts]
 dspant = "dspant:main"
 
-[tool.maturin]
-module-name = "dspant._rs"
-python-packages = ["dspant"]
-python-source = "src"
-manifest-path = "./rust/Cargo.toml"
-
-[build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
-
-[dependency-groups]
+# Reorganize optional dependencies into logical groups
+[project.optional-dependencies]
+# Development tools
 dev = [
     "ipykernel>=6.29.5",
     "pretty-errors>=1.2.25",
@@ -54,15 +46,21 @@ dev = [
     "ruff>=0.9.5",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "ipykernel>=6.29.5",
-    "ruff>=0.9.5",
+# Documentation tools
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.6.12",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-autorefs>=0.5.0",
 ]
+
+# CPU-only PyTorch
 cpu = [
     "torch>=2.6.0",
     "torchaudio>=2.6.0",
 ]
+
+# CUDA-enabled PyTorch
 cu126 = [
     "torch>=2.6.0; sys_platform == 'win32' or sys_platform == 'linux'",
     "torchaudio>=2.6.0; sys_platform == 'win32' or sys_platform == 'linux'",
@@ -70,17 +68,31 @@ cu126 = [
     "torchaudio>=2.6.0; sys_platform == 'darwin'",
 ]
 
+# Extension packages
 emgproc = ["dspant-emgproc==0.1.0"]
 neuroproc = ["dspant-neuroproc==0.1.0"]
-widgets = ["dspant-viz==0.1.0"]
+viz = ["dspant-viz==0.1.0"]
+
+# All extensions combined
 all = [
     "dspant-emgproc==0.1.0",
     "dspant-neuroproc==0.1.0",
-    "dspant-viz===0.1.0",
+    "dspant-viz==0.1.0",
     "torch>=2.6.0",
     "torchaudio>=2.6.0",
 ]
 
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "dspant._rs"
+python-packages = ["dspant"]
+python-source = "src"
+manifest-path = "./rust/Cargo.toml"
+
+# uv-specific configurations
 [tool.uv]
 conflicts = [
     [

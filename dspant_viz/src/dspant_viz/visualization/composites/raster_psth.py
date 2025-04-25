@@ -3,12 +3,14 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from dspant.core.internals import public_api
 from dspant_viz.core.base import CompositeVisualization
 from dspant_viz.core.data_models import SpikeData
 from dspant_viz.visualization.spike.psth import PSTHPlot
 from dspant_viz.visualization.spike.raster import RasterPlot
 
 
+@public_api(module_override="dspant_viz.visualization")
 class RasterPSTHComposite(CompositeVisualization):
     """
     Composite visualization that combines a trial-based raster plot and PSTH.

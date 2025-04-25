@@ -4,9 +4,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import dask.array as da
 import numpy as np
 
+from dspant.core.internals import public_api
 from dspant_viz.visualization.stream.base import BaseStreamVisualization
 
 
+@public_api(module_override="dspant_viz.visualization")
 class TimeSeriesPlot(BaseStreamVisualization):
     """Component for time series visualization optimized for dask arrays"""
 

@@ -1,152 +1,66 @@
 # dspant_viz
 
-multi-backend visualization library for electrophysiology data, with special focus on efficient rendering of large time series datasets.
+Multi-backend visualization library for electrophysiology data, with special focus on efficient rendering of large time series datasets.
+
+![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Status](https://img.shields.io/badge/status-beta-orange.svg)
 
 ## Overview
 
-dspant_viz extends the dspant library with specialized visualization capabilities. It's designed to render large electrophysiology datasets efficiently using various backends (matplotlib, plotly) and includes optimization strategies for handling datasets with millions of data points.
+dspant_viz is designed to render large electrophysiology datasets efficiently using multiple backends (matplotlib, plotly). It provides specialized visualizations for time series and spike data with optimization strategies for handling datasets with millions of data points.
 
-Key features:
+![Example Visualization](https://via.placeholder.com/800x400?text=Electrophysiology+Visualization+Example)
+
+### Key Features
 
 - **Multi-backend architecture**: Create visualizations that work with both Matplotlib and Plotly
 - **Efficient large dataset handling**: Optimized for time series with millions of data points
 - **Dask integration**: Lazy loading and efficient processing of large datasets
 - **Plotly-resampler support**: Dynamic resampling of large datasets for interactive visualization
 - **Consistent styling**: Theming systems for publication-quality figures
+- **Interactive widgets**: Explore your data with IPython/Jupyter widgets
 
 ## Installation
 
+### Using uv (Recommended)
+
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer and resolver. Install dspant_viz with:
+
 ```bash
-# Basic installation
-pip install dspant-viz
+# Install uv if you don't have it
+curl -sSf https://astral.sh/uv/install.sh | bash
+
+# Install dspant_viz with uv
+uv pip install dspant_viz
 
 # With plotly-resampler for large dataset visualization
-pip install dspant-viz plotly-resampler
+uv pip install "dspant_viz[resampler]"
+
+# With all optional dependencies
+uv pip install "dspant_viz[full]"
 ```
 
-## Architecture Overview
+### Using pip
 
-dspant_viz follows a layered, multi-backend architecture:
+```bash
+# Basic installation
+pip install dspant_viz
 
-```
-┌───────────────────────────────────────────────┐
-│                                               │
-│    Visualization Components (High-Level API)  │
-│    - TimeSeriesPlot                           │
-│    - RasterPlot                               │
-│    - PSTHPlot                                 │
-│                                               │
-└──────────────────────┬────────────────────────┘
-                       │
-┌──────────────────────┼────────────────────────┐
-│                      │                         │
-│    Core Components   │                         │
-│    - Data Models     │                         │
-│    - Base Classes    │                         │
-│                      │                         │
-└──────────────────────┼────────────────────────┘
-                       │
-          ┌────────────┴─────────────┐
-          │                          │
-┌─────────▼──────────┐    ┌──────────▼─────────┐
-│                    │    │                     │
-│  Matplotlib Backend│    │   Plotly Backend    │
-│                    │    │                     │
-└────────────────────┘    └─────────────────────┘
+# With plotly-resampler for large dataset visualization
+pip install "dspant_viz[resampler]"
 ```
 
-### Core Components
+## Quick Start
 
-- **`core/`**: Base classes and core functionality
-  - `base.py`: Contains `VisualizationComponent` abstract base class
-  - `data_models.py`: Pydantic models for structured data representation
-  - `internals.py`: Internal utilities and decorators
-
-### Backend Renderers
-
-- **`backends/mpl/`**: Matplotlib rendering implementation
-- **`backends/plotly/`**: Plotly rendering implementation with plotly-resampler integration
-
-### Visualization Components
-
-- **`visualization/`**: Specialized visualization components
-  - `stream/`: Time series visualization components
-  - `spike/`: Spike train visualization components
-  - Common visualization functionality
-
-## Key Components
-
-### VisualizationComponent
-
-The base class for all visualization components with a common interface for multi-backend rendering:
-
-```python
-class VisualizationComponent(ABC):
-    def __init__(self, data, **kwargs):
-        self.data = data
-        self.config = kwargs
-
-    @abstractmethod
-    def plot(self, backend="mpl", **kwargs):
-        """Generate visualization using specified backend"""
-        pass
-        
-    @abstractmethod
-    def get_data(self) -> Dict:
-        """Prepare data for rendering"""
-        pass
-        
-    @abstractmethod
-    def update(self, **kwargs) -> None:
-        """Update component parameters"""
-        pass
-```
-
-### TimeSeriesPlot
-
-Efficient multi-channel time series visualization with support for large datasets:
-
-```python
-class TimeSeriesPlot(VisualizationComponent):
-    """Component for time series visualization optimized for dask arrays"""
-    
-    def __init__(self, data, sampling_rate, channels=None, ...):
-        # Initialize with data and parameters
-        
-    def plot(self, backend="mpl", **kwargs):
-        # Render using specified backend
-        
-    def get_data(self) -> Dict:
-        # Prepare data for rendering
-        
-    def update(self, **kwargs) -> None:
-        # Update parameters
-```
-
-### Backend Renderers
-
-Backend renderers transform the data prepared by visualization components into actual visualizations:
-
-```python
-# Matplotlib implementation
-def render_time_series(data: Dict, ax=None, **kwargs) -> Tuple[Figure, Axes]:
-    # Create Matplotlib figure with data
-    
-# Plotly implementation
-def render_time_series(data: Dict, use_resampler=True, **kwargs) -> Union[go.Figure, FigureResampler]:
-    # Create Plotly figure with data, optionally using plotly-resampler
-```
-
-## Using the Components
-
-### Basic Usage
+### Time Series Visualization
 
 ```python
 import numpy as np
 import dask.array as da
 from dspant_viz.visualization.stream.time_series import TimeSeriesPlot
 
-# Create sample data (or load real data)
+# Create sample data
 x = np.linspace(0, 10, 1000)
 data = np.column_stack([np.sin(x), np.cos(x), np.sin(2*x)])
 dask_data = da.from_array(data)
@@ -160,131 +74,73 @@ ts_plot = TimeSeriesPlot(
 
 # Render with matplotlib
 fig_mpl, ax = ts_plot.plot(backend="mpl")
-fig_mpl.savefig("time_series_mpl.png")
 
 # Render with plotly
 fig_plotly = ts_plot.plot(backend="plotly")
-fig_plotly.write_html("time_series_plotly.html")
 ```
 
-### Using with Large Datasets
-
-For large datasets, use dask arrays and plotly-resampler:
+### Spike Data Visualization
 
 ```python
 import numpy as np
-import dask.array as da
-from dspant_viz.visualization.stream.time_series import TimeSeriesPlot
+from dspant_viz.core.data_models import SpikeData
+from dspant_viz.visualization.spike.raster import RasterPlot
 
-# Create or load large dataset
-data = da.random.normal(0, 1, size=(1000000, 8), chunks=(10000, 8))
-
-# Create TimeSeriesPlot with plotly-resampler
-ts_plot = TimeSeriesPlot(
-    data=data,
-    sampling_rate=30000.0,  # 30 kHz sampling rate
-    downsample=False,  # Let plotly-resampler handle downsampling
+# Create spike data
+spike_data = SpikeData(
+    spikes={
+        0: np.array([0.1, 0.5, 1.0]),
+        1: np.array([0.2, 0.6, 1.2, 1.5]),
+    }
 )
 
-# Render with plotly-resampler
-fig = ts_plot.plot(
-    backend="plotly",
-    use_resampler=True,
-    max_n_samples=5000  # Samples shown at each zoom level
+# Create event times
+event_times = np.array([0.0, 1.0, 2.0])
+
+# Create raster plot
+raster_plot = RasterPlot(
+    data=spike_data,
+    event_times=event_times,
+    pre_time=0.5,
+    post_time=0.5,
 )
 
-# Save interactive visualization
-fig.write_html("large_dataset.html")
+# Plot with different backends
+fig_mpl, ax = raster_plot.plot(backend="mpl")
+fig_plotly = raster_plot.plot(backend="plotly")
 ```
 
-## Extending the Library
+## Documentation
 
-### Creating a New Visualization Component
+- [API Guide](./documents/API_GUIDE.md): Detailed documentation of components and usage
+- [Examples](examples/): Example notebooks showing common use cases
+- [API Reference](./documents/API_REFERENCE.md): Complete API reference documentation
 
-1. Subclass `VisualizationComponent` from `core/base.py`
-2. Implement the required methods: `plot()`, `get_data()`, and `update()`
-3. Create renderer implementations for each backend in `backends/mpl/` and `backends/plotly/`
+## Performance Tips
 
-Example skeleton for a new component:
-
-```python
-# visualization/my_component.py
-from dspant_viz.core.base import VisualizationComponent
-
-class MyComponent(VisualizationComponent):
-    def __init__(self, data, **kwargs):
-        super().__init__(data, **kwargs)
-        # Initialize component-specific attributes
-    
-    def get_data(self) -> Dict:
-        # Prepare data for rendering
-        return {
-            "data": {...},
-            "params": {...}
-        }
-    
-    def update(self, **kwargs) -> None:
-        # Update parameters
-        
-    def plot(self, backend="mpl", **kwargs):
-        # Import appropriate renderer based on backend
-        if backend == "mpl":
-            from dspant_viz.backends.mpl.my_component import render_my_component
-        elif backend == "plotly":
-            from dspant_viz.backends.plotly.my_component import render_my_component
-        else:
-            raise ValueError(f"Unsupported backend: {backend}")
-        
-        return render_my_component(self.get_data(), **kwargs)
-```
-
-### Creating Backend Renderers
-
-Create corresponding renderer functions in each backend directory:
-
-```python
-# backends/mpl/my_component.py
-def render_my_component(data: Dict, ax=None, **kwargs):
-    # Matplotlib implementation
-    
-# backends/plotly/my_component.py
-def render_my_component(data: Dict, **kwargs):
-    # Plotly implementation
-```
-
-### Best Practices
-
-1. **Backend Agnostic Components**: Keep visualization logic separate from rendering details
-2. **Efficient Data Processing**: Use dask for large dataset handling
-3. **Consistent Parameter Naming**: Follow existing parameter naming conventions
-4. **Documentation**: Document parameters and behavior clearly
-5. **Optimization**: Consider performance for large datasets
-
-## Performance Considerations
-
-- **Chunking**: Use appropriate chunk sizes for dask arrays (typically 10000-30000 samples)
-- **Downsampling**: For large datasets:
-  - Use `plotly-resampler` with Plotly backend
-  - Use the `downsample` parameter with Matplotlib backend
-- **Memory Management**: Monitor memory usage with large datasets
-
-## Debugging Tips
-
-1. **Check Data Shape**: Ensure data has correct dimensions (samples × channels)
-2. **Backend Errors**: Check specific backend renderer implementation
-3. **Plotly-Resampler Issues**: Verify installation and compatibility
-4. **Memory Errors**: Adjust chunk sizes for dask arrays
+For large datasets:
+- Use Dask arrays with appropriate chunk sizes (10,000-30,000 samples)
+- Enable dynamic resampling with Plotly (`use_resampler=True`)
+- Use the `downsample` parameter with Matplotlib
 
 ## Contributing
 
-Contributions are welcome! To add a new feature:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add your functionality following the architecture principles
-4. Add appropriate tests
-5. Submit a pull request
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Citation
+
+If you use dspant_viz in your research, please cite:
+
+```
+@software{dspant_viz,
+  author = {The dspant_viz Contributors},
+  title = {dspant_viz: Multi-backend visualization library for electrophysiology data},
+  url = {https://github.com/yourusername/dspant_viz},
+  version = {0.1.0},
+  year = {2025},
+}
+```
