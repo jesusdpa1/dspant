@@ -2,7 +2,10 @@
 import numba as nb
 import numpy as np
 
+from dspant.core.internals import public_api
 
+
+@public_api(module_override="dspant_viz.utils")
 @nb.jit(nopython=True, cache=True)
 def zscore_normalization(data: np.ndarray) -> np.ndarray:
     """
@@ -29,6 +32,7 @@ def zscore_normalization(data: np.ndarray) -> np.ndarray:
     return (data - mean) / std
 
 
+@public_api(module_override="dspant_viz.utils")
 @nb.jit(nopython=True, cache=True)
 def minmax_normalization(data: np.ndarray) -> np.ndarray:
     """
@@ -55,6 +59,7 @@ def minmax_normalization(data: np.ndarray) -> np.ndarray:
     return (data - data_min) / (data_max - data_min)
 
 
+@public_api(module_override="dspant_viz.utils")
 def normalize_data(data: np.ndarray, method: str = None) -> np.ndarray:
     """
     Normalize input data using specified method.

@@ -22,7 +22,10 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import seaborn as sns
 
+from dspant.core.internals import public_api
 
+
+@public_api(module_override="dspant_viz.core")
 class ThemeManager:
     """
     Comprehensive theme management for visualization across backends.
@@ -227,27 +230,32 @@ class ThemeManager:
 theme_manager = ThemeManager()
 
 
+@public_api(module_override="dspant_viz.core")
 # Expose key functions for easy import
 def apply_matplotlib_theme(theme: Optional[str] = None):
     """Convenience function to apply Matplotlib theme"""
     theme_manager.apply_matplotlib_theme(theme)
 
 
+@public_api(module_override="dspant_viz.core")
 def apply_plotly_theme(theme: Optional[str] = None):
     """Convenience function to apply Plotly theme"""
     theme_manager.apply_plotly_theme(theme)
 
 
+@public_api(module_override="dspant_viz.core")
 def list_available_themes():
     """Convenience function to list available themes"""
     return theme_manager.list_available_themes()
 
 
+@public_api(module_override="dspant_viz.core")
 def create_custom_theme(theme_name: str, theme_config: Dict[str, Any]):
     """Convenience function to create a custom theme"""
     theme_manager.create_custom_theme(theme_name, theme_config)
 
 
+@public_api(module_override="dspant_viz.core")
 def show_example_themes():
     """Convenience function to show example themes"""
     theme_manager.example_themes()

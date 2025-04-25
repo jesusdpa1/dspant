@@ -3,9 +3,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from dspant.core.internals import public_api
 from dspant_viz.visualization.stream.base import BaseStreamVisualization
 
 
+@public_api(module_override="dspant_viz.visualization")
 class TimeSeriesRasterPlot(BaseStreamVisualization):
     """Component for time series spike raster visualization with multiple units"""
 

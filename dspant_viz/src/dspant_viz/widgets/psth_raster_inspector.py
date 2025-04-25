@@ -4,10 +4,12 @@ import ipywidgets as widgets
 import matplotlib.pyplot as plt
 from IPython.display import display
 
+from dspant.core.internals import public_api
 from dspant_viz.core.data_models import SpikeData
 from dspant_viz.visualization.composites.raster_psth import RasterPSTHComposite
 
 
+@public_api(module_override="dspant_viz.widgets")
 class PSTHRasterInspector:
     """
     Interactive widget for exploring multiple neurons in a raster and PSTH plot.

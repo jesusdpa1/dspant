@@ -3,10 +3,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from dspant.core.internals import public_api
 from dspant_viz.core.base import VisualizationComponent
 from dspant_viz.core.data_models import SpikeData
 
 
+@public_api(module_override="dspant_viz.visualization")
 class BaseSpikeVisualization(VisualizationComponent, ABC):
     """
     Base class for spike visualization components with common data organization logic.

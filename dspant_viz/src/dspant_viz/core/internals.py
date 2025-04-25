@@ -76,3 +76,15 @@ def require_backend(backend_type: str) -> Callable:
         return wrapper
 
     return decorator
+
+
+def register_module_components(module_name: str = None):
+    """Register all classes in a module that should be public"""
+
+    def decorator(module):
+        for name, obj in module.__dict__.items():
+            if isinstance(obj, type) and not name.startswith("_"):
+                public_api(module_override=module_name)(obj)
+        return module
+
+    return decorator

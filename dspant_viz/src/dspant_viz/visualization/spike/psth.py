@@ -2,10 +2,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from dspant.core.internals import public_api
 from dspant_viz.core.data_models import SpikeData
 from dspant_viz.visualization.spike.base import BaseSpikeVisualization
 
 
+@public_api(module_override="dspant_viz.visualization")
 class PSTHPlot(BaseSpikeVisualization):
     """Component to compute and render PSTH from spike times"""
 
