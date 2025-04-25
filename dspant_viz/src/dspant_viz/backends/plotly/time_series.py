@@ -19,11 +19,12 @@ except ImportError:
 def render_time_series(
     data: Dict[str, Any],
     use_resampler: bool = True,
+    use_webgl: bool = True,  # Add WebGL option
     max_n_samples: int = 10000,
     **kwargs,
 ) -> Union[go.Figure, "FigureResampler"]:
     """
-    Render multi-channel time series data using Plotly with plotly-resampler for large datasets.
+    Render multi-channel time series data using Plotly with WebGL acceleration and optional dynamic resampling.
 
     Parameters
     ----------
@@ -31,6 +32,8 @@ def render_time_series(
         Data dictionary from TimeSeriesPlot.get_data()
     use_resampler : bool
         Whether to use plotly-resampler (if available)
+    use_webgl : bool
+        Whether to use WebGL acceleration for better performance
     max_n_samples : int
         Maximum number of samples to display without resampling
     **kwargs
@@ -48,11 +51,6 @@ def render_time_series(
     channels = plot_data["channels"]
     channel_info = plot_data["channel_info"]
     channel_positions = plot_data["channel_positions"]
-
-    # Debug information
-    print(
-        f"Data summary: {len(time_values)} time points, {len(signals)} signals, {len(channels)} channels"
-    )
 
     # Extract parameters
     params = data["params"]
@@ -95,49 +93,42 @@ def render_time_series(
             print(f"Warning: Color generation failed: {e}, using default colors")
             # Fallback to basic colors
             colors = [
-                f"hsl({h},80%,50%)"
-                for h in np.linspace(0, 360, num_colors_needed, endpoint=False)
+                f"rgba({int(220 - i * 30)}, {int(20 + i * 60)}, {int(60 + i * 40)}, {alpha})"
+                for i in range(num_colors_needed)
             ]
+    else:
+        # Use single color with alpha
+        r, g, b = (
+            pc.hex_to_rgb(single_color) if single_color.startswith("#") else (0, 0, 0)
+        )
+        colors = [f"rgba({r}, {g}, {b}, {alpha})"] * len(channels)
 
-        # Double-check we have the right number of colors (debug)
-        if len(colors) != num_colors_needed:
-            print(
-                f"Warning: Expected {num_colors_needed} colors but got {len(colors)}. Using default colors."
-            )
-            colors = [
-                f"hsl({h},80%,50%)"
-                for h in np.linspace(0, 360, num_colors_needed, endpoint=False)
-            ]
+    # Determine whether to use Scattergl (WebGL) or regular Scatter
+    ScatterType = go.Scattergl if use_webgl else go.Scatter
 
     # Add each channel as a separate trace
-    num_traces = min(len(signals), len(channels))
-    for idx in range(num_traces):
-        # Choose color based on color_mode and ensure we don't go out of bounds
-        if color_mode == "colormap" and idx < len(colors):
-            plot_color = colors[idx]
-        else:  # Single color mode or fallback
-            plot_color = single_color
+    for idx, (channel, signal) in enumerate(zip(channels, signals)):
+        if len(signal) == 0:
+            continue
 
-        # Add the trace based on figure type
-        channel_idx = channels[idx] if idx < len(channels) else idx
+        # Choose color based on color_mode and ensure we don't go out of bounds
+        plot_color = colors[idx % len(colors)]
 
         # Create trace configuration
         trace_kwargs = dict(
-            name=f"Channel {channel_idx}",
+            name=f"Channel {channel}",
             line=dict(color=plot_color, width=line_width),
             opacity=alpha,
         )
 
         # Add the trace based on figure type
         if should_use_resampler:
-            # Add trace with resampling
-            fig.add_trace(
-                go.Scattergl(**trace_kwargs), hf_x=time_values, hf_y=signals[idx]
-            )
+            # Add trace with resampling (use regular Scatter for resampler compatibility)
+            fig.add_trace(go.Scatter(**trace_kwargs), hf_x=time_values, hf_y=signal)
         else:
-            # Add standard trace
+            # Add standard trace with WebGL acceleration if requested
             fig.add_trace(
-                go.Scatter(x=time_values, y=signals[idx], mode="lines", **trace_kwargs)
+                ScatterType(x=time_values, y=signal, mode="lines", **trace_kwargs)
             )
 
     # Set up layout
@@ -165,9 +156,12 @@ def render_time_series(
     )
 
     # Add channel labels on y-axis if requested
-    if show_channel_labels:
+    if show_channel_labels and channel_positions:
         fig.update_yaxes(
-            tickmode="array", tickvals=channel_positions, ticktext=channel_info
+            tickmode="array",
+            tickvals=channel_positions,
+            ticktext=channel_info,
+            range=[min(channel_positions) - 0.5, max(channel_positions) + 0.5],
         )
 
     # Set x limits if provided in time_window

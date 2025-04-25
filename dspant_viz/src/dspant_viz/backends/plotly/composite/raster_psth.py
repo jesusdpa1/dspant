@@ -5,14 +5,20 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def render_raster_psth(data: Dict[str, Any], **kwargs) -> go.Figure:
+def render_raster_psth(
+    data: Dict[str, Any],
+    use_webgl: bool = True,  # Add WebGL option
+    **kwargs,
+) -> go.Figure:
     """
-    Render a combined raster plot and PSTH using Plotly.
+    Render a combined raster plot and PSTH using Plotly with WebGL acceleration.
 
     Parameters
     ----------
     data : dict
         Data dictionary from RasterPSTHComposite.get_data()
+    use_webgl : bool
+        Whether to use WebGL acceleration for better performance
     **kwargs : dict
         Additional parameters to override those in data
 
@@ -57,9 +63,9 @@ def render_raster_psth(data: Dict[str, Any], **kwargs) -> go.Figure:
     from dspant_viz.backends.plotly.psth import render_psth
     from dspant_viz.backends.plotly.raster import render_raster
 
-    # Create individual figures
-    raster_fig = render_raster(raster_data)
-    psth_fig = render_psth(psth_data)
+    # Create individual figures with WebGL acceleration
+    raster_fig = render_raster(raster_data, use_webgl=use_webgl)
+    psth_fig = render_psth(psth_data, use_webgl=use_webgl)
 
     # Add traces from raster plot to top subplot
     for trace in raster_fig.data:
@@ -121,5 +127,20 @@ def render_raster_psth(data: Dict[str, Any], **kwargs) -> go.Figure:
         height=600,  # Set a reasonable default height
         showlegend=False,
     )
+
+    # If using WebGL, add indicator
+    if use_webgl:
+        fig.add_annotation(
+            text="WebGL acceleration enabled",
+            xref="paper",
+            yref="paper",
+            x=1,
+            y=0,
+            xanchor="right",
+            yanchor="bottom",
+            showarrow=False,
+            font=dict(size=8, color="gray"),
+            opacity=0.7,
+        )
 
     return fig

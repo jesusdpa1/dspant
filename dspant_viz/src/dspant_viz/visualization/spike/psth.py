@@ -1,41 +1,50 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
-import plotly.graph_objects as go
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 
-from dspant_viz.core.base import VisualizationComponent
 from dspant_viz.core.data_models import SpikeData
+from dspant_viz.visualization.spike.base import BaseSpikeVisualization
 
 
-class PSTHPlot(VisualizationComponent):
-    """Component to compute and render PSTH from raw spike times"""
+class PSTHPlot(BaseSpikeVisualization):
+    """Component to compute and render PSTH from spike times"""
 
     def __init__(
         self,
         data: SpikeData,
+        event_times: np.ndarray,  # Required for PSTH
+        pre_time: float,  # Required for PSTH
+        post_time: float,  # Required for PSTH
         bin_width: float = 0.05,
-        time_window: Tuple[float, float] = (-1.0, 1.0),
         line_color: str = "orange",
         line_width: float = 2,
         show_sem: bool = True,
         sem_alpha: float = 0.3,
-        unit_id: Optional[int] = None,  # Add unit_id parameter
+        unit_id: Optional[int] = None,
+        sigma: Optional[float] = None,  # For smoothing
         **kwargs,
     ):
-        super().__init__(data, **kwargs)
+        # PSTHs always require event times
+        if event_times is None or pre_time is None or post_time is None:
+            raise ValueError("PSTH requires event_times, pre_time, and post_time")
+
+        super().__init__(
+            data=data,
+            event_times=event_times,
+            pre_time=pre_time,
+            post_time=post_time,
+            **kwargs,
+        )
 
         self.bin_width = bin_width
-        self.time_window = time_window
         self.line_color = line_color
         self.line_width = line_width
         self.show_sem = show_sem
         self.sem_alpha = sem_alpha
-        self.unit_id = unit_id  # Store which unit to display
+        self.unit_id = unit_id or (list(data.spikes.keys())[0] if data.spikes else None)
+        self.sigma = sigma
 
-        # Compute PSTH
+        # Compute PSTH data
         self.time_bins, self.firing_rates, self.sem = self._compute_psth()
 
     def _compute_psth(self) -> Tuple[List[float], List[float], Optional[List[float]]]:
@@ -47,35 +56,27 @@ class PSTHPlot(VisualizationComponent):
         Tuple[List[float], List[float], Optional[List[float]]]
             time_bins, firing_rates, sem
         """
-        # If no unit_id specified and data contains multiple units, use the first one
         if self.unit_id is None:
-            available_units = list(self.data.spikes.keys())
-            if available_units:
-                self.unit_id = available_units[0]
-            else:
-                # No data available
-                return [], [], None
-
-        # Extract trials for this unit
-        unit_spikes = self.data.spikes.get(self.unit_id, {})
-
-        # Skip if no data
-        if not unit_spikes:
             return [], [], None
 
-        # Extract spike times for each trial
-        trial_spikes = list(unit_spikes.values())
+        # Get trial data for this unit
+        trial_data = self.get_trial_data(self.unit_id)[self.unit_id]
+
+        # Skip if no data
+        if not trial_data:
+            return [], [], None
 
         # Create time bins
-        start, end = self.time_window
-        bins = np.arange(start, end + self.bin_width, self.bin_width)
-        bin_centers = (bins[:-1] + bins[1:]) / 2
+        bin_edges = np.arange(
+            -self.pre_time, self.post_time + self.bin_width, self.bin_width
+        )
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
         # Count spikes in each bin for each trial
         trial_counts = []
-        for spikes in trial_spikes:
-            if spikes:  # Skip empty trials
-                hist, _ = np.histogram(spikes, bins=bins)
+        for trial_spikes in trial_data.values():
+            if trial_spikes:  # Skip empty trials
+                hist, _ = np.histogram(trial_spikes, bins=bin_edges)
                 trial_counts.append(hist)
 
         # Skip if no spikes
@@ -97,6 +98,16 @@ class PSTHPlot(VisualizationComponent):
                 / self.bin_width
             )
 
+        # Apply smoothing if requested
+        if self.sigma is not None:
+            from scipy.ndimage import gaussian_filter1d
+
+            # Convert sigma from time to bins
+            sigma_bins = self.sigma / self.bin_width
+            firing_rates = gaussian_filter1d(firing_rates, sigma_bins)
+            if sem is not None:
+                sem = gaussian_filter1d(sem, sigma_bins)
+
         return (
             bin_centers.tolist(),
             firing_rates.tolist(),
@@ -104,6 +115,33 @@ class PSTHPlot(VisualizationComponent):
         )
 
     def get_data(self) -> Dict[str, Any]:
+        """
+        Prepare PSTH data for rendering.
+
+        Returns
+        -------
+        dict
+            Data and parameters for rendering
+        """
+        # Return empty data if no unit ID or no bins
+        if self.unit_id is None or not self.time_bins:
+            return {
+                "data": {
+                    "time_bins": [],
+                    "firing_rates": [],
+                    "sem": None,
+                    "unit_id": self.unit_id,
+                },
+                "params": {
+                    "line_color": self.line_color,
+                    "line_width": self.line_width,
+                    "show_sem": self.show_sem,
+                    "sem_alpha": self.sem_alpha,
+                    "bin_width": self.bin_width,
+                    **self.config,
+                },
+            }
+
         return {
             "data": {
                 "time_bins": self.time_bins,
@@ -117,27 +155,61 @@ class PSTHPlot(VisualizationComponent):
                 "show_sem": self.show_sem,
                 "sem_alpha": self.sem_alpha,
                 "bin_width": self.bin_width,
-                "time_window": self.time_window,
                 **self.config,
             },
         }
 
     def update(self, **kwargs) -> None:
-        recalculate = False
+        """
+        Update PSTH parameters and recompute if necessary.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            Parameters to update
+        """
+        needs_recompute = False
 
         for key, value in kwargs.items():
-            if key in ["bin_width", "time_window", "unit_id"]:
-                recalculate = True
+            if key in [
+                "event_times",
+                "pre_time",
+                "post_time",
+                "bin_width",
+                "unit_id",
+                "sigma",
+            ]:
+                needs_recompute = True
 
             if hasattr(self, key):
                 setattr(self, key, value)
             else:
                 self.config[key] = value
 
-        if recalculate:
+        # Update trial data if event parameters changed
+        if "event_times" in kwargs or "pre_time" in kwargs or "post_time" in kwargs:
+            self._trial_data = self._organize_by_trials()
+
+        # Recompute PSTH if necessary
+        if needs_recompute:
             self.time_bins, self.firing_rates, self.sem = self._compute_psth()
 
-    def plot(self, backend="mpl", **kwargs):
+    def plot(self, backend: str = "mpl", **kwargs):
+        """
+        Generate a plot using the specified backend.
+
+        Parameters
+        ----------
+        backend : str, optional
+            Backend to use for plotting ('mpl', 'plotly')
+        **kwargs : dict
+            Additional parameters for the backend
+
+        Returns
+        -------
+        Any
+            Plot figure from the specified backend
+        """
         if backend == "mpl":
             from dspant_viz.backends.mpl.psth import render_psth
         elif backend == "plotly":

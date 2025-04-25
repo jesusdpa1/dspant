@@ -1,33 +1,40 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
-import plotly.graph_objects as go
 
-from dspant_viz.core.base import VisualizationComponent
 from dspant_viz.core.data_models import SpikeData
+from dspant_viz.visualization.spike.base import BaseSpikeVisualization
 
 
-class RasterPlot(VisualizationComponent):
+class RasterPlot(BaseSpikeVisualization):
     """Component for spike raster visualization with multi-unit support"""
 
     def __init__(
         self,
         data: SpikeData,
+        event_times: Optional[np.ndarray] = None,
+        pre_time: Optional[float] = None,
+        post_time: Optional[float] = None,
         marker_size: float = 4,
         marker_color: str = "#2D3142",
         marker_alpha: float = 0.7,
         marker_type: str = "|",
-        unit_id: Optional[int] = None,  # Add unit_id parameter
+        unit_id: Optional[int] = None,
         **kwargs,
     ):
-        super().__init__(data, **kwargs)
+        super().__init__(
+            data=data,
+            event_times=event_times,
+            pre_time=pre_time,
+            post_time=post_time,
+            **kwargs,
+        )
 
         self.marker_size = marker_size
         self.marker_color = marker_color
         self.marker_alpha = marker_alpha
         self.marker_type = marker_type
-        self.unit_id = unit_id  # Store which unit to display
+        self.unit_id = unit_id or (list(data.spikes.keys())[0] if data.spikes else None)
 
     def get_data(self) -> Dict[str, Any]:
         """
@@ -38,68 +45,125 @@ class RasterPlot(VisualizationComponent):
         dict
             Data and parameters for rendering
         """
-        # If no unit_id specified and data contains multiple units, use the first one
+        # Check if we have a valid unit ID
         if self.unit_id is None:
-            available_units = list(self.data.spikes.keys())
-            if available_units:
-                self.unit_id = available_units[0]
-            else:
-                # No data available
-                return {
-                    "data": {
-                        "spike_times": [],
-                        "y_values": [],
-                        "trial_indices": [],
-                        "label_map": {},
-                        "unit_id": None,
-                    },
-                    "params": {
-                        "marker_size": self.marker_size,
-                        "marker_color": self.marker_color,
-                        "marker_alpha": self.marker_alpha,
-                        "marker_type": self.marker_type,
-                        **self.config,
-                    },
-                }
+            return {
+                "data": {
+                    "spike_times": [],
+                    "y_values": [],
+                    "unit_id": None,
+                    "is_trial_based": False,
+                },
+                "params": {
+                    "marker_size": self.marker_size,
+                    "marker_color": self.marker_color,
+                    "marker_alpha": self.marker_alpha,
+                    "marker_type": self.marker_type,
+                    **self.config,
+                },
+            }
 
-        # Extract data for the specified unit only
-        unit_spikes = self.data.spikes.get(self.unit_id, {})
+        # Prepare data based on whether we're in trial-based or continuous mode
+        if self.is_trial_based:
+            # Trial-based mode - each trial gets its own row (y-value)
+            trial_data = self.get_trial_data(self.unit_id)[self.unit_id]
 
-        # Flatten just this unit's data
-        spike_times = []
-        y_values = []
-        label_map = {}
+            spike_times = []
+            trial_indices = []
 
-        for i, (trial_label, spike_list) in enumerate(unit_spikes.items()):
-            spike_times.extend(spike_list)
-            y_values.extend([i] * len(spike_list))
-            label_map[i] = str(trial_label)
+            for trial_idx, spikes in trial_data.items():
+                spike_times.extend(spikes)
+                trial_indices.extend([trial_idx] * len(spikes))
 
-        return {
-            "data": {
-                "spike_times": spike_times,
-                "y_values": y_values,
-                "trial_indices": y_values,  # For backward compatibility
-                "label_map": label_map,
-                "unit_id": self.unit_id,
-            },
-            "params": {
-                "marker_size": self.marker_size,
-                "marker_color": self.marker_color,
-                "marker_alpha": self.marker_alpha,
-                "marker_type": self.marker_type,
-                **self.config,
-            },
-        }
+            return {
+                "data": {
+                    "spike_times": spike_times,
+                    "y_values": trial_indices,
+                    "unit_id": self.unit_id,
+                    "is_trial_based": True,
+                    "n_trials": len(trial_data),
+                },
+                "params": {
+                    "marker_size": self.marker_size,
+                    "marker_color": self.marker_color,
+                    "marker_alpha": self.marker_alpha,
+                    "marker_type": self.marker_type,
+                    **self.config,
+                },
+            }
+
+        else:
+            # Continuous mode - each unit gets its own row (y-value)
+            # For a single unit, all spikes are on the same row
+            unit_spikes = self.get_continuous_data(self.unit_id)[self.unit_id]
+
+            return {
+                "data": {
+                    "spike_times": unit_spikes.tolist(),
+                    "y_values": [0]
+                    * len(unit_spikes),  # All at position 0 for single unit
+                    "unit_id": self.unit_id,
+                    "is_trial_based": False,
+                },
+                "params": {
+                    "marker_size": self.marker_size,
+                    "marker_color": self.marker_color,
+                    "marker_alpha": self.marker_alpha,
+                    "marker_type": self.marker_type,
+                    **self.config,
+                },
+            }
 
     def update(self, **kwargs) -> None:
+        """
+        Update component parameters.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            Parameters to update
+        """
+        # Handle special case for updating event-related parameters
+        if "event_times" in kwargs or "pre_time" in kwargs or "post_time" in kwargs:
+            # Get current values for missing parameters
+            event_times = kwargs.get("event_times", self.event_times)
+            pre_time = kwargs.get("pre_time", self.pre_time)
+            post_time = kwargs.get("post_time", self.post_time)
+
+            # Update trial-based status
+            self.is_trial_based = event_times is not None
+            self.event_times = event_times
+            self.pre_time = pre_time
+            self.post_time = post_time
+
+            # Reorganize data if we're in trial-based mode
+            if self.is_trial_based:
+                self._trial_data = self._organize_by_trials()
+
+        # Update other parameters
         for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-            else:
-                self.config[key] = value
+            if key not in ["event_times", "pre_time", "post_time"]:
+                if hasattr(self, key):
+                    setattr(self, key, value)
+                else:
+                    self.config[key] = value
 
     def plot(self, backend: str = "mpl", **kwargs):
+        """
+        Generate a plot using the specified backend.
+
+        Parameters
+        ----------
+        backend : str, optional
+            Backend to use for plotting ('mpl', 'plotly')
+        **kwargs : dict
+            Additional parameters for the backend
+
+        Returns
+        -------
+        Any
+            Plot figure from the specified backend
+        """
         if backend == "mpl":
             from dspant_viz.backends.mpl.raster import render_raster
         elif backend == "plotly":

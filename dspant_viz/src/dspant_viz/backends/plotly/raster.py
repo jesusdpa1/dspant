@@ -1,16 +1,23 @@
+# src/dspant_viz/backends/plotly/raster.py
 from typing import Any, Dict
 
 import plotly.graph_objects as go
 
 
-def render_raster(data: Dict[str, Any], **kwargs) -> go.Figure:
+def render_raster(
+    data: Dict[str, Any],
+    use_webgl: bool = True,  # Add WebGL option
+    **kwargs,
+) -> go.Figure:
     """
-    Render a spike raster plot using Plotly.
+    Render a trial-based spike raster plot using Plotly with WebGL acceleration.
 
     Parameters
     ----------
     data : Dict
         Data dictionary from RasterPlot.get_data()
+    use_webgl : bool
+        Whether to use WebGL acceleration for better performance
     **kwargs
         Additional parameters to override those in data
 
@@ -22,8 +29,11 @@ def render_raster(data: Dict[str, Any], **kwargs) -> go.Figure:
     # Extract data
     spike_data = data["data"]
     spike_times = spike_data["spike_times"]
-    y_values = spike_data["y_values"]
+    trial_indices = spike_data[
+        "y_values"
+    ]  # In trial-based mode, y values are trial indices
     unit_id = spike_data.get("unit_id")
+    n_trials = spike_data.get("n_trials", 0)
 
     # Extract parameters
     params = data["params"]
@@ -37,15 +47,18 @@ def render_raster(data: Dict[str, Any], **kwargs) -> go.Figure:
     # Create figure
     fig = go.Figure()
 
+    # Determine whether to use Scattergl (WebGL) or regular Scatter
+    ScatterType = go.Scattergl if use_webgl and len(spike_times) > 1000 else go.Scatter
+
     # Set symbol based on marker type
     symbol = "line-ns" if marker_type == "|" else "circle"
 
     # Add scatter trace for spikes
     if spike_times:
         fig.add_trace(
-            go.Scatter(
+            ScatterType(
                 x=spike_times,
-                y=y_values,
+                y=trial_indices,
                 mode="markers",
                 marker=dict(
                     symbol=symbol,
@@ -59,11 +72,12 @@ def render_raster(data: Dict[str, Any], **kwargs) -> go.Figure:
         )
 
     # Set title
-    title = f"Unit {unit_id}" if unit_id is not None else "Raster Plot"
-    if spike_times:
-        trial_count = len(set(y_values))
-        title += f" - {trial_count} trials"
+    if unit_id is not None:
+        title = f"Unit {unit_id} - {n_trials} trials"
     else:
+        title = "Raster Plot"
+
+    if not spike_times:
         title += " - No spikes"
 
     # Update layout
@@ -79,31 +93,36 @@ def render_raster(data: Dict[str, Any], **kwargs) -> go.Figure:
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="lightgray")
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="lightgray")
 
-    # Add vertical line at event onset (time=0)
-    if params.get("show_event_onset", True):
-        fig.add_vline(x=0, line_dash="dash", line_color="red", opacity=0.6)
+    # Always show event onset line in trial-based plots
+    fig.add_vline(x=0, line_dash="dash", line_color="red", opacity=0.6)
 
     # Set x-axis limits if provided
     if "xlim" in params:
         fig.update_xaxes(range=params["xlim"])
+    elif "time_window" in params and params["time_window"] is not None:
+        fig.update_xaxes(range=params["time_window"])
 
     # Set y-axis limits if provided
     if "ylim" in params:
         fig.update_yaxes(range=params["ylim"])
     else:
         # Auto-adjust y limits with a small margin
-        if y_values:
-            fig.update_yaxes(range=[-0.5, max(y_values) + 0.5])
+        if trial_indices:
+            fig.update_yaxes(range=[-0.5, max(trial_indices) + 0.5])
 
-    # Set up y-axis ticks if requested to show trial labels
-    if params.get("show_trial_labels", False):
-        label_map = spike_data.get("label_map", {})
-        if label_map:
-            unique_y = sorted(set(y_values))
-            fig.update_yaxes(
-                tickmode="array",
-                tickvals=unique_y,
-                ticktext=[label_map.get(y, str(y)) for y in unique_y],
-            )
+    # If using WebGL with many points, add indicator
+    if use_webgl and len(spike_times) > 1000:
+        fig.add_annotation(
+            text="WebGL acceleration enabled",
+            xref="paper",
+            yref="paper",
+            x=1,
+            y=0,
+            xanchor="right",
+            yanchor="bottom",
+            showarrow=False,
+            font=dict(size=8, color="gray"),
+            opacity=0.7,
+        )
 
     return fig

@@ -1,3 +1,4 @@
+# src/dspant_viz/backends/mpl/psth.py
 from typing import Any, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -51,7 +52,12 @@ def render_psth(
         fig = ax.figure
 
     # Check if we have data to plot
-    if not time_bins or not firing_rates:
+    if (
+        not time_bins
+        or len(time_bins) == 0
+        or not firing_rates
+        or len(firing_rates) == 0
+    ):
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Firing rate (Hz)")
         if unit_id is not None:
@@ -136,6 +142,8 @@ def render_psth(
     # Set axis limits if provided
     if "xlim" in params:
         ax.set_xlim(params["xlim"])
+    elif "time_window" in params and params["time_window"] is not None:
+        ax.set_xlim(params["time_window"])
 
     if "ylim" in params:
         ax.set_ylim(params["ylim"])
@@ -143,5 +151,8 @@ def render_psth(
     # Make plot look nice
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+
+    # Tight layout for better appearance
+    plt.tight_layout()
 
     return fig, ax

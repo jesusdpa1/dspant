@@ -43,7 +43,7 @@ def render_time_series(
     params.update(kwargs)  # Override with provided kwargs
 
     color_mode = params.get("color_mode", "colormap")
-    colormap_name = params.get("colormap", "Set1")
+    colormap_name = params.get("colormap", "viridis")
     single_color = params.get("color", "black")
     line_width = params.get("line_width", 1.0)
     alpha = params.get("alpha", 0.8)
@@ -59,20 +59,23 @@ def render_time_series(
     # Set up color handling
     if color_mode == "colormap":
         cmap = cm.get_cmap(colormap_name)
+        n_channels = len(channels)
+        colors = [cmap(i / max(1, n_channels - 1)) for i in range(n_channels)]
+    else:
+        # Use a single color for all channels
+        colors = [single_color] * len(channels)
 
     # Plot each channel
     for idx, channel_idx in enumerate(range(len(channels))):
-        # Choose color based on color_mode
-        if color_mode == "colormap":
-            plot_color = cmap(idx / max(1, len(channels) - 1))
-        else:  # Single color mode
-            plot_color = single_color
+        # Skip if no data for this channel
+        if idx >= len(signals) or len(signals[idx]) == 0:
+            continue
 
         # Plot the channel data
         ax.plot(
             time_values,
             signals[idx],
-            color=plot_color,
+            color=colors[idx],
             alpha=alpha,
             linewidth=line_width,
             label=f"Channel {channels[idx]}",
@@ -100,6 +103,14 @@ def render_time_series(
     # Set x limits if provided in time_window
     if "time_window" in params and params["time_window"] is not None:
         ax.set_xlim(params["time_window"])
+
+    # Set y-limits to include all signals with a small margin
+    if channel_positions:
+        ax.set_ylim(min(channel_positions) - 0.5, max(channel_positions) + 0.5)
+
+    # Make plot look nice
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
     # Tight layout for better appearance
     plt.tight_layout()
