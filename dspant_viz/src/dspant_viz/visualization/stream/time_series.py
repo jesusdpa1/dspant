@@ -16,8 +16,9 @@ class TimeSeriesPlot(BaseStreamVisualization):
         self,
         data: da.Array,
         sampling_rate: float,
-        channels: Optional[List[int]] = None,  # Use channels instead of elements
+        channels: Optional[List[int]] = None,
         time_window: Optional[Tuple[float, float]] = None,
+        initial_time_window: Optional[Tuple[float, float]] = None,  # Add this parameter
         color_mode: str = "colormap",
         colormap: str = "viridis",
         color: str = "black",
@@ -30,10 +31,54 @@ class TimeSeriesPlot(BaseStreamVisualization):
         normalize: bool = True,
         downsample: bool = True,
         max_points: int = 10000,
+        resample_method: str = "lttb",  # Add resampling method parameter
         **kwargs,
     ):
         """
         Initialize time series visualization for multichannel data.
+
+        Parameters
+        ----------
+        data : da.Array
+            Dask array with time series data
+        sampling_rate : float
+            Sampling frequency in Hz
+        channels : List[int], optional
+            List of channels to display. If None, displays all channels.
+        time_window : Tuple[float, float], optional
+            Full time window of data (start_time, end_time) in seconds
+        initial_time_window : Tuple[float, float], optional
+            Initial time window to display (start_time, end_time) in seconds.
+            This is the window shown when the plot is first rendered,
+            but the user can zoom out to see the full dataset.
+        color_mode : str, optional
+            'colormap' or 'single'
+        colormap : str, optional
+            Colormap name for multiple channels
+        color : str, optional
+            Color for 'single' color mode
+        y_spread : float, optional
+            Vertical spread between channels
+        y_offset : float, optional
+            Vertical offset for all channels
+        line_width : float, optional
+            Width of lines
+        alpha : float, optional
+            Transparency of lines
+        grid : bool, optional
+            Whether to show grid
+        show_channel_labels : bool, optional
+            Whether to show channel labels on y-axis
+        normalize : bool, optional
+            Whether to normalize channel amplitudes
+        downsample : bool, optional
+            Whether to downsample data for display
+        max_points : int, optional
+            Maximum number of points to display per channel
+        resample_method : str
+            Resampling method to use: 'minmax', 'lttb', 'minmaxlttb', 'nth', 'overlap'
+        **kwargs
+            Additional configuration parameters
         """
         # Call parent constructor with elements=channels
         super().__init__(
@@ -53,6 +98,23 @@ class TimeSeriesPlot(BaseStreamVisualization):
         # Create a channels attribute that references elements
         self.channels = self.elements
 
+        # Calculate full data duration if not provided
+        if time_window is None and isinstance(data, da.Array):
+            data_duration = data.shape[0] / sampling_rate
+            self.time_window = (0, data_duration)
+
+        # Set initial time window
+        self.initial_time_window = initial_time_window
+
+        # If no initial time window is provided but we have a full time window,
+        # create a default 10-second window at the start
+        if self.initial_time_window is None and self.time_window is not None:
+            start = self.time_window[0]
+            end = min(
+                start + 10.0, self.time_window[1]
+            )  # Ensure we don't exceed full window
+            self.initial_time_window = (start, end)
+
         # Store additional parameters
         self.color_mode = color_mode
         self.colormap = colormap
@@ -66,6 +128,7 @@ class TimeSeriesPlot(BaseStreamVisualization):
         self.normalize = normalize
         self.downsample = downsample
         self.max_points = max_points
+        self.resample_method = resample_method
 
     def _get_display_data(self) -> Tuple[np.ndarray, List[np.ndarray]]:
         """
@@ -163,6 +226,8 @@ class TimeSeriesPlot(BaseStreamVisualization):
                 "show_channel_labels": self.show_channel_labels,
                 "normalize": self.normalize,
                 "time_window": self.time_window,
+                "initial_time_window": self.initial_time_window,
+                "resample_method": self.resample_method,
                 **self.config,
             },
         }
@@ -177,9 +242,17 @@ class TimeSeriesPlot(BaseStreamVisualization):
             self.channels = channels
             self.elements = channels  # Keep elements in sync
 
-        # Update time window if provided
+        # Update time windows if provided
         if "time_window" in kwargs:
             self.time_window = kwargs.pop("time_window")
+
+        if "initial_time_window" in kwargs:
+            self.initial_time_window = kwargs.pop("initial_time_window")
+        elif "time_window" in kwargs and self.time_window is not None:
+            # If time_window changed but initial_time_window didn't, update initial_time_window
+            start = self.time_window[0]
+            end = min(start + 10.0, self.time_window[1])
+            self.initial_time_window = (start, end)
 
         # Update other parameters
         for key, value in kwargs.items():
@@ -188,9 +261,13 @@ class TimeSeriesPlot(BaseStreamVisualization):
             else:
                 self.config[key] = value
 
-    def plot(self, backend: str = "mpl", **kwargs):
+    def plot(
+        self,
+        backend: str = "plotly",
+        **kwargs,
+    ):
         """
-        Generate the plot using the specified backend.
+        Generate the plot using the specified backend with dynamic loading.
 
         Parameters
         ----------
@@ -201,14 +278,50 @@ class TimeSeriesPlot(BaseStreamVisualization):
 
         Returns
         -------
-        Figure or plotly.graph_objects.Figure
+        Figure, FigureResampler, or FigureWidgetResampler
             Plot figure from the specified backend
         """
         if backend == "mpl":
             from dspant_viz.backends.mpl.time_series import render_time_series
+
+            # Get data for all channels - MPL is for static publication figures
+            plot_data = self.get_data()
+            return render_time_series(plot_data, **kwargs)
+
         elif backend == "plotly":
             from dspant_viz.backends.plotly.time_series import render_time_series
+
+            # Use all channels
+            plot_data = self.get_data()
+
+            # Set defaults for resampling if not specified
+            if "resample_method" not in kwargs and hasattr(self, "resample_method"):
+                kwargs["resample_method"] = self.resample_method
+
+            if "max_n_samples" not in kwargs:
+                kwargs["max_n_samples"] = 5000
+
+            fig = render_time_series(plot_data, **kwargs)
+
+            # For IPython environments, we need to return the FigureWidgetResampler directly
+            # without calling .show() on it, as that would render it statically
+            is_resampler = hasattr(fig, "reload_data")
+
+            # For testing if we're in a notebook
+            in_notebook = False
+            try:
+                from IPython import get_ipython
+
+                if get_ipython() is not None:
+                    in_notebook = True
+            except ImportError:
+                pass
+
+            if is_resampler and in_notebook:
+                # Return the figure without displaying it
+                # (user needs to display it in a cell)
+                return fig
+            else:
+                return fig
         else:
             raise ValueError(f"Unsupported backend: {backend}")
-
-        return render_time_series(self.get_data(), **kwargs)

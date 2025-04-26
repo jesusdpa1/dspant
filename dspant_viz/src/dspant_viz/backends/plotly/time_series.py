@@ -7,8 +7,14 @@ import plotly.graph_objects as go
 
 # Import plotly-resampler components
 try:
-    from plotly_resampler import FigureResampler, register_plotly_resampler
-    from plotly_resampler.aggregation import MinMaxAggregator
+    from plotly_resampler import FigureResampler, FigureWidgetResampler
+    from plotly_resampler.aggregation import (
+        LTTB,
+        EveryNthPoint,
+        MinMaxAggregator,
+        MinMaxLTTB,
+        MinMaxOverlapAggregator,
+    )
 
     HAS_RESAMPLER = True
 except ImportError:
@@ -19,12 +25,14 @@ except ImportError:
 def render_time_series(
     data: Dict[str, Any],
     use_resampler: bool = True,
-    use_webgl: bool = True,  # Add WebGL option
-    max_n_samples: int = 10000,
+    use_webgl: bool = True,
+    max_n_samples: int = 5000,
+    resample_method: str = "minmaxlttb",
+    use_widget_resampler: bool = True,  # New parameter
     **kwargs,
-) -> Union[go.Figure, "FigureResampler"]:
+) -> Union[go.Figure, "FigureResampler", "FigureWidgetResampler"]:
     """
-    Render multi-channel time series data using Plotly with WebGL acceleration and optional dynamic resampling.
+    Render multi-channel time series data using Plotly with WebGL acceleration and dynamic resampling.
 
     Parameters
     ----------
@@ -36,13 +44,17 @@ def render_time_series(
         Whether to use WebGL acceleration for better performance
     max_n_samples : int
         Maximum number of samples to display without resampling
+    resample_method : str
+        Resampling method to use: 'minmax', 'lttb', 'minmaxlttb', 'nth', 'overlap'
+    use_widget_resampler : bool
+        Whether to use FigureWidgetResampler instead of FigureResampler when in IPython environment
     **kwargs
         Additional parameters to override those in data
 
     Returns
     -------
-    fig : Union[go.Figure, FigureResampler]
-        Plotly figure or FigureResampler instance
+    fig : Union[go.Figure, FigureResampler, FigureWidgetResampler]
+        Plotly figure or resampler instance
     """
     # Extract data
     plot_data = data["data"]
@@ -69,14 +81,46 @@ def render_time_series(
         use_resampler and HAS_RESAMPLER and len(time_values) > max_n_samples
     )
 
+    # Determine if we're in an IPython environment
+    in_ipython = False
+    try:
+        from IPython import get_ipython
+
+        if get_ipython() is not None:
+            in_ipython = True
+    except ImportError:
+        pass
+
     # Create the appropriate figure type
     if should_use_resampler:
-        # Create a FigureResampler instance
-        fig = FigureResampler(
-            go.Figure(),
-            default_n_shown_samples=max_n_samples,
-            default_downsampler=MinMaxAggregator(),
-        )
+        # Select the appropriate aggregator based on the method
+        if resample_method == "lttb":
+            downsampler = LTTB()
+        elif resample_method == "minmaxlttb":
+            downsampler = MinMaxLTTB()
+        elif resample_method == "nth":
+            downsampler = EveryNthPoint()
+        elif resample_method == "overlap":
+            downsampler = MinMaxOverlapAggregator()
+        else:
+            # Default to MinMaxAggregator
+            downsampler = MinMaxAggregator()
+
+        # Choose between FigureWidgetResampler and FigureResampler
+        if in_ipython and use_widget_resampler:
+            # Use FigureWidgetResampler for IPython environments
+            fig = FigureWidgetResampler(
+                go.Figure(),
+                default_n_shown_samples=max_n_samples,
+                default_downsampler=downsampler,
+            )
+        else:
+            # Use FigureResampler for other environments
+            fig = FigureResampler(
+                go.Figure(),
+                default_n_shown_samples=max_n_samples,
+                default_downsampler=downsampler,
+            )
     else:
         # Create a standard Plotly figure
         fig = go.Figure()
@@ -91,7 +135,7 @@ def render_time_series(
             colors = colorscale
         except Exception as e:
             print(f"Warning: Color generation failed: {e}, using default colors")
-            # Fallback to basic colors
+            # Fallback to basic
             colors = [
                 f"rgba({int(220 - i * 30)}, {int(20 + i * 60)}, {int(60 + i * 40)}, {alpha})"
                 for i in range(num_colors_needed)
@@ -119,12 +163,13 @@ def render_time_series(
             name=f"Channel {channel}",
             line=dict(color=plot_color, width=line_width),
             opacity=alpha,
+            visible=True,
         )
 
         # Add the trace based on figure type
         if should_use_resampler:
-            # Add trace with resampling (use regular Scatter for resampler compatibility)
-            fig.add_trace(go.Scatter(**trace_kwargs), hf_x=time_values, hf_y=signal)
+            # Add trace with high-frequency data
+            fig.add_trace(go.Scattergl(**trace_kwargs), hf_x=time_values, hf_y=signal)
         else:
             # Add standard trace with WebGL acceleration if requested
             fig.add_trace(
@@ -164,24 +209,14 @@ def render_time_series(
             range=[min(channel_positions) - 0.5, max(channel_positions) + 0.5],
         )
 
-    # Set x limits if provided in time_window
-    if "time_window" in params and params["time_window"] is not None:
-        fig.update_xaxes(range=params["time_window"])
+    # Extract time windows
+    initial_time_window = params.get("initial_time_window")
+    full_time_window = params.get("time_window")
 
-    # For resampler figures, add an indicator
-    if should_use_resampler:
-        fig.add_annotation(
-            text="↔ Zoom/Pan to see more detail (Dynamic Resampling Active)",
-            xref="paper",
-            yref="paper",
-            x=0.5,
-            y=1.05,
-            showarrow=False,
-            font=dict(size=10, color="gray"),
-            bgcolor="rgba(255,255,255,0.7)",
-            bordercolor="gray",
-            borderwidth=1,
-            borderpad=4,
-        )
+    # Set the initial view to the initial_time_window if provided
+    if initial_time_window is not None:
+        fig.update_xaxes(range=initial_time_window)
+    elif full_time_window is not None:
+        fig.update_xaxes(range=full_time_window)
 
     return fig
