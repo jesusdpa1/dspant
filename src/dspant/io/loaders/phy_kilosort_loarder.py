@@ -9,8 +9,8 @@ from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
-from ...core.internals import public_api
-from ...nodes.sorter import SorterNode
+from dspant.core.internals import public_api
+from dspant.nodes.sorter import SorterNode
 
 
 @public_api
@@ -97,6 +97,7 @@ class PhyKilosortLoader:
         exclude_cluster_groups: Optional[Union[List[str], str]] = None,
         keep_good_only: bool = False,
         load_all_cluster_properties: bool = True,
+        load_templates: bool = False,
     ) -> SorterNode:
         """
         Load Phy/Kilosort data into a SorterNode.
@@ -105,6 +106,7 @@ class PhyKilosortLoader:
             exclude_cluster_groups: Cluster groups to exclude (e.g., 'noise', ['noise', 'mua'])
             keep_good_only: Whether to only include 'good' units
             load_all_cluster_properties: Whether to load all cluster properties
+            load_templates: Whether to load template information
 
         Returns:
             SorterNode containing the loaded data
@@ -175,6 +177,11 @@ class PhyKilosortLoader:
             }
             node.unit_properties[col] = prop_dict
 
+        # Load template information if requested
+        if load_templates:
+            templates_data = self._load_template_data()
+            node.templates_data = templates_data
+
         # Add metadata from params file
         node.metadata = {
             "source": "phy_kilosort",
@@ -188,6 +195,10 @@ class PhyKilosortLoader:
                 "params": params,
                 "exclude_cluster_groups": exclude_cluster_groups,
                 "keep_good_only": keep_good_only,
+                "templates_loaded": load_templates,
+                "available_templates": list(templates_data.keys())
+                if load_templates
+                else [],
             },
         }
 
@@ -196,6 +207,59 @@ class PhyKilosortLoader:
             node._spike_indices[uid] = np.where(spike_clusters_clean == uid)[0]
 
         return node
+
+    def _load_template_data(self) -> Dict[str, np.ndarray]:
+        """
+        Load all available template-related data files.
+
+        Returns:
+            Dictionary containing template data arrays
+        """
+        template_data = {}
+
+        # Define template-related files to load with optional status
+        template_files = {
+            "templates": True,  # Required
+            "templates_ind": False,  # Optional
+            "similar_templates": False,  # Optional
+            "spike_templates": True,  # Required
+            "channel_map": True,  # Required
+            "channel_positions": False,  # Optional
+            "pc_features": False,  # Optional
+            "pc_feature_ind": False,  # Optional
+            "amplitudes": False,  # Optional
+        }
+
+        for file_name, is_required in template_files.items():
+            file_path = self.folder_path / f"{file_name}.npy"
+
+            if file_path.exists():
+                try:
+                    data = np.load(file_path)
+                    template_data[file_name] = data
+                    print(
+                        f"✅ Loaded {file_name}: shape {data.shape}, dtype {data.dtype}"
+                    )
+                except Exception as e:
+                    print(f"❌ Error loading {file_name}: {e}")
+            else:
+                if is_required:
+                    print(f"⚠️ Required template file not found: {file_name}")
+                else:
+                    print(f"ℹ️ Optional template file not found: {file_name}")
+
+        # Load channel metadata if available
+        for file_name in ["channel_shanks"]:
+            file_path = self.folder_path / f"{file_name}.npy"
+            if file_path.exists():
+                try:
+                    data = np.load(file_path)
+                    template_data[file_name] = data
+                    print(f"✅ Loaded {file_name}: shape {data.shape}")
+                except Exception as e:
+                    print(f"❌ Error loading {file_name}: {e}")
+
+        return template_data
 
     def _load_cluster_info(self, load_all_properties: bool = True) -> pd.DataFrame:
         """
@@ -273,6 +337,7 @@ def load_kilosort(
     folder_path: Union[str, Path],
     exclude_cluster_groups: Optional[Union[List[str], str]] = None,
     keep_good_only: bool = False,
+    load_templates: bool = False,
 ) -> SorterNode:
     """
     Load Kilosort spike sorting output into a SorterNode.
@@ -281,13 +346,16 @@ def load_kilosort(
         folder_path: Path to Kilosort output folder
         exclude_cluster_groups: Cluster groups to exclude (e.g., 'noise', ['noise', 'mua'])
         keep_good_only: Whether to only include 'good' units
+        load_templates: Whether to load template information
 
     Returns:
         SorterNode containing the loaded data
     """
     loader = PhyKilosortLoader(folder_path)
     return loader.load_into_node(
-        exclude_cluster_groups=exclude_cluster_groups, keep_good_only=keep_good_only
+        exclude_cluster_groups=exclude_cluster_groups,
+        keep_good_only=keep_good_only,
+        load_templates=load_templates,
     )
 
 
@@ -295,6 +363,7 @@ def load_kilosort(
 def load_phy(
     folder_path: Union[str, Path],
     exclude_cluster_groups: Optional[Union[List[str], str]] = None,
+    load_templates: bool = False,
 ) -> SorterNode:
     """
     Load Phy spike sorting output into a SorterNode.
@@ -302,11 +371,14 @@ def load_phy(
     Args:
         folder_path: Path to Phy output folder
         exclude_cluster_groups: Cluster groups to exclude (e.g., 'noise', ['noise', 'mua'])
+        load_templates: Whether to load template information
 
     Returns:
         SorterNode containing the loaded data
     """
     loader = PhyKilosortLoader(folder_path)
     return loader.load_into_node(
-        exclude_cluster_groups=exclude_cluster_groups, keep_good_only=False
+        exclude_cluster_groups=exclude_cluster_groups,
+        keep_good_only=False,
+        load_templates=load_templates,
     )
