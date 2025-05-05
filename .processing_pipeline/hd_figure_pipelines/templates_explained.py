@@ -28,7 +28,7 @@ sorter_data = load_kilosort(sorter_path, load_templates=True)
 
 # Configure units to analyze
 all_unit_ids = sorter_data.unit_ids
-templates_to_plot = [37, 15, 30, 40, 25, 10, 7, 8, 2]  # 9 templates for 3x3 grid
+templates_to_plot = [37, 15, 30, 40, 25, 10, 7, 8, 42]  # 9 templates for 3x3 grid
 
 # Create a color mapping for consistent colors using colorblind-friendly palette
 # Use seaborn's colorblind palette
