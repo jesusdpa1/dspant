@@ -25,35 +25,21 @@ from dspant.processors.basic.energy_rs import (
     create_tkeo_envelope_rs,
 )
 from dspant.processors.basic.normalization import create_normalizer
-from dspant.processors.basic.rectification import RectificationProcessor
-from dspant.processors.extractors.epoch_extractor import EpochExtractor
 from dspant.processors.filters import FilterProcessor
-from dspant.processors.filters.fir_filters import create_moving_average
 from dspant.processors.filters.iir_filters import (
     create_bandpass_filter,
     create_lowpass_filter,
     create_notch_filter,
 )
-from dspant.visualization.general_plots import plot_multi_channel_data
-from dspant_emgproc.processors.activity_detection.double_threshold import (
-    create_double_threshold_detector,
-)
 from dspant_emgproc.processors.activity_detection.single_threshold import (
     create_single_threshold_detector,
-)
-
-# Import the density estimation and plotting from dspant_neuroproc
-from dspant_neuroproc.processors.spike_analytics.density_estimation import (
-    SpikeDensityEstimator,
 )
 from dspant_neuroproc.processors.spike_analytics.psth import (
     PSTHAnalyzer,
     plot_psth_with_raster,
 )
-from dspant_neuroproc.visualization.spike_density_plots import (
-    plot_combined_raster_density,
-    plot_spike_density,
-)
+from dspant_viz.core.data_models import SpikeData
+from dspant_viz.widgets.psth_raster_inspector import PSTHRasterInspector
 
 sns.set_theme(style="darkgrid")
 load_dotenv()
@@ -152,4 +138,31 @@ fig, axes = plot_psth_with_raster(
 
 plt.show()
 
+# %%
+
+multi_unit_ = {}
+for unit_id in sorter_data.unit_ids:
+    multi_unit_[unit_id] = sorter_data.get_unit_spike_train(unit_id) / fs
+
+multi_unit_data = SpikeData(spikes=multi_unit_)
+# %%
+pre_time = 1.0  # 1 second before event
+post_time = 1.5  # 1.5 seconds after event
+
+inspector_ = PSTHRasterInspector(
+    spike_data=multi_unit_data,
+    event_times=emg_onsets,  # Add events
+    pre_time=pre_time,
+    post_time=post_time,
+    bin_width=0.01,
+    backend="plotly",
+    raster_color="navy",
+    psth_color="crimson",
+    show_sem=True,
+    raster_height_ratio=2.5,
+    sigma=0.02,  # Add smoothing
+)
+
+print("Interactive Plotly version (use slider to switch units):")
+inspector_.display()
 # %%

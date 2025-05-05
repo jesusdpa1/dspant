@@ -107,7 +107,7 @@ class TKEORustProcessor:
             else:  # modified method
                 if x.ndim > 1:
                     # Process each channel separately for modified method
-                    result = np.zeros((x.shape[0] - 3, x.shape[1]), dtype=np.float32)
+                    result = np.zeros((x.shape[0], x.shape[1]), dtype=np.float32)
                     for c in range(x.shape[1]):
                         result[:, c] = compute_tkeo_modified(x[:, c])
                     return result

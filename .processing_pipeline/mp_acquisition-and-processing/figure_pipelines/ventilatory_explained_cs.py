@@ -193,22 +193,22 @@ tkeo_area_plot = TimeSeriesAreaPlot(
     color="royalblue",
 )
 
-# Create event annotator
-tkeo_event_annotator = EventAnnotator(
-    events=tkeo_events,
-    highlight_color="red",
-    marker_style="span",
-    alpha=0.2,
-    label_events=True,
-)
+# # Create event annotator
+# tkeo_event_annotator = EventAnnotator(
+#     events=tkeo_events,
+#     highlight_color="red",
+#     marker_style="span",
+#     alpha=0.2,
+#     label_events=True,
+# )
 
 # Plot with Matplotlib
 plt.figure(figsize=(15, 6))
 fig_area_mpl, ax_area_mpl = tkeo_area_plot.plot(backend="mpl")
 
 # Add event annotations
-tkeo_event_annotator.plot(backend="mpl", ax=ax_area_mpl)
-plt.show()
+# tkeo_event_annotator.plot(backend="mpl", ax=ax_area_mpl)
+# plt.show()
 
 # %%
 # Calculate instantaneous frequency
@@ -231,812 +231,6 @@ plt.title("Instantaneous Frequency of EMG Activations")
 plt.xlabel("Time (s)")
 plt.ylabel("Frequency (Hz)")
 plt.grid(True)
-plt.show()
-
-# %%
-"""
-Advanced Candlestick EMG Plot with Logarithmic Frequency Scale
-"""
-"""
-Advanced Candlestick EMG Plot with Logarithmic Frequency Scale
-"""
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
-
-
-def plot_log_candlestick_emg(
-    onset_times,
-    filtered_emg,
-    fs,
-    start_time=0,
-    end_time=None,
-    freq_aggregation_window=1.0,  # Now in seconds
-    figsize=(15, 8),
-):
-    """
-    Create an advanced plot with log-scaled candlestick frequency on top and EMG signal on bottom.
-
-    Parameters
-    ----------
-    onset_times : np.ndarray
-        Array of onset times
-    filtered_emg : np.ndarray
-        EMG signal data
-    fs : float
-        Sampling frequency
-    start_time : float, optional
-        Start time for visualization (default: 0)
-    end_time : float, optional
-        End time for visualization (default: None, full data length)
-    freq_aggregation_window : float, optional
-        Window size for frequency aggregation in seconds (default: 1.0)
-    figsize : tuple, optional
-        Figure size (default: (15, 8))
-    """
-    # Set color palette
-    palette = sns.color_palette("colorblind")
-
-    # Compute time array
-    time_array = np.arange(len(filtered_emg)) / fs
-
-    # Set end time if not provided
-    if end_time is None:
-        end_time = time_array[-1]
-
-    # Filter data based on time window
-    time_mask = (time_array >= start_time) & (time_array <= end_time)
-    filtered_time = time_array[time_mask]
-    filtered_emg_data = filtered_emg[time_mask]
-
-    # Filter onset times within the time window
-    filtered_onsets = onset_times[
-        (onset_times >= start_time) & (onset_times <= end_time)
-    ]
-
-    # Compute candlestick data
-    def aggregate_frequency_to_candlestick(onset_times, aggregation_window=1.0):
-        """
-        Convert instantaneous frequency to candlestick-like data.
-        """
-        # Calculate instantaneous frequency
-        time_diffs = np.diff(onset_times)
-        inst_freq = 1 / time_diffs
-        inst_freq_times = onset_times[1:]
-
-        # Create DataFrame
-        df = pd.DataFrame({"time": inst_freq_times, "frequency": inst_freq})
-
-        # Group by time windows
-        grouped = df.groupby(
-            pd.cut(
-                df["time"],
-                bins=np.arange(
-                    start_time, end_time + aggregation_window, aggregation_window
-                ),
-            )
-        )
-
-        # Compute candlestick-like statistics
-        candlestick_data = grouped.agg(
-            {"time": "mean", "frequency": ["min", "max", "first", "last"]}
-        ).reset_index()
-
-        # Flatten column names
-        candlestick_data.columns = ["window", "time", "low", "high", "open", "close"]
-
-        return candlestick_data
-
-    # Compute candlestick data
-    candlestick_data = aggregate_frequency_to_candlestick(
-        filtered_onsets, aggregation_window=freq_aggregation_window
-    )
-
-    # Create figure with GridSpec for more control
-    plt.figure(figsize=figsize)
-    gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1])
-
-    # Top subplot for candlesticks with log scale
-    ax1 = plt.subplot(gs[0])
-    plt.title(
-        f"Instantaneous Frequency (Aggregated every {freq_aggregation_window}s)",
-        fontsize=14,
-        fontweight="bold",
-    )
-
-    # Plot candlesticks with color variation
-    for _, row in candlestick_data.iterrows():
-        # Choose color based on whether price closed higher or lower
-        color = palette[2] if row["close"] >= row["open"] else palette[3]
-
-        # Ensure non-zero values for log scale
-        low = max(row["low"], 1e-10)
-        high = max(row["high"], 1e-10)
-        open_val = max(row["open"], 1e-10)
-        close_val = max(row["close"], 1e-10)
-
-        # Plot the body of the candlestick
-        plt.vlines(row["time"], low, high, color="black", linewidth=1.5)
-        plt.bar(
-            row["time"],
-            close_val - open_val,
-            bottom=min(open_val, close_val),
-            width=freq_aggregation_window * 0.8,
-            color=color,
-            alpha=0.7,
-        )
-
-    plt.ylabel("Frequency (Hz)", fontsize=12)
-    plt.yscale("log")  # Set logarithmic scale
-    plt.grid(True, alpha=0.3, which="both")
-    plt.xlim(start_time, end_time)
-
-    # Bottom subplot for EMG signal
-    ax2 = plt.subplot(gs[1], sharex=ax1)
-    plt.plot(filtered_time, filtered_emg_data, color=palette[0], linewidth=1.5)
-    plt.title("EMG Signal", fontsize=14, fontweight="bold")
-    plt.xlabel("Time (s)", fontsize=12)
-    plt.ylabel("Amplitude", fontsize=12)
-    plt.grid(True, alpha=0.3)
-
-    # Remove x-axis ticks from top subplot
-    plt.setp(ax1.get_xticklabels(), visible=False)
-
-    plt.tight_layout()
-    plt.show()
-
-
-# Example usage function
-def example_usage():
-    """
-    Example demonstration of the plotting function
-    """
-    # Simulate data (replace with your actual data loading)
-    duration = 1200  # 20 minutes
-    fs = 1000  # 1 kHz sampling rate
-
-    # Generate sample data
-    time_array = np.arange(duration * fs) / fs
-    filtered_emg = np.sin(2 * np.pi * 10 * time_array) + np.random.normal(
-        0, 0.1, duration * fs
-    )
-
-    # Simulate onset times
-    onset_times = time_array[np.random.choice(len(time_array), 100, replace=False)]
-    onset_times.sort()
-
-    # Plot with different time windows and aggregation
-    plot_log_candlestick_emg(
-        onset_times,
-        filtered_emg,
-        fs,
-        start_time=300,  # 5 minutes in
-        end_time=900,  # 15 minutes in
-        freq_aggregation_window=1.0,  # 1-second aggregation
-    )
-
-
-# Uncomment to run example
-# example_usage()
-"""
-Advanced Candlestick EMG Plot with Logarithmic Frequency Scale
-"""
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
-
-
-def plot_log_candlestick_emg(
-    onset_times,
-    filtered_emg,
-    fs,
-    start_time=0,
-    end_time=None,
-    freq_aggregation_window=5.0,  # Now in seconds
-    figsize=(15, 8),
-):
-    """
-    Create an advanced plot with log-scaled candlestick frequency on top and EMG signal on bottom.
-
-    Parameters
-    ----------
-    onset_times : np.ndarray
-        Array of onset times
-    filtered_emg : np.ndarray
-        EMG signal data
-    fs : float
-        Sampling frequency
-    start_time : float, optional
-        Start time for visualization (default: 0)
-    end_time : float, optional
-        End time for visualization (default: None, full data length)
-    freq_aggregation_window : float, optional
-        Window size for frequency aggregation in seconds (default: 5.0)
-    figsize : tuple, optional
-        Figure size (default: (15, 8))
-    """
-    # Set color palette
-    palette = sns.color_palette("colorblind")
-
-    # Compute time array
-    time_array = np.arange(len(filtered_emg)) / fs
-
-    # Set end time if not provided
-    if end_time is None:
-        end_time = time_array[-1]
-
-    # Filter data based on time window
-    time_mask = (time_array >= start_time) & (time_array <= end_time)
-    filtered_time = time_array[time_mask]
-    filtered_emg_data = filtered_emg[time_mask]
-
-    # Filter onset times within the time window
-    filtered_onsets = onset_times[
-        (onset_times >= start_time) & (onset_times <= end_time)
-    ]
-
-    # Compute candlestick data
-    def aggregate_frequency_to_candlestick(onset_times, aggregation_window=5.0):
-        """
-        Convert instantaneous frequency to candlestick-like data.
-        """
-        # Calculate instantaneous frequency
-        time_diffs = np.diff(onset_times)
-        inst_freq = 1 / time_diffs
-        inst_freq_times = onset_times[1:]
-
-        # Create DataFrame
-        df = pd.DataFrame({"time": inst_freq_times, "frequency": inst_freq})
-
-        # Group by time windows
-        grouped = df.groupby(
-            pd.cut(
-                df["time"],
-                bins=np.arange(
-                    start_time, end_time + aggregation_window, aggregation_window
-                ),
-            ),
-            observed=False,
-        )
-
-        # Compute candlestick-like statistics
-        candlestick_data = grouped.agg(
-            {"time": "mean", "frequency": ["min", "max", "first", "last"]}
-        ).reset_index()
-
-        # Flatten column names
-        candlestick_data.columns = ["window", "time", "low", "high", "open", "close"]
-
-        # Remove rows with no data
-        candlestick_data = candlestick_data.dropna(subset=["time"])
-
-        return candlestick_data
-
-    # Compute candlestick data
-    candlestick_data = aggregate_frequency_to_candlestick(
-        filtered_onsets, aggregation_window=freq_aggregation_window
-    )
-
-    # Create figure with GridSpec for more control
-    plt.figure(figsize=figsize)
-    gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1])
-
-    # Top subplot for candlesticks with log scale
-    ax1 = plt.subplot(gs[0])
-    plt.title(
-        f"Instantaneous Frequency (Aggregated every {freq_aggregation_window}s)",
-        fontsize=14,
-        fontweight="bold",
-    )
-
-    # Plot candlesticks with color variation
-    for _, row in candlestick_data.iterrows():
-        # Choose color based on whether price closed higher or lower
-        color = palette[2] if row["close"] >= row["open"] else palette[3]
-
-        # Ensure non-zero values for log scale
-        low = max(row["low"], 1e-10)
-        high = max(row["high"], 1e-10)
-        open_val = max(row["open"], 1e-10)
-        close_val = max(row["close"], 1e-10)
-
-        # Plot the body of the candlestick
-        plt.vlines(row["time"], low, high, color="black", linewidth=1.5)
-        plt.bar(
-            row["time"],
-            close_val - open_val,
-            bottom=min(open_val, close_val),
-            width=freq_aggregation_window * 0.8,
-            color=color,
-            alpha=0.7,
-        )
-
-    plt.ylabel("Frequency (Hz)", fontsize=12)
-    plt.yscale("log")  # Set logarithmic scale
-    plt.grid(True, alpha=0.3, which="both")
-    plt.xlim(start_time, end_time)
-
-    # Bottom subplot for EMG signal
-    ax2 = plt.subplot(gs[1], sharex=ax1)
-    plt.plot(filtered_time, filtered_emg_data, color=palette[0], linewidth=1.5)
-    plt.title("EMG Signal", fontsize=14, fontweight="bold")
-    plt.xlabel("Time (s)", fontsize=12)
-    plt.ylabel("Amplitude", fontsize=12)
-    plt.grid(True, alpha=0.3)
-
-    # Remove x-axis ticks from top subplot
-    plt.setp(ax1.get_xticklabels(), visible=False)
-
-    plt.tight_layout()
-    plt.show()
-
-
-# Example usage function
-def example_usage():
-    """
-    Example demonstration of the plotting function
-    """
-    # Simulate data (replace with your actual data loading)
-    duration = 1200  # 20 minutes
-    fs = 1000  # 1 kHz sampling rate
-
-    # Generate sample data
-    time_array = np.arange(duration * fs) / fs
-    filtered_emg = np.sin(2 * np.pi * 10 * time_array) + np.random.normal(
-        0, 0.1, duration * fs
-    )
-
-    # Simulate onset times
-    onset_times = time_array[np.random.choice(len(time_array), 100, replace=False)]
-    onset_times.sort()
-
-    # Plot with different time windows and aggregation
-    plot_log_candlestick_emg(
-        onset_times,
-        filtered_emg,
-        fs,
-        start_time=300,  # 5 minutes in
-        end_time=900,  # 15 minutes in
-        freq_aggregation_window=5.0,  # 5-second aggregation
-    )
-
-
-# Uncomment to run example
-example_usage()
-"""
-Advanced Candlestick EMG Plot with Logarithmic Frequency Scale
-"""
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
-
-
-def plot_log_candlestick_emg(
-    onset_times,
-    filtered_emg,
-    fs,
-    start_time=0,
-    end_time=None,
-    freq_aggregation_window=1.0,  # Now in seconds
-    figsize=(15, 8),
-):
-    """
-    Create an advanced plot with log-scaled candlestick frequency on top and EMG signal on bottom.
-
-    Parameters
-    ----------
-    onset_times : np.ndarray
-        Array of onset times
-    filtered_emg : np.ndarray
-        EMG signal data
-    fs : float
-        Sampling frequency
-    start_time : float, optional
-        Start time for visualization (default: 0)
-    end_time : float, optional
-        End time for visualization (default: None, full data length)
-    freq_aggregation_window : float, optional
-        Window size for frequency aggregation in seconds (default: 1.0)
-    figsize : tuple, optional
-        Figure size (default: (15, 8))
-    """
-    # Set color palette
-    palette = sns.color_palette("colorblind")
-
-    # Compute time array
-    time_array = np.arange(len(filtered_emg)) / fs
-
-    # Set end time if not provided
-    if end_time is None:
-        end_time = time_array[-1]
-
-    # Filter data based on time window
-    time_mask = (time_array >= start_time) & (time_array <= end_time)
-    filtered_time = time_array[time_mask]
-    filtered_emg_data = filtered_emg[time_mask]
-
-    # Filter onset times within the time window
-    filtered_onsets = onset_times[
-        (onset_times >= start_time) & (onset_times <= end_time)
-    ]
-
-    # Compute candlestick data
-    def aggregate_frequency_to_candlestick(onset_times, aggregation_window=1.0):
-        """
-        Convert instantaneous frequency to candlestick-like data.
-        """
-        # Calculate instantaneous frequency
-        time_diffs = np.diff(onset_times)
-        inst_freq = 1 / time_diffs
-        inst_freq_times = onset_times[1:]
-
-        # Create DataFrame
-        df = pd.DataFrame({"time": inst_freq_times, "frequency": inst_freq})
-
-        # Group by time windows
-        grouped = df.groupby(
-            pd.cut(
-                df["time"],
-                bins=np.arange(
-                    start_time, end_time + aggregation_window, aggregation_window
-                ),
-            )
-        )
-
-        # Compute candlestick-like statistics
-        candlestick_data = grouped.agg(
-            {"time": "mean", "frequency": ["min", "max", "first", "last"]}
-        ).reset_index()
-
-        # Flatten column names
-        candlestick_data.columns = ["window", "time", "low", "high", "open", "close"]
-
-        return candlestick_data
-
-    # Compute candlestick data
-    candlestick_data = aggregate_frequency_to_candlestick(
-        filtered_onsets, aggregation_window=freq_aggregation_window
-    )
-
-    # Create figure with GridSpec for more control
-    plt.figure(figsize=figsize)
-    gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1])
-
-    # Top subplot for candlesticks with log scale
-    ax1 = plt.subplot(gs[0])
-    plt.title(
-        f"Instantaneous Frequency (Aggregated every {freq_aggregation_window}s)",
-        fontsize=14,
-        fontweight="bold",
-    )
-
-    # Plot candlesticks with color variation
-    for _, row in candlestick_data.iterrows():
-        # Choose color based on whether price closed higher or lower
-        color = palette[2] if row["close"] >= row["open"] else palette[3]
-
-        # Ensure non-zero values for log scale
-        low = max(row["low"], 1e-10)
-        high = max(row["high"], 1e-10)
-        open_val = max(row["open"], 1e-10)
-        close_val = max(row["close"], 1e-10)
-
-        # Plot the body of the candlestick
-        plt.vlines(row["time"], low, high, color="black", linewidth=1.5)
-        plt.bar(
-            row["time"],
-            close_val - open_val,
-            bottom=min(open_val, close_val),
-            width=freq_aggregation_window * 0.8,
-            color=color,
-            alpha=0.7,
-        )
-
-    plt.ylabel("Frequency (Hz)", fontsize=12)
-    plt.yscale("log")  # Set logarithmic scale
-    plt.grid(True, alpha=0.3, which="both")
-    plt.xlim(start_time, end_time)
-
-    # Bottom subplot for EMG signal
-    ax2 = plt.subplot(gs[1], sharex=ax1)
-    plt.plot(filtered_time, filtered_emg_data, color=palette[0], linewidth=1.5)
-    plt.title("EMG Signal", fontsize=14, fontweight="bold")
-    plt.xlabel("Time (s)", fontsize=12)
-    plt.ylabel("Amplitude", fontsize=12)
-    plt.grid(True, alpha=0.3)
-
-    # Remove x-axis ticks from top subplot
-    plt.setp(ax1.get_xticklabels(), visible=False)
-
-    plt.tight_layout()
-    plt.show()
-
-
-# Example usage function
-def example_usage():
-    """
-    Example demonstration of the plotting function
-    """
-    # Simulate data (replace with your actual data loading)
-    duration = 1200  # 20 minutes
-    fs = 1000  # 1 kHz sampling rate
-
-    # Generate sample data
-    time_array = np.arange(duration * fs) / fs
-    filtered_emg = np.sin(2 * np.pi * 10 * time_array) + np.random.normal(
-        0, 0.1, duration * fs
-    )
-
-    # Simulate onset times
-    onset_times = time_array[np.random.choice(len(time_array), 100, replace=False)]
-    onset_times.sort()
-
-    # Plot with different time windows and aggregation
-    plot_log_candlestick_emg(
-        onset_times,
-        filtered_emg,
-        fs,
-        start_time=300,  # 5 minutes in
-        end_time=900,  # 15 minutes in
-        freq_aggregation_window=1.0,  # 1-second aggregation
-    )
-
-
-# Uncomment to run example
-# example_usage()
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
-
-# Set the colorblind-friendly palette
-sns.set_palette("colorblind")
-palette = sns.color_palette("colorblind")
-
-# Add Montserrat font
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Montserrat"]
-
-# Set the style
-sns.set_theme(style="darkgrid")
-
-# Define font sizes with appropriate scaling
-TITLE_SIZE = 18
-SUBTITLE_SIZE = 16
-AXIS_LABEL_SIZE = 14
-TICK_SIZE = 12
-CAPTION_SIZE = 13
-
-# Generate sample stock data
-np.random.seed(42)
-dates = pd.date_range(start="2023-01-01", end="2023-01-31", freq="B")
-opens = np.cumsum(np.random.normal(0, 1, len(dates))) + 100
-closes = opens + np.random.normal(0, 2, len(dates))
-highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, 1, len(dates)))
-lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, 1, len(dates)))
-
-# Create figure with careful sizing
-fig, ax = plt.subplots(figsize=(16, 8))
-
-# Color selection from palette
-up_color = palette[2]  # Green-like color for up candles
-down_color = palette[3]  # Red-like color for down candles
-
-
-# Custom candlestick drawing
-def draw_candlestick(ax, x, open_price, close_price, high, low, width=0.6, alpha=0.8):
-    # Determine candle color
-    if close_price >= open_price:
-        color = up_color
-        body_low = open_price
-        body_high = close_price
-    else:
-        color = down_color
-        body_low = close_price
-        body_high = open_price
-
-    # Draw the candle body (thick rectangle)
-    body_width = width
-    ax.add_patch(
-        plt.Rectangle(
-            (x - body_width / 2, body_low),
-            body_width,
-            body_high - body_low,
-            facecolor=color,
-            edgecolor="black",
-            linewidth=1,
-            alpha=alpha,
-        )
-    )
-
-    # Draw the wick (thin line)
-    ax.plot([x, x], [low, high], color="black", linewidth=1)
-
-
-# Plot candlesticks
-for i, (date, open_price, close_price, high, low) in enumerate(
-    zip(dates, opens, closes, highs, lows)
-):
-    draw_candlestick(ax, mdates.date2num(date), open_price, close_price, high, low)
-
-# Set x-axis to use dates
-ax.xaxis_date()
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MONDAY))
-plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
-
-# Set y-axis limits with some padding
-ax.set_ylim(min(lows) - 5, max(highs) + 5)
-
-# Customize the plot with aesthetics from the original code
-ax.set_title("Stock Price Movement", fontsize=TITLE_SIZE, fontweight="bold")
-ax.set_xlabel("Date", fontsize=AXIS_LABEL_SIZE, fontweight="bold")
-ax.set_ylabel("Price", fontsize=AXIS_LABEL_SIZE, fontweight="bold")
-
-# Adjust tick sizes
-ax.tick_params(axis="both", which="major", labelsize=TICK_SIZE)
-
-# Add grid with slight transparency
-ax.grid(True, linestyle="--", alpha=0.6)
-
-# Tight layout with some padding
-plt.tight_layout()
-
-# Show the plot
-plt.show()
-
-# %%
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
-
-# Set the colorblind-friendly palette
-sns.set_palette("colorblind")
-palette = sns.color_palette("colorblind")
-
-# Add Montserrat font
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Montserrat"]
-
-# Set the style
-sns.set_theme(style="darkgrid")
-
-# Define font sizes with appropriate scaling
-TITLE_SIZE = 18
-SUBTITLE_SIZE = 16
-AXIS_LABEL_SIZE = 14
-TICK_SIZE = 12
-CAPTION_SIZE = 13
-
-# Generate onset frequency data
-np.random.seed(42)
-dates = pd.date_range(start="2023-01-01", end="2023-01-31", freq="B")
-
-
-# Create onset frequency data with variation
-def generate_onset_frequencies(num_periods, min_freq=1, max_freq=5):
-    # Linear interpolation between min and max frequencies
-    base_frequencies = np.linspace(min_freq, max_freq, num_periods)
-
-    # Add random variation
-    variations = np.random.normal(0, 0.5, num_periods)
-
-    # Combine base frequencies with variations
-    frequencies = base_frequencies + variations
-
-    # Clip to ensure within min-max range
-    frequencies = np.clip(frequencies, min_freq, max_freq)
-
-    return frequencies
-
-
-# Generate onset frequency data
-opens = generate_onset_frequencies(len(dates))
-closes = opens + np.random.normal(0, 0.5, len(dates))
-highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, 0.3, len(dates)))
-lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, 0.3, len(dates)))
-
-# Calculate moving average
-window_size = 5  # 5-day moving average
-moving_avg = pd.Series(opens).rolling(window=window_size, center=True).mean()
-
-# Create figure with careful sizing
-fig, ax = plt.subplots(figsize=(16, 8))
-
-# Color selection from palette
-up_color = palette[2]  # Green-like color for up candles
-down_color = palette[3]  # Red-like color for down candles
-moving_avg_color = palette[1]  # Third color for moving average
-
-
-# Custom candlestick drawing
-def draw_candlestick(ax, x, open_price, close_price, high, low, width=0.6, alpha=0.8):
-    # Determine candle color
-    if close_price >= open_price:
-        color = up_color
-        body_low = open_price
-        body_high = close_price
-    else:
-        color = down_color
-        body_low = close_price
-        body_high = open_price
-
-    # Draw the candle body (thick rectangle)
-    body_width = width
-    ax.add_patch(
-        plt.Rectangle(
-            (x - body_width / 2, body_low),
-            body_width,
-            body_high - body_low,
-            facecolor=color,
-            edgecolor="black",
-            linewidth=1,
-            alpha=alpha,
-        )
-    )
-
-    # Draw the wick (thin line)
-    ax.plot([x, x], [low, high], color="black", linewidth=1)
-
-
-# Plot candlesticks
-for i, (date, open_price, close_price, high, low) in enumerate(
-    zip(dates, opens, closes, highs, lows)
-):
-    draw_candlestick(ax, mdates.date2num(date), open_price, close_price, high, low)
-
-# Plot moving average
-ax.plot(
-    mdates.date2num(dates),
-    moving_avg,
-    color=moving_avg_color,
-    linewidth=3,
-    label=f"{window_size}-day Moving Average",
-)
-
-# Set x-axis to use dates
-ax.xaxis_date()
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MONDAY))
-plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
-
-# Set y-axis limits with some padding
-ax.set_ylim(min(lows) - 0.5, max(highs) + 0.5)
-
-# Customize the plot with aesthetics from the original code
-ax.set_title("Onset Frequency Variation", fontsize=TITLE_SIZE, fontweight="bold")
-ax.set_xlabel("Date", fontsize=AXIS_LABEL_SIZE, fontweight="bold")
-ax.set_ylabel("Onset Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, fontweight="bold")
-
-# Adjust tick sizes
-ax.tick_params(axis="both", which="major", labelsize=TICK_SIZE)
-
-# Add grid with slight transparency
-ax.grid(True, linestyle="--", alpha=0.6)
-
-# Add legend
-ax.legend(fontsize=TICK_SIZE)
-
-# Tight layout with some padding
-plt.tight_layout()
-
-# Print summary statistics
-print("Onset Frequency Data Summary:")
-print(f"Average onset frequency: {np.mean(opens):.2f} Hz")
-print(f"Minimum onset frequency: {np.min(lows):.2f} Hz")
-print(f"Maximum onset frequency: {np.max(highs):.2f} Hz")
-print(f"Moving Average Window Size: {window_size} days")
-
-# Show the plot
 plt.show()
 
 # %%
@@ -1194,4 +388,451 @@ print(f"Moving Average Window Size: {window_size} windows")
 # Show the plot
 plt.show()
 
+# %%
+
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from scipy.signal import savgol_filter
+
+# Set the colorblind-friendly palette and styling
+sns.set_palette("colorblind")
+palette = sns.color_palette("colorblind")
+sns.set_theme(style="darkgrid")
+
+# Try to set Montserrat font if available
+try:
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = ["Montserrat", "Arial"]
+except:
+    pass  # Fall back to default fonts if Montserrat not available
+
+# Define font sizes with appropriate scaling
+TITLE_SIZE = 18
+SUBTITLE_SIZE = 16
+AXIS_LABEL_SIZE = 14
+TICK_SIZE = 12
+CAPTION_SIZE = 10
+
+# Better color selection from palette
+up_color = palette[2]  # Green-like color for up candles
+down_color = palette[3]  # Red-like color for down candles
+avg_line_color = palette[5]  # Third color for average line
+trend_line_color = palette[0]  # Fourth color for trendline
+
+# Convert onset_idx to seconds
+onset_times = tkeo_epochs["onset_idx"].to_numpy() / fs
+
+# Calculate time differences between consecutive onsets (in seconds)
+onset_intervals = np.diff(onset_times)
+
+# Apply Savitzky-Golay filter to smooth the data
+window_length = 151  # Must be odd and less than data length
+polyorder = 3  # Polynomial order for the filter
+if len(onset_intervals) > window_length:
+    smoothed_intervals = savgol_filter(onset_intervals, window_length, polyorder)
+else:
+    # Fall back to simpler moving average for short data
+    from scipy.ndimage import uniform_filter1d
+
+    smoothed_intervals = uniform_filter1d(
+        onset_intervals, size=min(5, len(onset_intervals))
+    )
+
+# Calculate moving average similar to simulation
+window_size = 5
+moving_avg = []
+for i in range(len(smoothed_intervals)):
+    start = max(0, i - window_size // 2)
+    end = min(len(smoothed_intervals), i + window_size // 2 + 1)
+    moving_avg.append(np.mean(smoothed_intervals[start:end]))
+moving_avg = np.array(moving_avg)
+
+# For candlestick visualization with reduced frequency
+sampling_factor = 25  # Show every 25th point for clearer visualization
+candle_data = []
+
+for i in range(sampling_factor, len(smoothed_intervals), sampling_factor):
+    # Using current and N samples ago to define open/close for correct directionality
+    idx_prev = i - sampling_factor
+
+    # This is the key change - we compare adjacent points to determine up/down
+    # Therefore the open is the PREVIOUS value
+    open_val = smoothed_intervals[idx_prev]
+    # And close is the CURRENT value
+    close_val = smoothed_intervals[i]
+
+    # Find min/max within this segment for wicks
+    segment = smoothed_intervals[idx_prev : i + 1]
+    high = np.max(segment) * 1.02  # Slightly extend to make wicks visible
+    low = np.min(segment) * 0.98  # Slightly extend to make wicks visible
+
+    # Use the actual time for the x-coordinate
+    x_time = onset_times[i]
+    candle_data.append((x_time, open_val, close_val, high, low))
+
+# Create figure and axis with better proportions
+fig, ax = plt.subplots(figsize=(16, 8))
+
+
+# Custom candlestick drawing function with FIXED comparison logic
+def draw_candlestick(ax, x, open_price, close_price, high, low, width=0.5, alpha=0.8):
+    # Determine candle color correctly
+    if close_price > open_price:  # CLOSING HIGHER than opening = green/up
+        color = up_color
+        body_low = open_price
+        body_high = close_price
+    else:  # CLOSING LOWER than opening = red/down
+        color = down_color
+        body_low = close_price
+        body_high = open_price
+
+    # Draw the candle body (thick rectangle)
+    body_width = width
+    ax.add_patch(
+        plt.Rectangle(
+            (x - body_width / 2, body_low),
+            body_width,
+            body_high - body_low,
+            facecolor=color,
+            edgecolor="black",
+            linewidth=1,
+            alpha=alpha,
+        )
+    )
+
+    # Draw the wick (thin line)
+    ax.plot([x, x], [low, high], color="black", linewidth=1)
+
+
+# Plot smoothed trend line in the background
+ax.plot(
+    onset_times[sampling_factor::sampling_factor],
+    smoothed_intervals[sampling_factor::sampling_factor],
+    color=trend_line_color,
+    alpha=0.3,
+    linewidth=1,
+    label="Smoothed Trend",
+)
+
+# Plot moving average
+ax.plot(
+    onset_times[sampling_factor::sampling_factor],
+    moving_avg[sampling_factor::sampling_factor],
+    color=avg_line_color,
+    linewidth=2.5,
+    label=f"{window_size}-window Moving Average",
+)
+
+# Calculate candlestick width dynamically
+# Use the median interval between sampled points as width
+candle_times = [x for x, _, _, _, _ in candle_data]
+time_intervals = np.diff(candle_times)
+typical_width = np.median(time_intervals) * 0.8
+
+# Plot candlesticks with proper comparison logic
+for x, open_price, close_price, high, low in candle_data:
+    draw_candlestick(ax, x, open_price, close_price, high, low, width=typical_width)
+
+# Calculate average and respiratory rate
+avg_interval = np.mean(onset_intervals)
+resp_rate = 60 / avg_interval
+
+# Configure the plot with better styling
+ax.set_xlim(onset_times[0] - 1, onset_times[-1] + 1)
+y_min = max(0, np.min(smoothed_intervals) * 0.9)
+y_max = np.max(smoothed_intervals) * 1.1
+ax.set_ylim(y_min, y_max)
+
+# Add labeled average line
+ax.axhline(
+    avg_interval,
+    color=palette[4],
+    linestyle="dashed",
+    linewidth=2,
+    label=f"Average: {avg_interval:.2f}s ({resp_rate:.1f} breaths/min)",
+)
+
+# Better axis labels and title
+ax.set_title(
+    "Respiratory Cycle Intervals from EMG Data", fontsize=TITLE_SIZE, fontweight="bold"
+)
+ax.set_xlabel(
+    "Time (seconds)",
+    fontsize=AXIS_LABEL_SIZE,
+    fontweight="bold",
+)
+ax.set_ylabel(
+    "Interval Duration (seconds)", fontsize=AXIS_LABEL_SIZE, fontweight="bold"
+)
+
+# Adjust tick sizes
+ax.tick_params(axis="both", which="major", labelsize=TICK_SIZE)
+
+# Add grid with slight transparency
+ax.grid(True, linestyle="--", alpha=0.6)
+
+# Add legend with better positioning
+ax.legend(loc="upper right", fontsize=TICK_SIZE)
+
+# Add statistics text box
+stats_text = (
+    f"Statistics:\n"
+    f"Total breaths: {len(onset_intervals)}\n"
+    f"Avg interval: {avg_interval:.2f}s\n"
+    f"Resp. rate: {resp_rate:.1f} breaths/min\n"
+    f"Min interval: {np.min(onset_intervals):.2f}s\n"
+    f"Max interval: {np.max(onset_intervals):.2f}s"
+)
+
+# Add the statistics box with nicer styling
+props = dict(boxstyle="round,pad=0.5", facecolor="white", alpha=0.8)
+ax.text(
+    0.02,
+    0.97,
+    stats_text,
+    transform=ax.transAxes,
+    fontsize=TICK_SIZE,
+    verticalalignment="top",
+    bbox=props,
+)
+
+plt.tight_layout()
+plt.show()
+# %%
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from matplotlib.gridspec import GridSpec
+from matplotlib.patches import Rectangle
+from scipy.signal import savgol_filter
+
+# Set the colorblind-friendly palette and styling
+sns.set_palette("colorblind")
+palette = sns.color_palette("colorblind")
+sns.set_theme(style="darkgrid")
+
+# Try to set Montserrat font if available
+try:
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = ["Montserrat", "Arial"]
+except:
+    pass  # Fall back to default fonts if Montserrat not available
+
+# Define font sizes with appropriate scaling
+TITLE_SIZE = 18
+SUBTITLE_SIZE = 16
+AXIS_LABEL_SIZE = 14
+TICK_SIZE = 12
+CAPTION_SIZE = 10
+
+# Better color selection from palette
+up_color = palette[2]  # Green-like color for up candles
+down_color = palette[3]  # Red-like color for down candles
+avg_line_color = palette[5]  # Third color for average line
+trend_line_color = palette[5]  # Fourth color for trendline
+tkeo_color = palette[0]  # TKEO color
+insp_color = palette[1]  # Inspiration color
+
+# Determine time range
+start_time = 800  # seconds
+end_time = 1800  # 20-minute window
+
+# Convert to sample indices
+start_idx = int(start_time * fs)
+end_idx = int(end_time * fs)
+
+# Prepare time array
+time_array = np.arange(start_idx, end_idx) / fs - start_time
+
+# Prepare signals
+zscore_tkeo_np = (
+    zscore_tkeo[start_idx:end_idx].compute()
+    if hasattr(zscore_tkeo, "compute")
+    else zscore_tkeo[start_idx:end_idx]
+)
+zscore_insp_np = (
+    zscore_insp[start_idx:end_idx].compute()
+    if hasattr(zscore_insp, "compute")
+    else zscore_insp[start_idx:end_idx]
+)
+
+# Ensure 1D arrays
+if zscore_tkeo_np.ndim > 1:
+    zscore_tkeo_np = zscore_tkeo_np[:, 0]
+if zscore_insp_np.ndim > 1:
+    zscore_insp_np = zscore_insp_np[:, 0]
+
+# Convert onset_idx to seconds
+onset_times = tkeo_epochs["onset_idx"].to_numpy() / fs
+
+# Calculate time differences between consecutive onsets (in seconds)
+onset_intervals = np.diff(onset_times)
+
+# Apply Savitzky-Golay filter to smooth the data
+window_length = 151  # Must be odd and less than data length
+polyorder = 3  # Polynomial order for the filter
+if len(onset_intervals) > window_length:
+    smoothed_intervals = savgol_filter(onset_intervals, window_length, polyorder)
+else:
+    # Fall back to simpler moving average for short data
+    from scipy.ndimage import uniform_filter1d
+
+    smoothed_intervals = uniform_filter1d(
+        onset_intervals, size=min(5, len(onset_intervals))
+    )
+
+# Calculate moving average similar to simulation
+window_size = 5
+moving_avg = []
+for i in range(len(smoothed_intervals)):
+    start = max(0, i - window_size // 2)
+    end = min(len(smoothed_intervals), i + window_size // 2 + 1)
+    moving_avg.append(np.mean(smoothed_intervals[start:end]))
+moving_avg = np.array(moving_avg)
+
+# For candlestick visualization with reduced frequency
+sampling_factor = 25  # Show every 25th point for clearer visualization
+candle_data = []
+
+for i in range(sampling_factor, len(smoothed_intervals), sampling_factor):
+    # Using current and N samples ago to define open/close for correct directionality
+    idx_prev = i - sampling_factor
+
+    # This is the key change - we compare adjacent points to determine up/down
+    # Therefore the open is the PREVIOUS value
+    open_val = smoothed_intervals[idx_prev]
+    # And close is the CURRENT value
+    close_val = smoothed_intervals[i]
+
+    # Find min/max within this segment for wicks
+    segment = smoothed_intervals[idx_prev : i + 1]
+    high = np.max(segment) * 1.02  # Slightly extend to make wicks visible
+    low = np.min(segment) * 0.98  # Slightly extend to make wicks visible
+
+    # Use the actual time for the x-coordinate
+    x_time = onset_times[i]
+    candle_data.append((x_time, open_val, close_val, high, low))
+
+# Create figure with GridSpec
+fig = plt.figure(figsize=(16, 10))
+gs = GridSpec(3, 1, height_ratios=[1, 1, 1])
+
+# Candlestick plot in the top subplot
+ax_candle = fig.add_subplot(gs[0])
+
+
+# Custom candlestick drawing function with FIXED comparison logic
+def draw_candlestick(ax, x, open_price, close_price, high, low, width=0.5, alpha=0.8):
+    # Determine candle color correctly
+    if close_price > open_price:  # CLOSING HIGHER than opening = green/up
+        color = up_color
+        body_low = open_price
+        body_high = close_price
+    else:  # CLOSING LOWER than opening = red/down
+        color = down_color
+        body_low = close_price
+        body_high = open_price
+
+    # Draw the candle body (thick rectangle)
+    body_width = width
+    ax.add_patch(
+        Rectangle(
+            (x - body_width / 2, body_low),
+            body_width,
+            body_high - body_low,
+            facecolor=color,
+            edgecolor="black",
+            linewidth=1,
+            alpha=alpha,
+        )
+    )
+
+    # Draw the wick (thin line)
+    ax.plot([x, x], [low, high], color="black", linewidth=1)
+
+
+# Calculate candlestick width dynamically
+candle_times = [x for x, _, _, _, _ in candle_data]
+time_intervals = np.diff(candle_times)
+typical_width = np.median(time_intervals) * 0.8
+
+# Plot smoothed trend line in the background
+ax_candle.plot(
+    onset_times[sampling_factor::sampling_factor],
+    smoothed_intervals[sampling_factor::sampling_factor],
+    color=trend_line_color,
+    alpha=0.3,
+    linewidth=1,
+    label="Smoothed Trend",
+)
+
+# Plot moving average
+ax_candle.plot(
+    onset_times[sampling_factor::sampling_factor],
+    moving_avg[sampling_factor::sampling_factor],
+    color=avg_line_color,
+    linewidth=2.5,
+    label=f"{window_size}-window Moving Average",
+)
+
+# Plot candlesticks
+for x, open_price, close_price, high, low in candle_data:
+    draw_candlestick(
+        ax_candle, x, open_price, close_price, high, low, width=typical_width
+    )
+
+# Calculate average and respiratory rate
+avg_interval = np.mean(onset_intervals)
+resp_rate = 60 / avg_interval
+
+# Configure the candlestick plot
+ax_candle.set_xlim(start_time, end_time)
+y_min = max(0, np.min(smoothed_intervals) * 0.9)
+y_max = np.max(smoothed_intervals) * 1.1
+ax_candle.set_ylim(y_min, y_max)
+
+# Add labeled average line
+ax_candle.axhline(
+    avg_interval,
+    color=palette[7],
+    linestyle="dashed",
+    linewidth=2,
+    label=f"Average: {avg_interval:.2f}s ({resp_rate:.1f} breaths/min)",
+)
+
+ax_candle.set_title(
+    "Respiratory Cycle Intervals", fontsize=SUBTITLE_SIZE, fontweight="bold"
+)
+ax_candle.set_ylabel("Interval Duration (s)", fontsize=AXIS_LABEL_SIZE)
+ax_candle.set_xlabel("")
+ax_candle.legend(loc="upper right", fontsize=TICK_SIZE)
+
+# Inspiration signal plot
+ax_insp = fig.add_subplot(gs[1])
+ax_insp.plot(time_array, zscore_insp_np, color=insp_color, linewidth=2)
+ax_insp.set_xlim(0, end_time - start_time)
+ax_insp.set_title(
+    "Inspiratory Pressure [Ventilation]", fontsize=SUBTITLE_SIZE, fontweight="bold"
+)
+ax_insp.set_ylabel("MinMax Norm", fontsize=AXIS_LABEL_SIZE)
+ax_insp.set_xlabel("")
+
+# TKEO signal plot
+ax_tkeo = fig.add_subplot(gs[2])
+ax_tkeo.plot(time_array, zscore_tkeo_np, color=tkeo_color, linewidth=2)
+ax_tkeo.set_xlim(0, end_time - start_time)
+ax_tkeo.set_title("EMG TKEO Signal", fontsize=SUBTITLE_SIZE, fontweight="bold")
+ax_tkeo.set_ylabel("MinMax Norm", fontsize=AXIS_LABEL_SIZE)
+ax_tkeo.set_xlabel("Time (s)", fontsize=AXIS_LABEL_SIZE)
+
+# Add overall title
+plt.suptitle(
+    "Respiratory and TKEO Signal Analysis", fontsize=TITLE_SIZE, fontweight="bold"
+)
+
+# Adjust layout
+plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+plt.show()
 # %%
