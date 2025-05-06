@@ -1,6 +1,6 @@
 """
 Create visualization showing circular template distribution with improved layout and consistent coloring
-Author: Jesus Penaloza, improved by Claude
+Author: Jesus Penaloza
 """
 
 # %%
