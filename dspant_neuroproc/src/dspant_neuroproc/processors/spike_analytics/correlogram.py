@@ -1,6 +1,6 @@
 # dspant_neuroproc/src/dspant_neuroproc/processors/spike_analytics/correlogram.py
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import polars as pl
@@ -60,11 +60,12 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
         jitter_iterations : int
             Number of iterations for jitter correction
         """
-        self.bin_size_ms = bin_size_ms
-        self.window_size_ms = window_size_ms
+        # Ensure parameters are the correct types for Rust
+        self.bin_size_ms = np.float32(bin_size_ms)
+        self.window_size_ms = np.float32(window_size_ms)
         self.normalization = normalization
         self.jitter_correction = jitter_correction
-        self.jitter_iterations = jitter_iterations
+        self.jitter_iterations = int(jitter_iterations)  # Ensure it's an integer
 
     @staticmethod
     def _compute_correlogram_py(
@@ -78,6 +79,12 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
 
         Uses Numba for performance.
         """
+        # Ensure all inputs are the correct types
+        spike_times1 = spike_times1.astype(np.float32)
+        spike_times2 = spike_times2.astype(np.float32)
+        bin_size = np.float32(bin_size)
+        window_size = np.float32(window_size)
+
         if not hasattr(SpikeCovarianceAnalyzer, "_compute_correlogram_numba"):
             # Define the Numba-compiled function if not already defined
             @numba.jit(nopython=True, parallel=True)
@@ -135,14 +142,16 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
         -------
         Dict with correlogram details
         """
-        # Convert to seconds
-        spike_times = (
-            sorter.get_unit_spike_train(unit_id) / sorter.sampling_frequency
-        ).astype(np.float32)
+        # Always use int32 for spike train acquisition
+        spike_train = sorter.get_unit_spike_train(unit_id).astype(np.int32)
 
-        # Convert from ms to seconds
-        bin_size_s = self.bin_size_ms / 1000
-        window_size_s = self.window_size_ms / 1000
+        # Convert to seconds with explicit float32 casting
+        sampling_frequency = np.float32(sorter.sampling_frequency)
+        spike_times = (spike_train / sampling_frequency).astype(np.float32)
+
+        # Convert from ms to seconds with explicit float32 casting
+        bin_size_s = np.float32(self.bin_size_ms / 1000.0)
+        window_size_s = np.float32(self.window_size_ms / 1000.0)
 
         if _HAS_RUST:
             # Use Rust implementation
@@ -158,25 +167,28 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
                 spike_times, spike_times, bin_size_s, window_size_s
             )
 
-            # Create time bins
+            # Create time bins with float32 precision
             time_bins = np.linspace(
-                -self.window_size_ms / 2000,
-                self.window_size_ms / 2000,
+                -np.float32(self.window_size_ms / 2000.0),
+                np.float32(self.window_size_ms / 2000.0),
                 len(correlogram),
+                dtype=np.float32,
             )
 
             # Apply normalization if needed
             if self.normalization == "rate":
                 # Convert to Hz
-                correlogram = correlogram / (len(spike_times) * bin_size_s)
+                correlogram = correlogram.astype(np.float32) / (
+                    len(spike_times) * bin_size_s
+                )
             elif self.normalization == "probability":
                 # Convert to probability
                 total = correlogram.sum()
                 if total > 0:
-                    correlogram = correlogram / total
+                    correlogram = correlogram.astype(np.float32) / total
 
         return {
-            "unit_id": unit_id,
+            "unit_id": int(unit_id),  # Ensure int type
             "autocorrelogram": correlogram,
             "time_bins": time_bins,
         }
@@ -200,28 +212,37 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
         -------
         Dict with correlogram details
         """
-        # Convert to seconds
-        spike_times1 = (
-            sorter.get_unit_spike_train(unit1) / sorter.sampling_frequency
-        ).astype(np.float32)
-        spike_times2 = (
-            sorter.get_unit_spike_train(unit2) / sorter.sampling_frequency
-        ).astype(np.float32)
+        # Ensure units are integer types
+        unit1 = int(unit1)
+        unit2 = int(unit2)
 
-        # Convert from ms to seconds
-        bin_size_s = self.bin_size_ms / 1000
-        window_size_s = self.window_size_ms / 1000
+        # Get spike trains with explicit int32 casting
+        spike_train1 = sorter.get_unit_spike_train(unit1).astype(np.int32)
+        spike_train2 = sorter.get_unit_spike_train(unit2).astype(np.int32)
+
+        # Convert to seconds with explicit float32 casting
+        sampling_frequency = np.float32(sorter.sampling_frequency)
+        spike_times1 = (spike_train1 / sampling_frequency).astype(np.float32)
+        spike_times2 = (spike_train2 / sampling_frequency).astype(np.float32)
+
+        # Convert from ms to seconds with explicit float32 casting
+        bin_size_s = np.float32(self.bin_size_ms / 1000.0)
+        window_size_s = np.float32(self.window_size_ms / 1000.0)
 
         if _HAS_RUST:
             # Use Rust implementation
             if self.jitter_correction:
+                # Explicit casting for jitter parameters
+                jitter_window = np.float32(window_size_s / 10.0)
+                jitter_iterations = int(self.jitter_iterations)
+
                 correlogram, time_bins = compute_jitter_corrected_correlogram(
                     spike_times1,
                     spike_times2,
                     bin_size_s,
                     window_size_s,
-                    window_size_s / 10.0,  # Default jitter window
-                    self.jitter_iterations,
+                    jitter_window,
+                    jitter_iterations,
                 )
             else:
                 correlogram, time_bins = compute_correlogram(
@@ -237,22 +258,25 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
                 spike_times1, spike_times2, bin_size_s, window_size_s
             )
 
-            # Create time bins
+            # Create time bins with float32 precision
             time_bins = np.linspace(
-                -self.window_size_ms / 2000,
-                self.window_size_ms / 2000,
+                -np.float32(self.window_size_ms / 2000.0),
+                np.float32(self.window_size_ms / 2000.0),
                 len(correlogram),
+                dtype=np.float32,
             )
 
             # Apply normalization if needed
             if self.normalization == "rate":
-                # Convert to Hz
-                correlogram = correlogram / (len(spike_times1) * bin_size_s)
+                # Convert to Hz with float32 precision
+                correlogram = correlogram.astype(np.float32) / (
+                    len(spike_times1) * bin_size_s
+                )
             elif self.normalization == "probability":
                 # Convert to probability
-                total = correlogram.sum()
+                total = np.float32(correlogram.sum())
                 if total > 0:
-                    correlogram = correlogram / total
+                    correlogram = correlogram.astype(np.float32) / total
 
         return {
             "unit1": unit1,
@@ -279,21 +303,25 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
         Dict containing autocorrelograms and crosscorrelograms
         """
         if unit_ids is None:
-            unit_ids = sorter.unit_ids
+            unit_ids = [int(uid) for uid in sorter.unit_ids]  # Ensure all IDs are int
+        else:
+            unit_ids = [int(uid) for uid in unit_ids]  # Ensure all IDs are int
 
         # Use efficient Rust implementation for all pairs if available
         if _HAS_RUST and not self.jitter_correction:
-            # Convert all spike trains to seconds
+            # Convert all spike trains to seconds with explicit float32 casting
+            sampling_frequency = np.float32(sorter.sampling_frequency)
             spike_trains = [
                 (
-                    sorter.get_unit_spike_train(unit_id) / sorter.sampling_frequency
+                    sorter.get_unit_spike_train(unit_id).astype(np.int32)
+                    / sampling_frequency
                 ).astype(np.float32)
                 for unit_id in unit_ids
             ]
 
-            # Convert parameters from ms to seconds
-            bin_size_s = self.bin_size_ms / 1000
-            window_size_s = self.window_size_ms / 1000
+            # Convert parameters from ms to seconds with explicit float32 casting
+            bin_size_s = np.float32(self.bin_size_ms / 1000.0)
+            window_size_s = np.float32(self.window_size_ms / 1000.0)
 
             # Compute all correlograms in one go
             return compute_all_cross_correlograms(
@@ -323,7 +351,11 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
             }
 
     def compute_spike_time_tiling_coefficient(
-        self, sorter: SorterNode, unit1: int, unit2: int, delta_t_ms: float = None
+        self,
+        sorter: SorterNode,
+        unit1: int,
+        unit2: int,
+        delta_t_ms: Optional[float] = None,
     ) -> float:
         """
         Compute the Spike Time Tiling Coefficient (STTC) between two units.
@@ -346,21 +378,32 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
         float
             STTC value (-1 to 1, where 0 is no correlation)
         """
-        # Convert to seconds
-        spike_times1 = sorter.get_unit_spike_train(unit1) / sorter.sampling_frequency
-        spike_times2 = sorter.get_unit_spike_train(unit2) / sorter.sampling_frequency
+        # Ensure unit IDs are integers
+        unit1 = int(unit1)
+        unit2 = int(unit2)
+
+        # Get spike trains with explicit int32 casting
+        spike_train1 = sorter.get_unit_spike_train(unit1).astype(np.int32)
+        spike_train2 = sorter.get_unit_spike_train(unit2).astype(np.int32)
+
+        # Convert to seconds with explicit float32 casting
+        sampling_frequency = np.float32(sorter.sampling_frequency)
+        spike_times1 = (spike_train1 / sampling_frequency).astype(np.float32)
+        spike_times2 = (spike_train2 / sampling_frequency).astype(np.float32)
 
         # Use bin size as default delta_t if not specified
         if delta_t_ms is None:
             delta_t_ms = self.bin_size_ms
 
-        # Convert to seconds
-        delta_t_s = delta_t_ms / 1000
+        # Convert to seconds with explicit float32 casting
+        delta_t_s = np.float32(delta_t_ms / 1000.0)
 
         # Use Rust implementation if available
         if _HAS_RUST:
-            return compute_spike_time_tiling_coefficient(
-                spike_times1, spike_times2, delta_t_s
+            return float(
+                compute_spike_time_tiling_coefficient(
+                    spike_times1, spike_times2, delta_t_s
+                )
             )
         else:
             # Python fallback
@@ -381,11 +424,13 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
                 if any(abs(t1 - t2) <= delta_t_s for t1 in spike_times1)
             )
 
-            # Calculate the tiling coefficient
-            ta = count_1 / len(spike_times1)
-            tb = count_2 / len(spike_times2)
+            # Calculate the tiling coefficient with explicit float32 precision
+            ta = np.float32(count_1) / len(spike_times1)
+            tb = np.float32(count_2) / len(spike_times2)
 
-            return (ta + tb - ta * tb) / max(1.0 - ta * tb, 1e-10)
+            # Avoid division by zero with explicit float32 precision
+            denominator = np.float32(max(1.0 - ta * tb, 1e-10))
+            return float((ta + tb - ta * tb) / denominator)
 
 
 # Factory function for easy initialization
@@ -395,6 +440,10 @@ def create_spike_correlogram_analyzer(
     """
     Create a spike correlogram analyzer with default parameters.
     """
+    # Ensure parameters are properly typed
+    bin_size_ms = np.float32(bin_size_ms)
+    window_size_ms = np.float32(window_size_ms)
+
     return SpikeCovarianceAnalyzer(
         bin_size_ms=bin_size_ms, window_size_ms=window_size_ms, **kwargs
     )
