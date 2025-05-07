@@ -1,3 +1,4 @@
+*.out
 *.parquet
 *.json
 poetry.lock

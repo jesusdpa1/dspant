@@ -3,7 +3,7 @@ name = "dspant-viz"
 version = "0.1.0"
 description = "Multi-backend visualization library for electrophysiology data"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "dash>=3.0.3",
     "dask>=2025.4.0",
@@ -15,7 +15,6 @@ dependencies = [
     "plotly-resampler>=0.10.0",
     "seaborn>=0.13.2",
     "streamlit>=1.44.1",
-
 ]
 
 [project.optional-dependencies]

@@ -135,3 +135,10 @@ members = [
     "./dspant_app",
     "./dspant_viz",
 ]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "python-dotenv>=1.1.0",
+    "ruff>=0.11.7",
+]

@@ -5,8 +5,8 @@ import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 
-from dspant.core.internals import public_api
 from dspant_viz.core.base import VisualizationComponent
+from dspant_viz.core.internals import public_api
 
 
 @public_api(module_override="dspant_viz.visualization")

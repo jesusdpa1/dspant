@@ -4,7 +4,7 @@ import ipywidgets as widgets
 import matplotlib.pyplot as plt
 from IPython.display import display
 
-from dspant.core.internals import public_api
+from dspant_viz.core.internals import public_api
 from dspant_viz.core.data_models import SpikeData
 from dspant_viz.visualization.composites.raster_psth import RasterPSTHComposite
 

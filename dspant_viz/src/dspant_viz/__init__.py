@@ -19,4 +19,4 @@ from .visualization import (
 )
 from .widgets import CorrelogramInspector, PSTHRasterInspector, WaveformInspector
 
-register_module_components("dspant_viz")(__import__(__name__))
+register_module_components("dspant_viz.widgets")(__import__(__name__))
