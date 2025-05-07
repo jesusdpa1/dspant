@@ -1,5 +1,5 @@
 """
-Create a single crosscorrelogram visualization
+Create crosscorrelogram visualization
 Author: Jesus Penaloza
 """
 
@@ -15,9 +15,6 @@ from dotenv import load_dotenv
 from numba import jit, prange
 
 from dspant.io.loaders.phy_kilosort_loarder import load_kilosort
-from dspant_neuroproc.processors.spike_analytics.correlogram import (
-    create_spike_correlogram_analyzer,
-)
 
 # Set style for visualizations
 sns.set_theme(style="darkgrid")
@@ -25,12 +22,6 @@ load_dotenv()
 
 # %%
 # Analysis Parameters
-BIN_SIZE_MS = 1  # Bin size in milliseconds
-WINDOW_SIZE_MS = 100.0  # Window size for cross-correlation in ms (±50 ms)
-UNIT_ID_1 = 27  # Reference unit
-UNIT_ID_2 = 20  # Target unit
-NORMALIZE = False  # Whether to normalize
-METHOD = "fft"  # Method to use: 'direct' or 'fft'
 
 # %%
 # Load spike sorting data
@@ -46,135 +37,179 @@ fs = sorter_data.sampling_frequency
 print(f"Data loaded successfully. Sampling rate: {fs} Hz")
 
 # %%
-# Get spike times directly for better performance
-spikes1 = sorter_data.get_unit_spike_train(UNIT_ID_1) / fs
-spikes2 = sorter_data.get_unit_spike_train(UNIT_ID_2) / fs
-
-print(f"Unit {UNIT_ID_1}: {len(spikes1)} spikes")
-print(f"Unit {UNIT_ID_2}: {len(spikes2)} spikes")
-
-# %%
-# Create correlogram analyzer with specified parameters
-normalization = "rate" if NORMALIZE else "count"
-correlogram_analyzer = create_spike_correlogram_analyzer(
-    bin_size_ms=BIN_SIZE_MS,
-    window_size_ms=WINDOW_SIZE_MS,
-    normalization=normalization,
-    method=METHOD,
+# Import correlogram analyzer from dspant_neuroproc
+from dspant_neuroproc.processors.spike_analytics.correlogram import (
+    SpikeCovarianceAnalyzer,
 )
 
 # %%
-# Compute correlogram
-print(
-    f"Computing correlogram between units {UNIT_ID_1} and {UNIT_ID_2} using {METHOD} method..."
-)
-is_autocorr = UNIT_ID_1 == UNIT_ID_2
+# Set parameters for correlogram analysis
+bin_size_ms = 1.0  # 1 ms bin size
+window_size_ms = 100.0  # 100 ms window size
+normalization = "rate"  # Normalize by firing rate
 
+# Create analyzer
+correlogram_analyzer = SpikeCovarianceAnalyzer(
+    bin_size_ms=bin_size_ms, window_size_ms=window_size_ms, normalization=normalization
+)
+
+# %%
+# Get a list of unit IDs with good quality and sufficient spikes
+min_spikes = 200
+good_units = [
+    unit
+    for unit in sorter_data.unit_ids
+    if len(sorter_data.get_unit_spike_train(unit)) >= min_spikes
+]
+
+print(f"Found {len(good_units)} units with at least {min_spikes} spikes")
+
+# %%
+# Select two units for demonstration
+if len(good_units) >= 2:
+    unit1 = good_units[0]
+    unit2 = good_units[1]
+
+    print(
+        f"Computing autocorrelograms and crosscorrelogram for units {unit1} and {unit2}"
+    )
+
+    # Compute autocorrelogram for unit1
+    start_time = time.time()
+    autocorr1 = correlogram_analyzer.compute_autocorrelogram(sorter_data, unit1)
+    end_time = time.time()
+    print(
+        f"Autocorrelogram for unit {unit1} computed in {end_time - start_time:.4f} seconds"
+    )
+
+    # Compute autocorrelogram for unit2
+    start_time = time.time()
+    autocorr2 = correlogram_analyzer.compute_autocorrelogram(sorter_data, unit2)
+    end_time = time.time()
+    print(
+        f"Autocorrelogram for unit {unit2} computed in {end_time - start_time:.4f} seconds"
+    )
+
+    # Compute crosscorrelogram
+    start_time = time.time()
+    crosscorr = correlogram_analyzer.compute_crosscorrelogram(sorter_data, unit1, unit2)
+    end_time = time.time()
+    print(
+        f"Crosscorrelogram between units {unit1} and {unit2} computed in {end_time - start_time:.4f} seconds"
+    )
+
+    # Visualize results
+    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+
+    # Plot autocorrelogram for unit1
+    axes[0].bar(
+        autocorr1["time_bins"] * 1000,
+        autocorr1["autocorrelogram"],
+        width=bin_size_ms,
+        alpha=0.7,
+        color="blue",
+    )
+    axes[0].set_title(f"Autocorrelogram for Unit {unit1}")
+    axes[0].set_ylabel("Firing Rate (Hz)")
+
+    # Plot autocorrelogram for unit2
+    axes[1].bar(
+        autocorr2["time_bins"] * 1000,
+        autocorr2["autocorrelogram"],
+        width=bin_size_ms,
+        alpha=0.7,
+        color="green",
+    )
+    axes[1].set_title(f"Autocorrelogram for Unit {unit2}")
+    axes[1].set_ylabel("Firing Rate (Hz)")
+
+    # Plot crosscorrelogram
+    axes[2].bar(
+        crosscorr["time_bins"] * 1000,
+        crosscorr["crosscorrelogram"],
+        width=bin_size_ms,
+        alpha=0.7,
+        color="red",
+    )
+    axes[2].set_title(f"Crosscorrelogram between Units {unit1} and {unit2}")
+    axes[2].set_xlabel("Time Lag (ms)")
+    axes[2].set_ylabel("Firing Rate (Hz)")
+
+    # Add vertical line at zero lag
+    for ax in axes:
+        ax.axvline(0, color="black", linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
+    plt.show()
+
+    # Also compute Spike Time Tiling Coefficient
+    sttc = correlogram_analyzer.compute_spike_time_tiling_coefficient(
+        sorter_data, unit1, unit2, delta_t_ms=5.0
+    )
+    print(f"Spike Time Tiling Coefficient (±5ms window): {sttc:.4f}")
+else:
+    print("Not enough good units for demonstration")
+
+# %%
+# Time the computation for all units
+print(f"\nComputing correlograms for all {len(good_units)} units...")
+
+# Time the full transform method (which computes all correlograms)
 start_time = time.time()
-if is_autocorr:
-    # Autocorrelogram (pass only spikes1)
-    time_bins, ccg, _ = correlogram_analyzer.compute_correlogram(spikes1)
-else:
-    # Crosscorrelogram
-    time_bins, ccg, _ = correlogram_analyzer.compute_correlogram(spikes1, spikes2)
+all_correlograms = correlogram_analyzer.transform(sorter_data, unit_ids=good_units)
+end_time = time.time()
 
-elapsed = time.time() - start_time
-print(f"Correlogram computed in {elapsed:.2f} seconds")
+total_time = end_time - start_time
+print(f"All correlograms computed in {total_time:.4f} seconds")
+
+# Count the number of correlograms
+n_autocorr = len(all_correlograms["autocorrelograms"])
+n_crosscorr = len(all_correlograms["crosscorrelograms"])
+total_correlograms = n_autocorr + n_crosscorr
+
+print(f"Computed {n_autocorr} autocorrelograms and {n_crosscorr} crosscorrelograms")
+print(f"Average time per correlogram: {(total_time / total_correlograms):.4f} seconds")
 
 # %%
-# Plot the correlogram
-fig, ax = plt.subplots(figsize=(10, 6))
+# Create a heatmap of STTC values between all units
+n_units = len(good_units)
+sttc_matrix = np.zeros((n_units, n_units))
 
-# Calculate bar width
-bar_width = time_bins[1] - time_bins[0] if len(time_bins) > 1 else 1.0
+print("\nComputing STTC matrix for all unit pairs...")
+start_time = time.time()
 
-# Convert time_bins to milliseconds if needed
-time_bins_ms = time_bins * 1000
+for i, unit1 in enumerate(good_units):
+    for j, unit2 in enumerate(good_units):
+        if i == j:
+            # Autocorrelation is 1.0 by definition
+            sttc_matrix[i, j] = 1.0
+        elif i < j:  # Compute only for upper triangle
+            sttc = correlogram_analyzer.compute_spike_time_tiling_coefficient(
+                sorter_data, unit1, unit2, delta_t_ms=5.0
+            )
+            sttc_matrix[i, j] = sttc
+            sttc_matrix[j, i] = sttc  # Matrix is symmetric
 
-# Plot as bars
-ax.bar(time_bins_ms, ccg, width=bar_width * 1000, color="steelblue", alpha=0.7)
-ax.axvline(x=0, color="red", linestyle="--", alpha=0.6, linewidth=1)
+end_time = time.time()
+print(f"STTC matrix computed in {end_time - start_time:.4f} seconds")
 
-# Set title and labels
-if is_autocorr:
-    title = f"Autocorrelogram for Unit {UNIT_ID_1}"
-else:
-    title = f"Crosscorrelogram: Unit {UNIT_ID_1} → Unit {UNIT_ID_2}"
+# Plot STTC matrix as a heatmap
+plt.figure(figsize=(10, 8))
+mask = np.zeros_like(sttc_matrix, dtype=bool)
+mask[np.diag_indices_from(mask)] = True  # Mask diagonal (autocorrelation)
 
-ax.set_title(title, fontsize=14)
-ax.set_xlabel("Time lag (ms)", fontsize=12)
-
-if NORMALIZE:
-    ax.set_ylabel("Firing rate (Hz)", fontsize=12)
-else:
-    ax.set_ylabel("Count", fontsize=12)
-
-# Set limits
-ax.set_xlim(-WINDOW_SIZE_MS / 2, WINDOW_SIZE_MS / 2)
-ax.set_ylim(bottom=0)
-
-# Add statistics
-n_spikes1 = len(spikes1)
-n_spikes2 = len(spikes2)
-ax.text(0.02, 0.95, f"Unit {UNIT_ID_1}: {n_spikes1} spikes", transform=ax.transAxes)
-ax.text(0.02, 0.90, f"Unit {UNIT_ID_2}: {n_spikes2} spikes", transform=ax.transAxes)
-
-# Add method and performance info
-ax.text(0.02, 0.85, f"Method: {METHOD}", transform=ax.transAxes)
-ax.text(0.02, 0.80, f"Computation time: {elapsed:.2f} seconds", transform=ax.transAxes)
-
+sns.heatmap(
+    sttc_matrix,
+    mask=mask,
+    cmap="coolwarm",
+    center=0,
+    vmin=-1,
+    vmax=1,
+    square=True,
+    linewidths=0.5,
+)
+plt.title("Spike Time Tiling Coefficient (±5ms window)")
+plt.xlabel("Unit ID Index")
+plt.ylabel("Unit ID Index")
 plt.tight_layout()
 plt.show()
-
-# %%
-# Save the figure
-fig.savefig("single_correlogram.png", dpi=300, bbox_inches="tight")
-print("Figure saved as 'single_correlogram.png'")
-
-
-# %%
-# Optionally compare performance between direct and FFT methods
-def compare_methods():
-    """Compare performance between direct and FFT methods"""
-    print("\nComparing computation methods...")
-
-    # Create analyzers for both methods
-    direct_analyzer = create_spike_correlogram_analyzer(
-        bin_size_ms=BIN_SIZE_MS,
-        window_size_ms=WINDOW_SIZE_MS,
-        normalization=normalization,
-        method="direct",
-    )
-
-    fft_analyzer = create_spike_correlogram_analyzer(
-        bin_size_ms=BIN_SIZE_MS,
-        window_size_ms=WINDOW_SIZE_MS,
-        normalization=normalization,
-        method="fft",
-    )
-
-    # Time direct method
-    start_time = time.time()
-    if is_autocorr:
-        direct_analyzer.compute_correlogram(spikes1)
-    else:
-        direct_analyzer.compute_correlogram(spikes1, spikes2)
-    direct_time = time.time() - start_time
-
-    # Time FFT method
-    start_time = time.time()
-    if is_autocorr:
-        fft_analyzer.compute_correlogram(spikes1)
-    else:
-        fft_analyzer.compute_correlogram(spikes1, spikes2)
-    fft_time = time.time() - start_time
-
-    print(f"Direct method: {direct_time:.2f} seconds")
-    print(f"FFT method: {fft_time:.2f} seconds")
-    print(f"Speedup: {direct_time / fft_time:.2f}x")
-
-    return direct_time, fft_time
-
-
-# Run comparison if requested
-# compare_methods()
