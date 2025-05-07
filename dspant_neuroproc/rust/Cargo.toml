@@ -13,7 +13,6 @@ extension-module = true
 
 [lib]
 name = "dspant_neuroproc_rs"
-# "cdylib" is necessary to produce a shared library for Python to import from.
 crate-type = ["cdylib"]
 
 [dependencies]

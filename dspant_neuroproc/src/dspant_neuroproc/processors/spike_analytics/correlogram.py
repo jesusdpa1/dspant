@@ -136,7 +136,9 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
         Dict with correlogram details
         """
         # Convert to seconds
-        spike_times = sorter.get_unit_spike_train(unit_id) / sorter.sampling_frequency
+        spike_times = (
+            sorter.get_unit_spike_train(unit_id) / sorter.sampling_frequency
+        ).astype(np.float32)
 
         # Convert from ms to seconds
         bin_size_s = self.bin_size_ms / 1000
@@ -199,8 +201,12 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
         Dict with correlogram details
         """
         # Convert to seconds
-        spike_times1 = sorter.get_unit_spike_train(unit1) / sorter.sampling_frequency
-        spike_times2 = sorter.get_unit_spike_train(unit2) / sorter.sampling_frequency
+        spike_times1 = (
+            sorter.get_unit_spike_train(unit1) / sorter.sampling_frequency
+        ).astype(np.float32)
+        spike_times2 = (
+            sorter.get_unit_spike_train(unit2) / sorter.sampling_frequency
+        ).astype(np.float32)
 
         # Convert from ms to seconds
         bin_size_s = self.bin_size_ms / 1000
@@ -279,7 +285,9 @@ class SpikeCovarianceAnalyzer(BaseSpikeTransform):
         if _HAS_RUST and not self.jitter_correction:
             # Convert all spike trains to seconds
             spike_trains = [
-                sorter.get_unit_spike_train(unit_id) / sorter.sampling_frequency
+                (
+                    sorter.get_unit_spike_train(unit_id) / sorter.sampling_frequency
+                ).astype(np.float32)
                 for unit_id in unit_ids
             ]
 
