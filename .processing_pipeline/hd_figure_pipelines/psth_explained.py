@@ -76,7 +76,8 @@ filtered_emg = processor_emg.process(group=["filters"]).persist()
 # Apply TKEO
 tkeo_processor = create_tkeo_envelope_rs(method="modified", cutoff_freq=15)
 tkeo_data = tkeo_processor.process(filtered_emg[0:1000000, :], fs=fs).persist()
-
+print(tkeo_data.shape)
+# %%
 # Normalize TKEO
 zscore_processor = create_normalizer("minmax")
 zscore_tkeo = zscore_processor.process(tkeo_data).persist()
@@ -148,15 +149,15 @@ print(f"PSTH computation completed in {end_time - start_time:.4f} seconds")
 
 # %%
 # Plot PSTH results for a specific unit
-unit_index = 0  # Change to visualize different units
+unit_index = 37  # Change to visualize different units
 unit_id = psth_result["unit_ids"][unit_index]
 
 # Get PSTH data (preferring smoothed if available)
 if "psth_smoothed" in psth_result:
-    psth_data = psth_result["psth_smoothed"][:, 0, unit_index]
+    psth_data = psth_result["psth_smoothed"][:, unit_index]
     print("Using smoothed PSTH data")
 else:
-    psth_data = psth_result["psth_rates"][:, 0, unit_index]
+    psth_data = psth_result["psth_rates"][:, unit_index]
     print("Using raw PSTH data")
 
 # Get time bins
@@ -180,7 +181,7 @@ plt.show()
 # Plot raster data for the same unit
 raster_data = psth_result["raster_data"][unit_index]
 
-plt.figure(figsize=(10, 4))
+plt.figure(figsize=(10, 10))
 plt.scatter(
     raster_data["spike_times"],
     raster_data["trials"],
@@ -198,48 +199,3 @@ plt.tight_layout()
 plt.show()
 
 # %%
-# Compare with other implementations if available
-# Check if Python implementation is still available
-try:
-    # If you have a pure Python implementation for comparison
-    from dspant_neuroproc.processors.spike_analytics.psth_py import (
-        PSTHAnalyzer as PSTHAnalyzerPy,
-    )
-
-    print("Testing Python implementation for comparison...")
-    start_time = time.time()
-
-    psth_analyzer_py = PSTHAnalyzerPy(
-        bin_size_ms=10.0,
-        window_size_ms=(PRE_EVENT + POST_EVENT) * 1000,
-        sigma_ms=25.0,
-        baseline_window_ms=(-400, -200),
-    )
-
-    psth_result_py = psth_analyzer_py.transform(
-        sorter=sorter_data,
-        events=emg_onsets,
-        pre_time_ms=PRE_EVENT * 1000,
-        post_time_ms=POST_EVENT * 1000,
-    )
-
-    end_time = time.time()
-    print(f"Python implementation completed in {end_time - start_time:.4f} seconds")
-
-    # Compare results
-    print("\nComparison of Rust vs Python implementation:")
-    for key in ["psth_rates", "psth_smoothed"]:
-        if key in psth_result and key in psth_result_py:
-            rust_array = psth_result[key]
-            py_array = psth_result_py[key]
-
-            if rust_array.shape == py_array.shape:
-                diff = np.abs(rust_array - py_array).mean()
-                print(f"Mean absolute difference in {key}: {diff:.6f}")
-            else:
-                print(
-                    f"Shape mismatch in {key}: Rust {rust_array.shape} vs Python {py_array.shape}"
-                )
-
-except ImportError:
-    print("Python implementation not available for comparison")

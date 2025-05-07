@@ -17,7 +17,8 @@ use processors::spike_analytics::psth::{
     compute_psth,
     compute_psth_all,
     compute_psth_parallel,
-    compute_raster_data
+    compute_raster_data, 
+    bin_spikes_by_events
 };
 
 // Python module entry point
@@ -35,5 +36,6 @@ fn _rs(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compute_psth_all, py)?)?;
     m.add_function(wrap_pyfunction!(compute_psth_parallel, py)?)?;
     m.add_function(wrap_pyfunction!(compute_raster_data, py)?)?;
+    m.add_function(wrap_pyfunction!(bin_spikes_by_events, py)?)?;
     Ok(())
 }

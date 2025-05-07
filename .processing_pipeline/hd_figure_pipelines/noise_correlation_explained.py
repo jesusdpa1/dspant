@@ -3,6 +3,7 @@ Create noise correlation visualization between neural units aligned to EMG contr
 Author: Jesus Penaloza
 """
 
+# %%
 import os
 import time
 from pathlib import Path
@@ -31,7 +32,7 @@ from dspant_emgproc.processors.activity_detection.single_threshold import (
 
 sns.set_theme(style="darkgrid")
 load_dotenv()
-
+# %%
 # Data loading configuration
 data_dir = Path(os.getenv("DATA_DIR"))
 emg_path = data_dir.joinpath(r"test_/00_baseline/drv_00_baseline/RawG.ant")
@@ -353,3 +354,5 @@ def plot_noise_correlation_matrix(unit_indices=None):
 # Create and display the correlation matrix
 fig_matrix = plot_noise_correlation_matrix()
 plt.show()
+
+# %%
