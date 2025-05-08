@@ -7,6 +7,8 @@ authors = [
     { name = "Jesús Peñaloza", email = "jesus.penalozaa@ufl.edu" }
 ]
 requires-python = ">=3.12"
+
+
 dependencies = [
     "dask-ml>=2025.1.0",
     "dask[complete]>=2025.2.0",
@@ -38,13 +40,11 @@ dspant = "dspant:main"
 
 # Reorganize optional dependencies into logical groups
 [project.optional-dependencies]
-# Development tools
-dev = [
-    "ipykernel>=6.29.5",
-    "pretty-errors>=1.2.25",
-    "python-dotenv>=1.1.0",
-    "ruff>=0.9.5",
-]
+
+# Extension packages
+emgproc = ["dspant-emgproc==0.1.0"]
+neuroproc = ["dspant-neuroproc==0.1.0"]
+viz = ["dspant-viz==0.1.0"]
 
 # Documentation tools
 docs = [
@@ -68,18 +68,23 @@ cu126 = [
     "torchaudio>=2.6.0; sys_platform == 'darwin'",
 ]
 
-# Extension packages
-emgproc = ["dspant-emgproc==0.1.0"]
-neuroproc = ["dspant-neuroproc==0.1.0"]
-viz = ["dspant-viz==0.1.0"]
-
 # All extensions combined
 all = [
     "dspant-emgproc==0.1.0",
     "dspant-neuroproc==0.1.0",
     "dspant-viz==0.1.0",
-    "torch>=2.6.0",
-    "torchaudio>=2.6.0",
+    "torch>=2.6.0; sys_platform == 'win32' or sys_platform == 'linux'",
+    "torchaudio>=2.6.0; sys_platform == 'win32' or sys_platform == 'linux'",
+    "ipykernel>=6.29.5",
+    "python-dotenv>=1.1.0",
+    "ruff>=0.11.7",
+]
+
+dev = [
+    # Development tools
+    "ipykernel>=6.29.5",
+    "python-dotenv>=1.1.0",
+    "ruff>=0.11.7",
 ]
 
 [build-system]
@@ -136,9 +141,4 @@ members = [
     "./dspant_viz",
 ]
 
-[dependency-groups]
-dev = [
-    "ipykernel>=6.29.5",
-    "python-dotenv>=1.1.0",
-    "ruff>=0.11.7",
-]
+# [dependency-groups]
