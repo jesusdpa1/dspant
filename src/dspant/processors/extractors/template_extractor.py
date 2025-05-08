@@ -1,3 +1,8 @@
+"""
+template extraction
+
+"""
+
 from typing import Dict, Literal, Optional, Tuple, Union
 
 import dask.array as da
