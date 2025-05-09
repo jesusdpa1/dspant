@@ -84,7 +84,7 @@ class PlotParameters:
     data_start = int(fs * 5)  # Start time in seconds
     data_duration = int(fs * 8)  # Duration in seconds
     zoom_start = int(fs * 6)  # Zoomed section start
-    zoom_duration = int(fs * 1)  # 1 second zoom
+    zoom_duration = int(fs * 1.5)  # 1 second zoom
 
     # Ttot zoom parameters
     zoom_start_ttot = int(fs * 6.8)  # Ttot zoomed section start
@@ -98,8 +98,10 @@ class PlotParameters:
     # Breathing metric parameters
     ti_start = int(fs * 0.32)  # Ti start (onset)
     ti_end = int(fs * 0.51)  # Ti end (peak)
-    te_start = int(fs * 0.51)  # Te start (peak)
-    te_end = int(fs * 0.6)  # Te end (next onset)
+    te0_start = int(fs * 0.51)  # Te start (peak)
+    te0_end = int(fs * 0.61)  # Te end (next onset)
+    te1_start = int(fs * 0.61)  # Te start (peak)
+    te1_end = int(fs * 1.02)  # Te end (next onset)
     ttot_start = int(fs * 0.24)  # Ttot start (first onset)
     ttot_end = int(fs * 0.9)  # Ttot end (second onset)
 
@@ -329,22 +331,36 @@ ti_block = patches.Rectangle(
 )
 ax3.add_patch(ti_block)
 
-# Add Te block
-te_start_time = params.te_start / fs
-te_end_time = min(params.te_end / fs, time_zoom[-1])
+# Add Te0 block
+te_start_time = params.te0_start / fs
+te_end_time = min(params.te0_end / fs, time_zoom[-1])
 te_block = patches.Rectangle(
     (te_start_time, ax3.get_ylim()[0]),
     te_end_time - te_start_time,
     ax3.get_ylim()[1] - ax3.get_ylim()[0],
     color="lightcoral",
     alpha=0.5,
-    label="Te",
+    label="Te0",
 )
 ax3.add_patch(te_block)
 
+
+# Add Te1 block
+te1_start_time = params.te1_start / fs
+te1_end_time = min(params.te1_end / fs, time_zoom[-1])
+te1_block = patches.Rectangle(
+    (te1_start_time, ax3.get_ylim()[0]),
+    te1_end_time - te1_start_time,
+    ax3.get_ylim()[1] - ax3.get_ylim()[0],
+    color="#DE4010",
+    alpha=0.5,
+    label="Te1",
+)
+ax3.add_patch(te1_block)
+
 ax3.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE)
 ax3.set_ylabel("Signals", fontsize=AXIS_LABEL_SIZE)
-ax3.set_title("Single Breath: Ti and Te", fontsize=SUBTITLE_SIZE)
+ax3.set_title("Single Breath: Ti and Putative Te", fontsize=SUBTITLE_SIZE)
 ax3.legend(fontsize=AXIS_LABEL_SIZE)
 ax3.tick_params(labelsize=TICK_SIZE)
 # ax3.grid(True, alpha=0.3)

@@ -43,6 +43,485 @@ from dspant_emgproc.processors.activity_detection.single_threshold import (
 )
 
 
+def calculate_templates(
+    final_epochs,
+    emg_waveform_analyzer,
+    template_analyzer,
+    PRE_SAMPLES,
+    POST_SAMPLES,
+    fs,
+):
+    """
+    Calculate templates for each amplitude and channel combination
+
+    Parameters:
+    -----------
+    final_epochs : polars.DataFrame
+        DataFrame containing stimulation events
+    emg_waveform_analyzer : object
+        Object with extract_waveforms method
+    template_analyzer : object
+        Object with extract_template_distributions method
+    PRE_SAMPLES : int
+        Number of samples before stimulus onset
+    POST_SAMPLES : int
+        Number of samples after stimulus onset
+    fs : float
+        Sampling frequency in Hz
+
+    Returns:
+    --------
+    dict
+        Dictionary containing template data for each amplitude and channel
+    dict
+        Dictionary containing maximum absolute values for each amplitude and channel
+    list
+        Sorted list of unique amplitudes
+    list
+        Sorted list of unique channels
+    """
+    print("Extracting templates...")
+    template_results = {}
+    row_max_abs_values = defaultdict(lambda: defaultdict(lambda: [0, 0]))
+
+    # Get unique stimulation amplitudes and channels from the final_epochs dataframe
+    unique_amplitudes = sorted(final_epochs["current_amplitude"].unique())
+    unique_channels = sorted(final_epochs["channel"].unique())
+
+    # Precompute all templates
+    for amplitude in unique_amplitudes:
+        template_results[amplitude] = {}
+
+        for stim_channel in unique_channels:
+            # Get the evoked responses for this combination
+            onsets = final_epochs.filter(
+                (pl.col("current_amplitude") == amplitude)
+                & (pl.col("channel") == stim_channel)
+            )["onset_amp"]
+
+            # Skip if no data for this combination
+            if len(onsets) == 0:
+                template_results[amplitude][stim_channel] = None
+                continue
+
+            try:
+                # Extract waveforms
+                waveforms_data = emg_waveform_analyzer.extract_waveforms(
+                    spike_times=onsets,
+                    pre_samples=PRE_SAMPLES,
+                    post_samples=POST_SAMPLES,
+                )
+
+                # Extract template statistics
+                template_data = template_analyzer.extract_template_distributions(
+                    waveforms_data[0]
+                )
+
+                # Store the template data
+                template_results[amplitude][stim_channel] = {
+                    "template_data": template_data,
+                    "n_waveforms": len(onsets),
+                }
+
+                # Calculate and store waveform time axis
+                waveform_length = template_data["template_mean"].shape[0]
+                waveform_time = np.linspace(
+                    -PRE_SAMPLES / fs, POST_SAMPLES / fs, waveform_length
+                )
+                waveform_time_ms = waveform_time * 1000
+
+                template_results[amplitude][stim_channel]["time_ms"] = waveform_time_ms
+
+                # Update row-specific max for each recording channel
+                for ch_idx in range(template_data["n_channels"]):
+                    mean_waveform = template_data["template_mean"][:, ch_idx]
+                    std_waveform = template_data["template_std"][:, ch_idx]
+
+                    # Find max absolute value including standard deviation
+                    max_abs = max(
+                        abs(np.max(mean_waveform + std_waveform)),
+                        abs(np.min(mean_waveform - std_waveform)),
+                    )
+
+                    # Update the max abs value for this amplitude, stim channel and recording channel
+                    row_max_abs_values[amplitude][stim_channel][ch_idx] = max(
+                        row_max_abs_values[amplitude][stim_channel][ch_idx], max_abs
+                    )
+
+            except Exception as e:
+                template_results[amplitude][stim_channel] = {"error": str(e)}
+                print(
+                    f"Error processing amplitude {amplitude}, channel {stim_channel}: {str(e)}"
+                )
+
+    # Add padding to max values
+    for amp in row_max_abs_values:
+        for stim_ch in row_max_abs_values[amp]:
+            for i in range(len(row_max_abs_values[amp][stim_ch])):
+                row_max_abs_values[amp][stim_ch][i] *= 1.05  # Just 5% padding
+
+    print("Template extraction complete.")
+    return template_results, row_max_abs_values, unique_amplitudes, unique_channels
+
+
+# Plotting Functions
+def adjust_color_brightness(color, factor):
+    """Adjust brightness of a color by a factor (0-1)"""
+    # Convert to HSV color space
+    c = mcolors.rgb_to_hsv(color[:3])
+    # Adjust value (brightness)
+    c[2] = min(c[2] * factor, 1.0)
+    # Convert back to RGB
+    return mcolors.hsv_to_rgb(c)
+
+
+def plot_evoked_responses(
+    template_results,
+    row_max_abs_values,
+    unique_amplitudes,
+    unique_channels,
+    plot_orientation="amplitude_as_columns",
+):
+    """
+    Plot evoked responses for all amplitude and channel combinations
+
+    Parameters:
+    -----------
+    template_results : dict
+        Dictionary containing template data for each amplitude and channel
+    row_max_abs_values : dict
+        Dictionary containing maximum absolute values for each amplitude and channel
+    unique_amplitudes : list
+        List of unique amplitudes
+    unique_channels : list
+        List of unique channels
+    plot_orientation : str, optional
+        Plot orientation, either "amplitude_as_columns" or "amplitude_as_rows"
+
+    Returns:
+    --------
+    matplotlib.figure.Figure
+        The figure containing the plots
+    """
+    print("Starting plotting...")
+
+    # Set the colorblind-friendly palette
+    sns.set_palette("colorblind")
+    palette = sns.color_palette("colorblind")
+
+    # Add Montserrat font
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = ["Montserrat"]
+
+    # Set the style
+    sns.set_theme(style="darkgrid")
+
+    # Define font sizes with appropriate scaling
+    TITLE_SIZE = 18
+    SUBTITLE_SIZE = 14  # Reduced for more compact layout
+    AXIS_LABEL_SIZE = 12  # Reduced for more compact layout
+    TICK_SIZE = 10  # Reduced for more compact layout
+    CAPTION_SIZE = 11  # Reduced for more compact layout
+
+    # Label color
+    label_color = "black"
+
+    # Create a color map for amplitudes/channels based on orientation
+    # Using base colors for the data lines and error bands
+    if plot_orientation == "amplitude_as_rows":
+        row_colors = {
+            amp: palette[idx % len(palette)]
+            for idx, amp in enumerate(unique_amplitudes)
+        }
+        col_colors = {
+            ch: sns.color_palette("Blues", n_colors=len(unique_channels))[idx]
+            for idx, ch in enumerate(unique_channels)
+        }
+    else:  # amplitude_as_columns
+        col_colors = {
+            amp: palette[idx % len(palette)]
+            for idx, amp in enumerate(unique_amplitudes)
+        }
+        row_colors = {
+            ch: sns.color_palette("Blues", n_colors=len(unique_channels))[idx]
+            for idx, ch in enumerate(unique_channels)
+        }
+
+    # Create figure dimensions based on orientation
+    if plot_orientation == "amplitude_as_rows":
+        n_rows = len(unique_amplitudes)
+        n_cols = len(unique_channels)
+        row_items = unique_amplitudes
+        col_items = unique_channels
+        # Figure size adjusted for orientation
+        figsize = (len(unique_channels) * 5, len(unique_amplitudes) * 2.5)
+    else:  # amplitude_as_columns
+        n_rows = len(unique_channels)
+        n_cols = len(unique_amplitudes)
+        row_items = unique_channels
+        col_items = unique_amplitudes
+        # Figure size adjusted for orientation - make columns narrower
+        figsize = (len(unique_amplitudes) * 4, len(unique_channels) * 3)
+
+    # Create figure with GridSpec - REDUCED HEIGHT for tighter vertical spacing
+    fig = plt.figure(figsize=figsize)
+
+    # Outer grid: determined by orientation
+    gs_outer = GridSpec(
+        n_rows, n_cols, figure=fig, wspace=0.25, hspace=0.15
+    )  # Even tighter spacing
+
+    # Create the plots using precomputed data
+    for row_idx, row_item in enumerate(row_items):
+        for col_idx, col_item in enumerate(col_items):
+            # Get amplitude and stim channel based on orientation
+            if plot_orientation == "amplitude_as_rows":
+                amplitude = row_item
+                stim_channel = col_item
+            else:  # amplitude_as_columns
+                amplitude = col_item
+                stim_channel = row_item
+
+            # Get the template data for this combination
+            template_result = template_results[amplitude][stim_channel]
+
+            # Skip if no data for this combination
+            if template_result is None:
+                # Create an empty subplot with message
+                ax = fig.add_subplot(gs_outer[row_idx, col_idx])
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No data available",
+                    ha="center",
+                    va="center",
+                    fontsize=TICK_SIZE,
+                    transform=ax.transAxes,
+                )
+                ax.set_xticks([])
+                ax.set_yticks([])
+                continue
+
+            # Check if there was an error
+            if "error" in template_result:
+                # Create an empty subplot with error message
+                ax = fig.add_subplot(gs_outer[row_idx, col_idx])
+                ax.text(
+                    0.5,
+                    0.5,
+                    f"Error: {template_result['error']}",
+                    ha="center",
+                    va="center",
+                    fontsize=TICK_SIZE - 2,
+                    transform=ax.transAxes,
+                )
+                ax.set_xticks([])
+                ax.set_yticks([])
+                continue
+
+            # Get the template data and time axis
+            template_data = template_result["template_data"]
+            waveform_time_ms = template_result["time_ms"]
+            n_waveforms = template_result["n_waveforms"]
+
+            # Calculate time limits
+            time_min = waveform_time_ms[0]
+            time_max = waveform_time_ms[-1]
+
+            # Create inner grid for this cell (1 row, 2 columns for the two recording channels)
+            # With equal width/height ratio for each subplot and NO SPACE between them
+            inner_gs = GridSpecFromSubplotSpec(
+                1, 2, subplot_spec=gs_outer[row_idx, col_idx], wspace=0
+            )
+
+            # Get color based on the orientation - for the data itself
+            if plot_orientation == "amplitude_as_rows":
+                base_color = row_colors[amplitude]
+            else:  # amplitude_as_columns
+                base_color = col_colors[amplitude]
+
+            # Get the max values for THIS specific combination of amplitude and stim channel
+            y_limit_ch1 = row_max_abs_values[amplitude][stim_channel][0]
+            y_limit_ch2 = row_max_abs_values[amplitude][stim_channel][1]
+
+            # Use the same max limit for both channels (the larger of the two)
+            # to ensure the pair shares the same y-axis scale
+            pair_y_limit = max(y_limit_ch1, y_limit_ch2)
+
+            # Create subplots for each recording channel
+            shared_y_axis = None  # Will store the first axis to share with the second
+
+            for ch_idx in range(template_data["n_channels"]):
+                # For the second channel (right), share y-axis with the first channel (left)
+                if ch_idx == 0:
+                    ax = fig.add_subplot(inner_gs[0, ch_idx])
+                    shared_y_axis = ax
+                else:
+                    ax = fig.add_subplot(inner_gs[0, ch_idx], sharey=shared_y_axis)
+
+                # Plot mean waveform
+                mean_waveform = template_data["template_mean"][:, ch_idx]
+                std_waveform = template_data["template_std"][:, ch_idx]
+
+                # Adjust color darkness based on channel
+                channel_color = adjust_color_brightness(base_color, 1.0 - 0.3 * ch_idx)
+
+                # Plot with shaded error regions
+                ax.plot(
+                    waveform_time_ms, mean_waveform, color=channel_color, linewidth=1.5
+                )  # Thinner lines
+                ax.fill_between(
+                    waveform_time_ms,
+                    mean_waveform - std_waveform,
+                    mean_waveform + std_waveform,
+                    color=channel_color,
+                    alpha=0.25,  # Reduced for cleaner appearance
+                )
+
+                # Add vertical line at stimulus onset (time=0)
+                ax.axvline(x=0, color="red", linestyle="--", alpha=0.7)
+
+                # Set x-axis to the full time range
+                ax.set_xlim(time_min, time_max)
+
+                # Use the SAME y-axis limit for BOTH channels in this pair
+                # This ensures the pair shares the same scale
+                ax.set_ylim(-pair_y_limit, pair_y_limit)
+
+                # Add horizontal line at y=0
+                ax.axhline(y=0, color="gray", linestyle="-", alpha=0.2)
+
+                # Formatting - COMPACT LABELS AND TICKS
+                if row_idx == n_rows - 1:  # Only bottom row shows x labels
+                    ax.set_xlabel("Time (ms)", fontsize=AXIS_LABEL_SIZE)
+                else:
+                    ax.set_xlabel("")
+                    ax.set_xticklabels([])
+
+                # Y-axis settings:
+                # - Left channel shows y-axis
+                # - Right channel hides y-axis
+                if ch_idx == 0:  # Left channel
+                    ax.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE)
+                else:  # Right channel
+                    ax.set_ylabel("")
+                    ax.tick_params(labelleft=False)  # Hide y tick labels on right plot
+                    ax.tick_params(left=False)  # Hide y ticks on right plot
+
+                ax.tick_params(labelsize=TICK_SIZE)
+
+                # Force square aspect ratio for the data box
+                ax.set_box_aspect(1)
+
+                # Add simplified channel title only to the top row
+                if row_idx == 0:
+                    ax.set_title(
+                        f"CH{ch_idx + 1:02d}", fontsize=SUBTITLE_SIZE, weight="bold"
+                    )
+
+                # Add number of trials to the subplot - smaller and less intrusive
+                ax.text(
+                    0.05,
+                    0.95,
+                    f"n={n_waveforms}",
+                    transform=ax.transAxes,
+                    fontsize=TICK_SIZE - 2,
+                    va="top",
+                    ha="left",
+                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.5),
+                )
+
+        # Add row label based on orientation
+        row_label_ax = fig.add_subplot(gs_outer[row_idx, :], frameon=False)
+        row_label_ax.set_xticks([])
+        row_label_ax.set_yticks([])
+
+        # Prepare label based on orientation
+        if plot_orientation == "amplitude_as_rows":
+            amp = row_item
+
+            # Calculate average y-axis range for this row to show in the label
+            avg_ch1_range = np.mean(
+                [row_max_abs_values[amp][sc][0] for sc in row_max_abs_values[amp]]
+            )
+            avg_ch2_range = np.mean(
+                [row_max_abs_values[amp][sc][1] for sc in row_max_abs_values[amp]]
+            )
+
+            # Format label for amplitude
+            label_text = f"{amp} μA\n±{avg_ch1_range:.2e}/±{avg_ch2_range:.2e}"
+        else:  # amplitude_as_columns
+            # Format label for stim channel
+            stim_ch = row_item
+            label_text = f"Stim Channel {stim_ch}"
+
+        # Add the row label - now ALWAYS BLACK AND BOLD
+        row_label_ax.text(
+            -0.05,
+            0.5,
+            label_text,
+            ha="right",
+            va="center",
+            fontsize=SUBTITLE_SIZE - 1,
+            weight="bold",
+            color=label_color,  # Use black for all labels
+            transform=row_label_ax.transAxes,
+        )
+
+    # Add column labels based on orientation
+    for col_idx, col_item in enumerate(col_items):
+        col_label_ax = fig.add_subplot(gs_outer[:, col_idx], frameon=False)
+        col_label_ax.set_xticks([])
+        col_label_ax.set_yticks([])
+
+        # Prepare label based on orientation
+        if plot_orientation == "amplitude_as_rows":
+            # Format label for stim channel
+            stim_ch = col_item
+            label_text = f"Stim Channel {stim_ch}"
+        else:  # amplitude_as_columns
+            # Format label for amplitude
+            amp = col_item
+            label_text = f"{amp} μA"
+
+        # Add the column label - now ALWAYS BLACK AND BOLD
+        col_label_ax.text(
+            0.5,
+            1.01,
+            label_text,
+            ha="center",
+            va="bottom",
+            fontsize=SUBTITLE_SIZE,
+            weight="bold",
+            color=label_color,  # Use black for all labels
+            transform=col_label_ax.transAxes,
+        )
+
+    # Add a legend showing colors based on orientation
+    legend_ax = fig.add_subplot(111, frameon=False)
+    legend_ax.set_xticks([])
+    legend_ax.set_yticks([])
+
+    # Add orientation-specific title
+    if plot_orientation == "amplitude_as_rows":
+        title = "Evoked Responses (Amplitudes as Rows, Channels as Columns)"
+    else:  # amplitude_as_columns
+        title = "Evoked Responses (Amplitudes as Columns, Channels as Rows)"
+
+    plt.suptitle(
+        title,
+        fontsize=TITLE_SIZE,
+        fontweight="bold",
+        y=0.98,
+    )
+
+    # Use tight_layout with MINIMAL PADDING
+    plt.tight_layout(rect=[0, 0, 1, 0.95], h_pad=0.1, w_pad=0.1)
+
+    print(f"Plot complete with orientation: {plot_orientation}")
+    return fig
+
+
 def ls_(path_: Union[Path, str]):
     """
     List directories within the given path.
@@ -79,7 +558,7 @@ dir_list = ls_(drv_path)
 
 
 # %%
-PATH_SELECT = 6
+PATH_SELECT = 5
 data_path = dir_list[PATH_SELECT]
 emg_path = data_path.joinpath(r"RawG.ant")
 hd_path = data_path.joinpath(r"HDEG.ant")
@@ -155,16 +634,16 @@ final_epochs = pl.concat([epoch_stim.data, chnA_stim.data], how="horizontal")
 fs = stream_emg.fs  # Get sampling rate from the stream node
 
 # Create filters with improved visualization
-bandpass_filter = create_bandpass_filter(30, 1000, fs=fs, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=fs)
+bandpass_filter = create_bandpass_filter(30, 4000, fs=fs, order=5)
+notch_filter = create_notch_filter(60, q=120, fs=fs)
 
 # %%
 # Create processors
 notch_processor = FilterProcessor(
-    filter_func=notch_filter.get_filter_function(), overlap_samples=40
+    filter_func=notch_filter.get_filter_function(), overlap_samples=120
 )
 bandpass_processor = FilterProcessor(
-    filter_func=bandpass_filter.get_filter_function(), overlap_samples=40
+    filter_func=bandpass_filter.get_filter_function(), overlap_samples=120
 )
 # %%
 processor_emg = create_processing_node(stream_emg)
@@ -245,7 +724,7 @@ STIM_AMPLITUDE = -750
 CHANNEL = 4
 
 PRE_SAMPLES = int(fs * 0.01)
-POST_SAMPLES = int(fs * 0.05)
+POST_SAMPLES = int(fs * 0.04)
 
 filter_onsets = final_epochs.filter(
     (pl.col("current_amplitude") == STIM_AMPLITUDE) & (pl.col("channel") == CHANNEL)
@@ -266,464 +745,26 @@ plt.plot(template_data["template_mean"])
 
 # %%
 
-# Pre-calculate all templates and statistics
-print("Extracting templates...")
-template_results = {}
-row_max_abs_values = defaultdict(
-    lambda: [0, 0]
-)  # Dictionary to store max abs values per amplitude (row)
-
-# Get unique stimulation amplitudes and channels from the final_epochs dataframe
-unique_amplitudes = final_epochs["current_amplitude"].unique().sort()
-unique_channels = final_epochs["channel"].unique().sort()
-
-# Precompute all templates
-for amplitude in unique_amplitudes:
-    template_results[amplitude] = {}
-
-    for stim_channel in unique_channels:
-        # Get the evoked responses for this combination
-        onsets = final_epochs.filter(
-            (pl.col("current_amplitude") == amplitude)
-            & (pl.col("channel") == stim_channel)
-        )["onset_amp"]
-
-        # Skip if no data for this combination
-        if len(onsets) == 0:
-            template_results[amplitude][stim_channel] = None
-            continue
-
-        try:
-            # Extract waveforms
-            waveforms_data = emg_waveform_analyzer.extract_waveforms(
-                spike_times=onsets, pre_samples=PRE_SAMPLES, post_samples=POST_SAMPLES
-            )
-
-            # Extract template statistics
-            template_data = template_analyzer.extract_template_distributions(
-                waveforms_data[0]
-            )
-
-            # Store the template data
-            template_results[amplitude][stim_channel] = {
-                "template_data": template_data,
-                "n_waveforms": len(onsets),
-            }
-
-            # Calculate and store waveform time axis
-            waveform_length = template_data["template_mean"].shape[0]
-            waveform_time = np.linspace(
-                -PRE_SAMPLES / fs, POST_SAMPLES / fs, waveform_length
-            )
-            waveform_time_ms = waveform_time * 1000
-
-            template_results[amplitude][stim_channel]["time_ms"] = waveform_time_ms
-
-            # Update row-specific max for each recording channel
-            for ch_idx in range(template_data["n_channels"]):
-                mean_waveform = template_data["template_mean"][:, ch_idx]
-                std_waveform = template_data["template_std"][:, ch_idx]
-
-                # Find max absolute value including standard deviation
-                max_abs = max(
-                    abs(np.max(mean_waveform + std_waveform)),
-                    abs(np.min(mean_waveform - std_waveform)),
-                )
-
-                row_max_abs_values[amplitude][ch_idx] = max(
-                    row_max_abs_values[amplitude][ch_idx], max_abs
-                )
-
-        except Exception as e:
-            template_results[amplitude][stim_channel] = {"error": str(e)}
-            print(
-                f"Error processing amplitude {amplitude}, channel {stim_channel}: {str(e)}"
-            )
-
-
-# %%
-from collections import defaultdict
-
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
-import numpy as np
-import polars as pl
-import seaborn as sns
-from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
-
-
-# Helper function to adjust color brightness
-def adjust_color_brightness(color, factor):
-    """Adjust brightness of a color by a factor (0-1)"""
-    # Convert to HSV color space
-    c = mcolors.rgb_to_hsv(color[:3])
-
-    # Adjust value (brightness)
-    c[2] = min(c[2] * factor, 1.0)
-
-    # Convert back to RGB
-    return mcolors.hsv_to_rgb(c)
-
-
-# Set the colorblind-friendly palette
-sns.set_palette("colorblind")
-palette = sns.color_palette("colorblind")
-
-# Add Montserrat font
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Montserrat"]
-
-# Set the style
-sns.set_theme(style="darkgrid")
-
-# Define font sizes with appropriate scaling
-TITLE_SIZE = 18
-SUBTITLE_SIZE = 14  # Reduced for more compact layout
-AXIS_LABEL_SIZE = 12  # Reduced for more compact layout
-TICK_SIZE = 10  # Reduced for more compact layout
-CAPTION_SIZE = 11  # Reduced for more compact layout
-
-# NEW: Define plot orientation - easily switch between layouts
-# 'amplitude_as_rows': amplitude on rows (stim channels on columns)
-# 'amplitude_as_columns': amplitude on columns (stim channels on rows)
-PLOT_ORIENTATION = "amplitude_as_columns"  # Change to 'amplitude_as_rows' if needed
-
-# Fix the y-axis scaling issue - recalculate max abs values for EACH stim channel
-# New nested dictionary structure: {amplitude: {stim_channel: [ch1_max, ch2_max]}}
-row_max_abs_values = defaultdict(lambda: defaultdict(lambda: [0, 0]))
-
-for amplitude in unique_amplitudes:
-    for stim_channel in unique_channels:
-        template_result = template_results[amplitude][stim_channel]
-
-        if template_result is None or "error" in template_result:
-            continue
-
-        template_data = template_result["template_data"]
-
-        for ch_idx in range(template_data["n_channels"]):
-            mean_waveform = template_data["template_mean"][:, ch_idx]
-            std_waveform = template_data["template_std"][:, ch_idx]
-
-            # Find the actual max value in this waveform (mean ± std)
-            max_abs = max(
-                abs(np.max(mean_waveform + std_waveform)),
-                abs(np.min(mean_waveform - std_waveform)),
-            )
-
-            # Update the max abs value for this amplitude, stim channel and recording channel
-            row_max_abs_values[amplitude][stim_channel][ch_idx] = max(
-                row_max_abs_values[amplitude][stim_channel][ch_idx], max_abs
-            )
-
-# Add padding to max values - using less padding to keep scale closer to actual data
-for amp in row_max_abs_values:
-    for stim_ch in row_max_abs_values[amp]:
-        for i in range(len(row_max_abs_values[amp][stim_ch])):
-            row_max_abs_values[amp][stim_ch][i] *= 1.05  # Just 5% padding
-
-# Create a color map for amplitudes/channels based on orientation
-# Using base colors for the data lines and error bands
-if PLOT_ORIENTATION == "amplitude_as_rows":
-    row_colors = {
-        amp: palette[idx % len(palette)] for idx, amp in enumerate(unique_amplitudes)
-    }
-    col_colors = {
-        ch: sns.color_palette("Blues", n_colors=len(unique_channels))[idx]
-        for idx, ch in enumerate(unique_channels)
-    }
-else:  # amplitude_as_columns
-    col_colors = {
-        amp: palette[idx % len(palette)] for idx, amp in enumerate(unique_amplitudes)
-    }
-    row_colors = {
-        ch: sns.color_palette("Blues", n_colors=len(unique_channels))[idx]
-        for idx, ch in enumerate(unique_channels)
-    }
-
-# For labels, always use black instead of the color (as requested)
-label_color = "black"
-
-print("Template extraction complete. Starting plotting...")
-
-# ============== PLOTTING PHASE ==============
-
-# Create figure dimensions based on orientation
-if PLOT_ORIENTATION == "amplitude_as_rows":
-    n_rows = len(unique_amplitudes)
-    n_cols = len(unique_channels)
-    row_items = unique_amplitudes
-    col_items = unique_channels
-    # Figure size adjusted for orientation
-    figsize = (len(unique_channels) * 5, len(unique_amplitudes) * 2.5)
-else:  # amplitude_as_columns
-    n_rows = len(unique_channels)
-    n_cols = len(unique_amplitudes)
-    row_items = unique_channels
-    col_items = unique_amplitudes
-    # Figure size adjusted for orientation - make columns narrower
-    figsize = (len(unique_amplitudes) * 4, len(unique_channels) * 3)
-
-# Create figure with GridSpec - REDUCED HEIGHT for tighter vertical spacing
-fig = plt.figure(figsize=figsize)
-
-# Outer grid: determined by orientation
-gs_outer = GridSpec(
-    n_rows, n_cols, figure=fig, wspace=0.25, hspace=0.15
-)  # Even tighter spacing
-
-# Create the plots using precomputed data
-for row_idx, row_item in enumerate(row_items):
-    for col_idx, col_item in enumerate(col_items):
-        # Get amplitude and stim channel based on orientation
-        if PLOT_ORIENTATION == "amplitude_as_rows":
-            amplitude = row_item
-            stim_channel = col_item
-        else:  # amplitude_as_columns
-            amplitude = col_item
-            stim_channel = row_item
-
-        # Get the template data for this combination
-        template_result = template_results[amplitude][stim_channel]
-
-        # Skip if no data for this combination
-        if template_result is None:
-            # Create an empty subplot with message
-            ax = fig.add_subplot(gs_outer[row_idx, col_idx])
-            ax.text(
-                0.5,
-                0.5,
-                "No data available",
-                ha="center",
-                va="center",
-                fontsize=TICK_SIZE,
-                transform=ax.transAxes,
-            )
-            ax.set_xticks([])
-            ax.set_yticks([])
-            continue
-
-        # Check if there was an error
-        if "error" in template_result:
-            # Create an empty subplot with error message
-            ax = fig.add_subplot(gs_outer[row_idx, col_idx])
-            ax.text(
-                0.5,
-                0.5,
-                f"Error: {template_result['error']}",
-                ha="center",
-                va="center",
-                fontsize=TICK_SIZE - 2,
-                transform=ax.transAxes,
-            )
-            ax.set_xticks([])
-            ax.set_yticks([])
-            continue
-
-        # Get the template data and time axis
-        template_data = template_result["template_data"]
-        waveform_time_ms = template_result["time_ms"]
-        n_waveforms = template_result["n_waveforms"]
-
-        # Calculate time limits
-        time_min = waveform_time_ms[0]
-        time_max = waveform_time_ms[-1]
-
-        # Create inner grid for this cell (1 row, 2 columns for the two recording channels)
-        # With equal width/height ratio for each subplot and NO SPACE between them
-        inner_gs = GridSpecFromSubplotSpec(
-            1, 2, subplot_spec=gs_outer[row_idx, col_idx], wspace=0
-        )
-
-        # Get color based on the orientation - for the data itself
-        if PLOT_ORIENTATION == "amplitude_as_rows":
-            base_color = row_colors[amplitude]
-        else:  # amplitude_as_columns
-            base_color = col_colors[amplitude]
-
-        # Get the max values for THIS specific combination of amplitude and stim channel
-        y_limit_ch1 = row_max_abs_values[amplitude][stim_channel][0]
-        y_limit_ch2 = row_max_abs_values[amplitude][stim_channel][1]
-
-        # Use the same max limit for both channels (the larger of the two)
-        # to ensure the pair shares the same y-axis scale
-        pair_y_limit = max(y_limit_ch1, y_limit_ch2)
-
-        # Create subplots for each recording channel
-        shared_y_axis = None  # Will store the first axis to share with the second
-
-        for ch_idx in range(template_data["n_channels"]):
-            # For the second channel (right), share y-axis with the first channel (left)
-            if ch_idx == 0:
-                ax = fig.add_subplot(inner_gs[0, ch_idx])
-                shared_y_axis = ax
-            else:
-                ax = fig.add_subplot(inner_gs[0, ch_idx], sharey=shared_y_axis)
-
-            # Plot mean waveform
-            mean_waveform = template_data["template_mean"][:, ch_idx]
-            std_waveform = template_data["template_std"][:, ch_idx]
-
-            # Adjust color darkness based on channel
-            channel_color = adjust_color_brightness(base_color, 1.0 - 0.3 * ch_idx)
-
-            # Plot with shaded error regions
-            ax.plot(
-                waveform_time_ms, mean_waveform, color=channel_color, linewidth=1.5
-            )  # Thinner lines
-            ax.fill_between(
-                waveform_time_ms,
-                mean_waveform - std_waveform,
-                mean_waveform + std_waveform,
-                color=channel_color,
-                alpha=0.25,  # Reduced for cleaner appearance
-            )
-
-            # Add vertical line at stimulus onset (time=0)
-            ax.axvline(x=0, color="red", linestyle="--", alpha=0.7)
-
-            # Set x-axis to the full time range
-            ax.set_xlim(time_min, time_max)
-
-            # Use the SAME y-axis limit for BOTH channels in this pair
-            # This ensures the pair shares the same scale
-            ax.set_ylim(-pair_y_limit, pair_y_limit)
-
-            # Add horizontal line at y=0
-            ax.axhline(y=0, color="gray", linestyle="-", alpha=0.2)
-
-            # Formatting - COMPACT LABELS AND TICKS
-            if row_idx == n_rows - 1:  # Only bottom row shows x labels
-                ax.set_xlabel("Time (ms)", fontsize=AXIS_LABEL_SIZE)
-            else:
-                ax.set_xlabel("")
-                ax.set_xticklabels([])
-
-            # Y-axis settings:
-            # - Left channel shows y-axis
-            # - Right channel hides y-axis
-            if ch_idx == 0:  # Left channel
-                ax.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE)
-            else:  # Right channel
-                ax.set_ylabel("")
-                ax.tick_params(labelleft=False)  # Hide y tick labels on right plot
-                ax.tick_params(left=False)  # Hide y ticks on right plot
-
-            ax.tick_params(labelsize=TICK_SIZE)
-
-            # Force square aspect ratio for the data box
-            ax.set_box_aspect(1)
-
-            # Add simplified channel title only to the top row
-            if row_idx == 0:
-                ax.set_title(
-                    f"CH{ch_idx + 1:02d}", fontsize=SUBTITLE_SIZE, weight="bold"
-                )
-
-            # Add number of trials to the subplot - smaller and less intrusive
-            ax.text(
-                0.05,
-                0.95,
-                f"n={n_waveforms}",
-                transform=ax.transAxes,
-                fontsize=TICK_SIZE - 2,
-                va="top",
-                ha="left",
-                bbox=dict(boxstyle="round", facecolor="white", alpha=0.5),
-            )
-
-    # Add row label based on orientation
-    row_label_ax = fig.add_subplot(gs_outer[row_idx, :], frameon=False)
-    row_label_ax.set_xticks([])
-    row_label_ax.set_yticks([])
-
-    # Prepare label based on orientation
-    if PLOT_ORIENTATION == "amplitude_as_rows":
-        amp = row_item
-
-        # Calculate average y-axis range for this row to show in the label
-        avg_ch1_range = np.mean(
-            [row_max_abs_values[amp][sc][0] for sc in row_max_abs_values[amp]]
-        )
-        avg_ch2_range = np.mean(
-            [row_max_abs_values[amp][sc][1] for sc in row_max_abs_values[amp]]
-        )
-
-        # Format label for amplitude
-        label_text = f"{amp} μA\n±{avg_ch1_range:.2e}/±{avg_ch2_range:.2e}"
-    else:  # amplitude_as_columns
-        # Format label for stim channel
-        stim_ch = row_item
-        label_text = f"Stim Channel {stim_ch}"
-
-    # Add the row label - now ALWAYS BLACK AND BOLD
-    row_label_ax.text(
-        -0.05,
-        0.5,
-        label_text,
-        ha="right",
-        va="center",
-        fontsize=SUBTITLE_SIZE - 1,
-        weight="bold",
-        color=label_color,  # Use black for all labels
-        transform=row_label_ax.transAxes,
+# Get template data
+template_results, row_max_abs_values, unique_amplitudes, unique_channels = (
+    calculate_templates(
+        final_epochs,
+        emg_waveform_analyzer,
+        template_analyzer,
+        PRE_SAMPLES,
+        POST_SAMPLES,
+        fs,
     )
-
-# Add column labels based on orientation
-for col_idx, col_item in enumerate(col_items):
-    col_label_ax = fig.add_subplot(gs_outer[:, col_idx], frameon=False)
-    col_label_ax.set_xticks([])
-    col_label_ax.set_yticks([])
-
-    # Prepare label based on orientation
-    if PLOT_ORIENTATION == "amplitude_as_rows":
-        # Format label for stim channel
-        stim_ch = col_item
-        label_text = f"Stim Channel {stim_ch}"
-    else:  # amplitude_as_columns
-        # Format label for amplitude
-        amp = col_item
-        label_text = f"{amp} μA"
-
-    # Add the column label - now ALWAYS BLACK AND BOLD
-    col_label_ax.text(
-        0.5,
-        1.01,
-        label_text,
-        ha="center",
-        va="bottom",
-        fontsize=SUBTITLE_SIZE,
-        weight="bold",
-        color=label_color,  # Use black for all labels
-        transform=col_label_ax.transAxes,
-    )
-
-# Add a legend showing colors based on orientation
-legend_ax = fig.add_subplot(111, frameon=False)
-legend_ax.set_xticks([])
-legend_ax.set_yticks([])
-
-# Create legend handles based on orientation
-handles = []
-labels = []
-
-# Add orientation-specific title
-if PLOT_ORIENTATION == "amplitude_as_rows":
-    title = "Evoked Responses (Amplitudes as Rows, Channels as Columns)"
-else:  # amplitude_as_columns
-    title = "Evoked Responses (Amplitudes as Columns, Channels as Rows)"
-
-plt.suptitle(
-    title,
-    fontsize=TITLE_SIZE,
-    fontweight="bold",
-    y=0.98,
 )
 
-# Use tight_layout with MINIMAL PADDING
-plt.tight_layout(rect=[0, 0, 1, 0.95], h_pad=0.1, w_pad=0.1)
-
-print(f"Plot complete with orientation: {PLOT_ORIENTATION}")
+# Plot the data with amplitudes as columns
+fig = plot_evoked_responses(
+    template_results,
+    row_max_abs_values,
+    unique_amplitudes,
+    unique_channels,
+    plot_orientation="amplitude_as_columns",
+)
 plt.show()
 
 # %%

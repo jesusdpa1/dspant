@@ -244,7 +244,7 @@ print(result)
 print(final_epochs["channel"].unique(maintain_order=True))
 
 # %%
-STIM_CHANNEL_SELECT = 10
+STIM_CHANNEL_SELECT = 3
 
 times_filtered = result.filter((pl.col("channel") == STIM_CHANNEL_SELECT))
 
@@ -252,15 +252,17 @@ times_filtered = result.filter((pl.col("channel") == STIM_CHANNEL_SELECT))
 # START_PLOT = int(times_filtered["start"][0]) - 50
 # END_PLOT = int(times_filtered["end"][0]) + 50
 
-# multichannel_fig = plot_multi_channel_data(
-#     filtered_stim_data, fs=fs, time_window=[START_PLOT, END_PLOT]
-# )
-START_PLOT = 1277.3
-END_PLOT = 1277.7
+# # multichannel_fig = plot_multi_channel_data(
+# #     filtered_stim_data, fs=fs, time_window=[START_PLOT, END_PLOT]
+# # )
+START_PLOT = 230
+END_PLOT = 230 + 150
 emg_stim_fig = plot_multi_channel_data(
-    filtered_stim_data, fs=fs, time_window=[START_PLOT, END_PLOT]
+    filtered_stim_data,
+    fs=fs,
+    time_window=[START_PLOT, END_PLOT],
 )
-
+# %%
 hd_stim_fig = plot_multi_channel_data(
     hd_stim_data,
     fs=fs,
@@ -268,6 +270,16 @@ hd_stim_fig = plot_multi_channel_data(
     figsize=(15, 15),
     color_mode="unique",
     color="darkorange",
+)
+# %%
+hd_stim_fig = plot_multi_channel_data(
+    hd_stim_data,
+    channels=[0, 6, 20, 30],
+    fs=fs,
+    time_window=[START_PLOT, END_PLOT],
+    figsize=(15, 15),
+    # color_mode="unique",
+    # color="darkorange",
 )
 # %%
 

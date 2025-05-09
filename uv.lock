@@ -254,6 +254,15 @@ wheels = [
 ]
 
 [[package]]
+name = "colorspace"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/d8/eeecfd2370f71964ee594603c83fe40861e604eeefcf30e8563e6cc597d8/colorspace-1.0.0.tar.gz", hash = "sha256:02e9cedffc8d2f3e30381d2a1b0a841fc90668837e22bf09cd4eb2072d1f5cb0", size = 519198, upload-time = "2024-10-28T18:53:55.781Z" }
+
+[[package]]
 name = "comm"
 version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -533,6 +542,7 @@ name = "dspant"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "colorspace" },
     { name = "dask", extra = ["complete"] },
     { name = "dask-ml" },
     { name = "graphviz" },
@@ -611,6 +621,7 @@ viz = [
 
 [package.metadata]
 requires-dist = [
+    { name = "colorspace", specifier = ">=1.0.0" },
     { name = "dask", extras = ["complete"], specifier = ">=2025.2.0" },
     { name = "dask-ml", specifier = ">=2025.1.0" },
     { name = "dspant-emgproc", marker = "extra == 'all'", editable = "dspant_emgproc" },
