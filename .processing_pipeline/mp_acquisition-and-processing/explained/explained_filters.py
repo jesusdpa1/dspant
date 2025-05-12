@@ -12,9 +12,9 @@ import seaborn as sns
 from matplotlib.gridspec import GridSpec
 from scipy import signal
 
-# Set the colorblind-friendly palette
-sns.set_palette("colorblind")
-palette = sns.color_palette("colorblind")
+# Set color constants
+ORIGINAL_SIGNAL_COLOR = "#2d3142"
+FILTERED_SIGNAL_COLOR = "#0173b2"
 
 # Add Montserrat font
 plt.rcParams["font.family"] = "sans-serif"
@@ -32,11 +32,13 @@ TICK_SIZE = 12
 CAPTION_SIZE = 13
 
 # Define filter parameters
-lowpass_cutoff = 100
-highpass_cutoff = 10  # Increased to better show its effect on our test signal
-bandpass_low = 20
-bandpass_high = 2000
-notch_freq = 60
+LOWPASS_CUTOFF = 100
+HIGHPASS_CUTOFF = 10  # Increased to better show its effect on our test signal
+BANDPASS_LOW = 20
+BANDPASS_HIGH = 2000
+NOTCH_FREQ = 60
+FILTER_ORDER = 4
+SAMPLING_FREQ = 8000
 
 
 # Function to design filters
@@ -48,7 +50,7 @@ def design_butterworth_filter(filter_type, cutoff, order=4, fs=8000):
         b, a = signal.butter(order, [low / nyquist, high / nyquist], btype="band")
     elif filter_type == "notch":
         # Quality factor for notch filter
-        Q = 30
+        Q = 1
         b, a = signal.iirnotch(cutoff / nyquist, Q)
     elif filter_type == "lowpass":
         b, a = signal.butter(order, cutoff / nyquist, btype="low")
@@ -79,7 +81,7 @@ def plot_filter_response(ax, filter_type, cutoff, order=4, fs=8000, title=None):
     freq = w * fs / (2 * np.pi)
 
     # Plot frequency response
-    ax.semilogx(freq, 20 * np.log10(abs(h)), color=palette[0], linewidth=2)
+    ax.semilogx(freq, 20 * np.log10(abs(h)), color=FILTERED_SIGNAL_COLOR, linewidth=2)
     ax.set_xlim(1, 10000)
     ax.set_ylim(-80, 5)
     ax.set_xlabel("Frequency [Hz]", fontsize=AXIS_LABEL_SIZE, weight="bold")
@@ -133,12 +135,18 @@ def plot_time_domain(ax, t, original_signal, filtered_signal, title=None):
     ax.plot(
         t,
         original_signal,
-        color=palette[0],
+        color=ORIGINAL_SIGNAL_COLOR,
         alpha=0.3,
         linewidth=1.5,
         label="Original Signal",
     )
-    ax.plot(t, filtered_signal, color=palette[0], linewidth=2, label="Filtered Signal")
+    ax.plot(
+        t,
+        filtered_signal,
+        color=FILTERED_SIGNAL_COLOR,
+        linewidth=2,
+        label="Filtered Signal",
+    )
 
     ax.set_xlim(0, 0.2)  # Show only first 0.2 seconds for better visibility
     ax.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE, weight="bold")
@@ -154,16 +162,23 @@ def plot_time_domain(ax, t, original_signal, filtered_signal, title=None):
 gs = GridSpec(4, 2, height_ratios=[1, 1, 1, 1])
 
 # Generate test signals
-fs = 8000
-t, lowpass_test, highpass_test, bandpass_test, notch_test = generate_test_signals(fs)
+t, lowpass_test, highpass_test, bandpass_test, notch_test = generate_test_signals(
+    SAMPLING_FREQ
+)
 
 # Design all filters
-lowpass_b, lowpass_a = design_butterworth_filter("lowpass", lowpass_cutoff, 4, fs)
-highpass_b, highpass_a = design_butterworth_filter("highpass", highpass_cutoff, 4, fs)
-bandpass_b, bandpass_a = design_butterworth_filter(
-    "bandpass", [bandpass_low, bandpass_high], 4, fs
+lowpass_b, lowpass_a = design_butterworth_filter(
+    "lowpass", LOWPASS_CUTOFF, FILTER_ORDER, SAMPLING_FREQ
 )
-notch_b, notch_a = design_butterworth_filter("notch", notch_freq, 4, fs)
+highpass_b, highpass_a = design_butterworth_filter(
+    "highpass", HIGHPASS_CUTOFF, FILTER_ORDER, SAMPLING_FREQ
+)
+bandpass_b, bandpass_a = design_butterworth_filter(
+    "bandpass", [BANDPASS_LOW, BANDPASS_HIGH], FILTER_ORDER, SAMPLING_FREQ
+)
+notch_b, notch_a = design_butterworth_filter(
+    "notch", NOTCH_FREQ, FILTER_ORDER, SAMPLING_FREQ
+)
 
 # Apply filters
 lowpass_filtered = signal.filtfilt(lowpass_b, lowpass_a, lowpass_test)
@@ -196,20 +211,20 @@ ax2_1 = plt.subplot(gs[1, 0])
 plot_filter_response(
     ax2_1,
     "lowpass",
-    lowpass_cutoff,
-    4,
-    fs,
-    f"Butterworth Lowpass ({lowpass_cutoff} Hz) Order 4",
+    LOWPASS_CUTOFF,
+    FILTER_ORDER,
+    SAMPLING_FREQ,
+    f"Butterworth Lowpass ({LOWPASS_CUTOFF} Hz) Order {FILTER_ORDER}",
 )
 
 ax2_2 = plt.subplot(gs[1, 1])
 plot_filter_response(
     ax2_2,
     "highpass",
-    highpass_cutoff,
-    4,
-    fs,
-    f"Butterworth Highpass ({highpass_cutoff} Hz) Order 4",
+    HIGHPASS_CUTOFF,
+    FILTER_ORDER,
+    SAMPLING_FREQ,
+    f"Butterworth Highpass ({HIGHPASS_CUTOFF} Hz) Order {FILTER_ORDER}",
 )
 
 # 3. Row: Time domain signals for bandpass and notch
@@ -232,18 +247,25 @@ ax4_1 = plt.subplot(gs[3, 0])
 plot_filter_response(
     ax4_1,
     "bandpass",
-    [bandpass_low, bandpass_high],
-    4,
-    fs,
-    f"Butterworth Bandpass ({bandpass_low}-{bandpass_high} Hz) Order 4",
+    [BANDPASS_LOW, BANDPASS_HIGH],
+    FILTER_ORDER,
+    SAMPLING_FREQ,
+    f"Butterworth Bandpass ({BANDPASS_LOW}-{BANDPASS_HIGH} Hz) Order {FILTER_ORDER}",
 )
 
 ax4_2 = plt.subplot(gs[3, 1])
-plot_filter_response(ax4_2, "notch", notch_freq, 4, fs, f"{notch_freq} Hz Notch Filter")
+plot_filter_response(
+    ax4_2,
+    "notch",
+    NOTCH_FREQ,
+    FILTER_ORDER,
+    SAMPLING_FREQ,
+    f"{NOTCH_FREQ} Hz Notch Filter",
+)
 
 plt.tight_layout()
 plt.subplots_adjust(hspace=0.4)
-# plt.savefig("filter_visualization.png", dpi=300, bbox_inches="tight")
+plt.savefig("./img/explained_filters.png", dpi=600, bbox_inches="tight")
 plt.show()
 
 # %%

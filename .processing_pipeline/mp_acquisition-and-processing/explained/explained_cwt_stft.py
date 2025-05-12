@@ -4,12 +4,15 @@ Author: Jesus Penaloza (Updated with envelope detection and onset detection)
 """
 
 # %%
+import os
 import time
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import seaborn as sns
+from dotenv import load_dotenv
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
@@ -19,12 +22,15 @@ from dspant.processors.filters.iir_filters import (
     create_bandpass_filter,
     create_notch_filter,
 )
-from dspant.vizualization.general_plots import plot_multi_channel_data
+from dspant.visualization.general_plots import plot_multi_channel_data
 
+load_dotenv()
 sns.set_theme(style="darkgrid")
 # %%
-
-base_path = r"E:\jpenalozaa\topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+data_dir = Path(os.getenv("DATA_DIR"))
+base_path = data_dir.joinpath(
+    r"topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+)
 #     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
 
 emg_stream_path = base_path + r"/RawG.ant"
@@ -90,6 +96,11 @@ cwt_frequencies = scale_to_freq(scales, wavelet, len(x), fs=fs)
 stft_frequencies = np.linspace(1, 0, len(stft_data)) * fs / 2
 
 # %%
+"""
+Time-Frequency Analysis Visualization
+Author: Jesus Penaloza (Enhanced for publication-quality plots)
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -98,9 +109,15 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+# CONSTANTS - Using capital letters for constants
+# Color constants
+HIGHLIGHT_COLOR = "#FFCC00"  # Bright mustard yellow
+SIGNAL_COLOR = "#2D3142"  # Dark navy blue for time series
+COLORMAP = "inferno"
+
 # Set the colorblind-friendly palette
 sns.set_palette("colorblind")
-palette = sns.color_palette("colorblind")
+PALETTE = sns.color_palette("colorblind")
 
 # Add Montserrat font
 plt.rcParams["font.family"] = "sans-serif"
@@ -116,220 +133,219 @@ AXIS_LABEL_SIZE = 14
 TICK_SIZE = 12
 CAPTION_SIZE = 13
 
+# Signal processing parameters
+CONTRAST_STFT = 0.7  # Lower values increase contrast
+CONTRAST_CWT = 0.7  # Adjust based on your data
+
 # Define data range
-channel = 0
-start_long = int(0 * fs)
-end_long = int(5 * fs)
+CHANNEL = 0
+START_LONG = int(0 * fs)
+END_LONG = int(5 * fs)
 
 # Define zoom window (adjust as needed)
-zoom_start = int(2 * fs)
-zoom_end = int(3 * fs)  # 1 second window
+ZOOM_START = int(2 * fs)
+ZOOM_END = int(3 * fs)  # 1 second window
 
 # Get time values for the zoom highlight box
-zoom_start_time = zoom_start / fs
-zoom_end_time = zoom_end / fs
-zoom_width = zoom_end_time - zoom_start_time
+ZOOM_START_TIME = ZOOM_START / fs
+ZOOM_END_TIME = ZOOM_END / fs
+ZOOM_WIDTH = ZOOM_END_TIME - ZOOM_START_TIME
+
+# Define frequency range for visualization
+MAX_FREQ = 4000
+MIN_FREQ = 20
 
 # Get raw data
-x = base_data.compute()[:, 0]
-x_long = x[start_long:end_long]
-x_zoom = x[zoom_start:zoom_end]
+X = base_data.compute()[:, CHANNEL]
+X_LONG = X[START_LONG:END_LONG]
+X_ZOOM = X[ZOOM_START:ZOOM_END]
 
 # Extract data for the long recording
-stft_channel_long = stft_data[:, start_long:end_long]
-cwt_channel_long = np.flipud(cwt_data[:, start_long:end_long])
+STFT_CHANNEL_LONG = stft_data[:, START_LONG:END_LONG]
+CWT_CHANNEL_LONG = np.flipud(cwt_data[:, START_LONG:END_LONG])
 
 # Extract data for the zoomed section
-stft_channel_zoom = stft_data[:, zoom_start:zoom_end]
-cwt_channel_zoom = np.flipud(cwt_data[:, zoom_start:zoom_end])
+STFT_CHANNEL_ZOOM = stft_data[:, ZOOM_START:ZOOM_END]
+CWT_CHANNEL_ZOOM = np.flipud(cwt_data[:, ZOOM_START:ZOOM_END])
 
 # Create time arrays
-time_long = np.linspace(0, 5, end_long - start_long)  # 0 to 5 seconds
-time_zoom = np.linspace(0, 1, zoom_end - zoom_start)  # Zoom window time
+TIME_LONG = np.linspace(0, 5, END_LONG - START_LONG)  # 0 to 5 seconds
+TIME_ZOOM = np.linspace(0, 1, ZOOM_END - ZOOM_START)  # Zoom window time
 
-# Filter frequencies below 4000 Hz for all plots
-stft_mask = stft_frequencies < 4000
-stft_freqs_filtered = stft_frequencies[stft_mask]
-stft_channel_long_filtered = stft_channel_long[stft_mask, :]
-stft_channel_zoom_filtered = stft_channel_zoom[stft_mask, :]
+# Filter frequencies below MAX_FREQ Hz for all plots
+STFT_MASK = stft_frequencies < MAX_FREQ
+STFT_FREQS_FILTERED = stft_frequencies[STFT_MASK]
+STFT_CHANNEL_LONG_FILTERED = STFT_CHANNEL_LONG[STFT_MASK, :]
+STFT_CHANNEL_ZOOM_FILTERED = STFT_CHANNEL_ZOOM[STFT_MASK, :]
 
-cwt_mask = cwt_frequencies < 4000
-cwt_freqs_filtered = cwt_frequencies[cwt_mask]
-cwt_channel_long_filtered = cwt_channel_long[cwt_mask, :]
-cwt_channel_zoom_filtered = cwt_channel_zoom[cwt_mask, :]
-
-# CONTRAST ENHANCEMENT: Apply power normalization to enhance contrast
-stft_power = 0.7  # Lower values increase contrast
-cwt_power = 0.7  # Adjust based on your data
-
-# Create figure with GridSpec for custom layout
-fig = plt.figure(figsize=(20, 16))  # Increased height for 3 rows
-gs = GridSpec(3, 5, width_ratios=[1, 1, 1, 1, 1])  # Removed the colorbar column
-
-# Mustard yellow highlighter color and dark navy blue for time series
-highlight_color = "#FFCC00"  # Bright mustard yellow
-dark_navy_blue = "#2D3142"  # Dark navy blue for time series
-cmap = "inferno"
+CWT_MASK = cwt_frequencies < MAX_FREQ
+CWT_FREQS_FILTERED = cwt_frequencies[CWT_MASK]
+CWT_CHANNEL_LONG_FILTERED = CWT_CHANNEL_LONG[CWT_MASK, :]
+CWT_CHANNEL_ZOOM_FILTERED = CWT_CHANNEL_ZOOM[CWT_MASK, :]
 
 # Calculate min/max values for each transform for normalization
-stft_min = np.percentile(np.abs(stft_channel_long_filtered), 5)
-stft_max = np.percentile(np.abs(stft_channel_long_filtered), 99)
+STFT_MIN = np.percentile(np.abs(STFT_CHANNEL_LONG_FILTERED), 5)
+STFT_MAX = np.percentile(np.abs(STFT_CHANNEL_LONG_FILTERED), 99)
 
-cwt_min = np.percentile(np.abs(cwt_channel_long_filtered), 5)
-cwt_max = np.percentile(np.abs(cwt_channel_long_filtered), 99)
+CWT_MIN = np.percentile(np.abs(CWT_CHANNEL_LONG_FILTERED), 5)
+CWT_MAX = np.percentile(np.abs(CWT_CHANNEL_LONG_FILTERED), 99)
+
+# Create figure with GridSpec for custom layout
+FIG = plt.figure(figsize=(20, 16))  # Increased height for 3 rows
+GS = GridSpec(3, 5, width_ratios=[1, 1, 1, 1, 1])  # Removed the colorbar column
 
 # Plot 1: Raw Data (first row, spanning first 4 columns)
-ax_raw = fig.add_subplot(gs[0, 0:4])
-ax_raw.plot(time_long, x_long, color=dark_navy_blue, linewidth=1.5)
-ax_raw.set_xlim(0, 5)
-ax_raw.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_raw.tick_params(labelsize=TICK_SIZE)
-ax_raw.set_title("Filtered", fontsize=SUBTITLE_SIZE, weight="bold")
+AX_RAW = FIG.add_subplot(GS[0, 0:4])
+AX_RAW.plot(TIME_LONG, X_LONG, color=SIGNAL_COLOR, linewidth=1.5)
+AX_RAW.set_xlim(0, 5)
+AX_RAW.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
+AX_RAW.tick_params(labelsize=TICK_SIZE)
+AX_RAW.set_title("Filtered", fontsize=SUBTITLE_SIZE, weight="bold")
 
 # Add highlight box for Raw data zoomed region
-y_min, y_max = ax_raw.get_ylim()
-height = y_max - y_min
-raw_rect = Rectangle(
-    (zoom_start_time, y_min),
-    zoom_width,
-    height,
+Y_MIN, Y_MAX = AX_RAW.get_ylim()
+HEIGHT = Y_MAX - Y_MIN
+RAW_RECT = Rectangle(
+    (ZOOM_START_TIME, Y_MIN),
+    ZOOM_WIDTH,
+    HEIGHT,
     linewidth=2,
-    edgecolor=highlight_color,
-    facecolor=highlight_color,
+    edgecolor=HIGHLIGHT_COLOR,
+    facecolor=HIGHLIGHT_COLOR,
     alpha=0.3,
 )
-ax_raw.add_patch(raw_rect)
+AX_RAW.add_patch(RAW_RECT)
 
 # Plot 2: STFT Long (second row, spanning first 4 columns)
-ax_stft = fig.add_subplot(gs[1, 0:4])
-stft_mesh = ax_stft.pcolormesh(
-    time_long,
-    stft_freqs_filtered,
-    np.abs(stft_channel_long_filtered),
-    cmap=cmap,
+AX_STFT = FIG.add_subplot(GS[1, 0:4])
+STFT_MESH = AX_STFT.pcolormesh(
+    TIME_LONG,
+    STFT_FREQS_FILTERED,
+    np.abs(STFT_CHANNEL_LONG_FILTERED),
+    cmap=COLORMAP,
     shading="auto",
-    norm=PowerNorm(gamma=stft_power, vmin=stft_min, vmax=stft_max),
+    norm=PowerNorm(gamma=CONTRAST_STFT, vmin=STFT_MIN, vmax=STFT_MAX),
 )
-ax_stft.set_ylim(20, 4000)
-ax_stft.set_xlim(0, 5)
-ax_stft.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_stft.tick_params(labelsize=TICK_SIZE)
-ax_stft.set_title("STFT Scalogram", fontsize=SUBTITLE_SIZE, weight="bold")
+AX_STFT.set_ylim(MIN_FREQ, MAX_FREQ)
+AX_STFT.set_xlim(0, 5)
+AX_STFT.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
+AX_STFT.tick_params(labelsize=TICK_SIZE)
+AX_STFT.set_title("STFT Scalogram", fontsize=SUBTITLE_SIZE, weight="bold")
 
 # Add highlight box for STFT zoomed region
-y_min, y_max = ax_stft.get_ylim()
-height = y_max - y_min
-stft_rect = Rectangle(
-    (zoom_start_time, y_min),
-    zoom_width,
-    height,
+Y_MIN, Y_MAX = AX_STFT.get_ylim()
+HEIGHT = Y_MAX - Y_MIN
+STFT_RECT = Rectangle(
+    (ZOOM_START_TIME, Y_MIN),
+    ZOOM_WIDTH,
+    HEIGHT,
     linewidth=2,
-    edgecolor=highlight_color,
-    facecolor=highlight_color,
+    edgecolor=HIGHLIGHT_COLOR,
+    facecolor=HIGHLIGHT_COLOR,
     alpha=0.3,
 )
-ax_stft.add_patch(stft_rect)
+AX_STFT.add_patch(STFT_RECT)
 
 # Plot 3: CWT Long (third row, spanning first 4 columns)
-ax_cwt = fig.add_subplot(gs[2, 0:4])
-cwt_mesh = ax_cwt.pcolormesh(
-    time_long,
-    cwt_freqs_filtered,
-    np.abs(cwt_channel_long_filtered),
-    cmap=cmap,
+AX_CWT = FIG.add_subplot(GS[2, 0:4])
+CWT_MESH = AX_CWT.pcolormesh(
+    TIME_LONG,
+    CWT_FREQS_FILTERED,
+    np.abs(CWT_CHANNEL_LONG_FILTERED),
+    cmap=COLORMAP,
     shading="auto",
-    norm=PowerNorm(gamma=cwt_power, vmin=cwt_min, vmax=cwt_max),
+    norm=PowerNorm(gamma=CONTRAST_CWT, vmin=CWT_MIN, vmax=CWT_MAX),
 )
-ax_cwt.set_ylim(20, 4000)
-ax_cwt.set_xlim(0, 5)
-ax_cwt.set_xlabel("Time (s)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_cwt.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_cwt.tick_params(labelsize=TICK_SIZE)
-ax_cwt.set_title("CWT Scalogram", fontsize=SUBTITLE_SIZE, weight="bold")
+AX_CWT.set_ylim(MIN_FREQ, MAX_FREQ)
+AX_CWT.set_xlim(0, 5)
+AX_CWT.set_xlabel("Time (s)", fontsize=AXIS_LABEL_SIZE, weight="bold")
+AX_CWT.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
+AX_CWT.tick_params(labelsize=TICK_SIZE)
+AX_CWT.set_title("CWT Scalogram", fontsize=SUBTITLE_SIZE, weight="bold")
 
 # Add highlight box for CWT zoomed region
-y_min, y_max = ax_cwt.get_ylim()
-height = y_max - y_min
-cwt_rect = Rectangle(
-    (zoom_start_time, y_min),
-    zoom_width,
-    height,
+Y_MIN, Y_MAX = AX_CWT.get_ylim()
+HEIGHT = Y_MAX - Y_MIN
+CWT_RECT = Rectangle(
+    (ZOOM_START_TIME, Y_MIN),
+    ZOOM_WIDTH,
+    HEIGHT,
     linewidth=2,
-    edgecolor=highlight_color,
-    facecolor=highlight_color,
+    edgecolor=HIGHLIGHT_COLOR,
+    facecolor=HIGHLIGHT_COLOR,
     alpha=0.3,
 )
-ax_cwt.add_patch(cwt_rect)
+AX_CWT.add_patch(CWT_RECT)
 
 # Plot 4: Raw Data Zoomed (first row, far right)
-ax_raw_zoom = fig.add_subplot(gs[0, 4])
-ax_raw_zoom.plot(time_zoom, x_zoom, color=dark_navy_blue, linewidth=1.5)
-ax_raw_zoom.set_xlim(0, 1)
-ax_raw_zoom.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_raw_zoom.tick_params(labelsize=TICK_SIZE)
-ax_raw_zoom.set_title(
+AX_RAW_ZOOM = FIG.add_subplot(GS[0, 4])
+AX_RAW_ZOOM.plot(TIME_ZOOM, X_ZOOM, color=SIGNAL_COLOR, linewidth=1.5)
+AX_RAW_ZOOM.set_xlim(0, 1)
+AX_RAW_ZOOM.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
+AX_RAW_ZOOM.tick_params(labelsize=TICK_SIZE)
+AX_RAW_ZOOM.set_title(
     "Filtered Signal (Zoomed)",
     fontsize=SUBTITLE_SIZE,
     weight="bold",
 )
 
 # Add empty colorbar-like space for raw zoom plot to make it match others
-divider_raw = make_axes_locatable(ax_raw_zoom)
-cax_raw = divider_raw.append_axes("right", size="5%", pad=0.05)
-cax_raw.axis("off")  # Hide the axis since we don't need a colorbar here
+DIVIDER_RAW = make_axes_locatable(AX_RAW_ZOOM)
+CAX_RAW = DIVIDER_RAW.append_axes("right", size="5%", pad=0.05)
+CAX_RAW.axis("off")  # Hide the axis since we don't need a colorbar here
 
 # Plot 5: STFT Zoomed (second row, far right)
-ax_stft_zoom = fig.add_subplot(gs[1, 4])
-stft_zoom_mesh = ax_stft_zoom.pcolormesh(
-    time_zoom,
-    stft_freqs_filtered,
-    np.abs(stft_channel_zoom_filtered),
-    cmap=cmap,
+AX_STFT_ZOOM = FIG.add_subplot(GS[1, 4])
+STFT_ZOOM_MESH = AX_STFT_ZOOM.pcolormesh(
+    TIME_ZOOM,
+    STFT_FREQS_FILTERED,
+    np.abs(STFT_CHANNEL_ZOOM_FILTERED),
+    cmap=COLORMAP,
     shading="auto",
-    norm=PowerNorm(gamma=stft_power, vmin=stft_min, vmax=stft_max),
+    norm=PowerNorm(gamma=CONTRAST_STFT, vmin=STFT_MIN, vmax=STFT_MAX),
 )
-ax_stft_zoom.set_ylim(20, 4000)
-ax_stft_zoom.set_xlim(0, 1)
-ax_stft_zoom.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_stft_zoom.tick_params(labelsize=TICK_SIZE)
-ax_stft_zoom.set_title(
+AX_STFT_ZOOM.set_ylim(MIN_FREQ, MAX_FREQ)
+AX_STFT_ZOOM.set_xlim(0, 1)
+AX_STFT_ZOOM.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
+AX_STFT_ZOOM.tick_params(labelsize=TICK_SIZE)
+AX_STFT_ZOOM.set_title(
     "STFT (Zoomed)",
     fontsize=SUBTITLE_SIZE,
     weight="bold",
 )
 
 # Add STFT colorbar
-divider_stft = make_axes_locatable(ax_stft_zoom)
-cax_stft = divider_stft.append_axes("right", size="5%", pad=0.05)
-cbar_stft = plt.colorbar(stft_zoom_mesh, cax=cax_stft)
-cbar_stft.ax.tick_params(labelsize=TICK_SIZE)
+DIVIDER_STFT = make_axes_locatable(AX_STFT_ZOOM)
+CAX_STFT = DIVIDER_STFT.append_axes("right", size="5%", pad=0.05)
+CBAR_STFT = plt.colorbar(STFT_ZOOM_MESH, cax=CAX_STFT)
+CBAR_STFT.ax.tick_params(labelsize=TICK_SIZE)
 
 # Plot 6: CWT Zoomed (third row, far right)
-ax_cwt_zoom = fig.add_subplot(gs[2, 4])
-cwt_zoom_mesh = ax_cwt_zoom.pcolormesh(
-    time_zoom,
-    cwt_freqs_filtered,
-    np.abs(cwt_channel_zoom_filtered),
-    cmap=cmap,
+AX_CWT_ZOOM = FIG.add_subplot(GS[2, 4])
+CWT_ZOOM_MESH = AX_CWT_ZOOM.pcolormesh(
+    TIME_ZOOM,
+    CWT_FREQS_FILTERED,
+    np.abs(CWT_CHANNEL_ZOOM_FILTERED),
+    cmap=COLORMAP,
     shading="auto",
-    norm=PowerNorm(gamma=cwt_power, vmin=cwt_min, vmax=cwt_max),
+    norm=PowerNorm(gamma=CONTRAST_CWT, vmin=CWT_MIN, vmax=CWT_MAX),
 )
-ax_cwt_zoom.set_ylim(20, 4000)
-ax_cwt_zoom.set_xlim(0, 1)
-ax_cwt_zoom.set_xlabel("Time (s)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_cwt_zoom.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_cwt_zoom.tick_params(labelsize=TICK_SIZE)
-ax_cwt_zoom.set_title(
+AX_CWT_ZOOM.set_ylim(MIN_FREQ, MAX_FREQ)
+AX_CWT_ZOOM.set_xlim(0, 1)
+AX_CWT_ZOOM.set_xlabel("Time (s)", fontsize=AXIS_LABEL_SIZE, weight="bold")
+AX_CWT_ZOOM.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
+AX_CWT_ZOOM.tick_params(labelsize=TICK_SIZE)
+AX_CWT_ZOOM.set_title(
     "CWT (Zoomed)",
     fontsize=SUBTITLE_SIZE,
     weight="bold",
 )
 
 # Add CWT colorbar
-divider_cwt = make_axes_locatable(ax_cwt_zoom)
-cax_cwt = divider_cwt.append_axes("right", size="5%", pad=0.05)
-cbar_cwt = plt.colorbar(cwt_zoom_mesh, cax=cax_cwt)
-cbar_cwt.ax.tick_params(labelsize=TICK_SIZE)
+DIVIDER_CWT = make_axes_locatable(AX_CWT_ZOOM)
+CAX_CWT = DIVIDER_CWT.append_axes("right", size="5%", pad=0.05)
+CBAR_CWT = plt.colorbar(CWT_ZOOM_MESH, cax=CAX_CWT)
+CBAR_CWT.ax.tick_params(labelsize=TICK_SIZE)
 
 # Add overall title
 plt.suptitle(
@@ -339,5 +355,8 @@ plt.suptitle(
 # Adjust layout
 plt.tight_layout(rect=[0, 0, 1, 0.96])  # Make room for the suptitle
 
+# Save the figure at 600 DPI
+plt.savefig("time_frequency_analysis.png", dpi=600, bbox_inches="tight")
+
+# Show the figure
 plt.show()
-# %%
