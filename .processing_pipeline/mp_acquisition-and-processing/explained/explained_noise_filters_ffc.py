@@ -7,6 +7,7 @@ Author: Jesus Penaloza (Updated with envelope detection and onset detection)
 import time
 
 import matplotlib.pyplot as plt
+import mp_plotting_utils as mpu
 import numpy as np
 import polars as pl
 import seaborn as sns
@@ -28,29 +29,29 @@ from dspant.processors.filters.iir_filters import (
     create_bandpass_filter,
     create_notch_filter,
 )
-from dspant.vizualization.general_plots import plot_multi_channel_data
+from dspant.visualization.general_plots import plot_multi_channel_data
 
-sns.set_theme(style="darkgrid")
+# Set publication style
+mpu.set_publication_style()
+
 # %%
-
-base_path = r"E:\jpenalozaa\papers\2025_mp_emg diaphragm acquisition and processing"
-#     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
-
-emg_stream_path = base_path + r"/noisy_recording.ant"
+# Constants in UPPER CASE
+BASE_PATH = r"E:\jpenalozaa\papers\2025_mp_emg diaphragm acquisition and processing"
+EMG_STREAM_PATH = BASE_PATH + r"/noisy_recording.ant"
 
 # %%
 # Load EMG data
-stream_emg = StreamNode(emg_stream_path)
+stream_emg = StreamNode(EMG_STREAM_PATH)
 stream_emg.load_metadata()
 stream_emg.load_data()
 # Print stream_emg summary
 stream_emg.summarize()
 
-fs = stream_emg.fs  # Get sampling rate from the stream node
+FS = stream_emg.fs  # Get sampling rate from the stream node
 # %%
 # Create filters with improved visualization
-bandpass_filter = create_bandpass_filter(10, 2000, fs=fs, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=fs)
+bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
+notch_filter = create_notch_filter(60, q=60, fs=FS)
 # %%
 # Create processing node with filters
 processor_emg = create_processing_node(stream_emg)
@@ -76,105 +77,193 @@ whp_filter = create_wp_harmonic_removal(60)
 # Apply filters and plot results
 raw_data = stream_emg.data.persist()
 filter_data = processor_emg.process(group=["filters"]).persist()
-ffc_data = ffc_filter.process(filter_data, fs).persist()
-whp_data = whp_filter.process(filter_data[0:1000000], fs).persist()
+ffc_data = ffc_filter.process(filter_data, FS).persist()
+whp_data = whp_filter.process(filter_data[0:1000000], FS).persist()
 # %%
-start = int(fs * 5)
-end = int(fs * 10)
-base_data = filter_data[start:end, :]
+START = int(FS * 5)
+END = int(FS * 10)
+base_data = filter_data[START:END, :]
 
 # %%
-raw_fig = plot_multi_channel_data(raw_data, fs=fs, time_window=[0, 10])
-filtered_fig = plot_multi_channel_data(filter_data, fs=fs, time_window=[0, 10])
-ffc_fig = plot_multi_channel_data(ffc_data, fs=fs, time_window=[0, 10])
-whp_fig = plot_multi_channel_data(whp_data, fs=fs, time_window=[0, 10])
+raw_fig = plot_multi_channel_data(raw_data, fs=FS, time_window=[0, 10])
+filtered_fig = plot_multi_channel_data(filter_data, fs=FS, time_window=[0, 10])
+ffc_fig = plot_multi_channel_data(ffc_data, fs=FS, time_window=[0, 10])
+whp_fig = plot_multi_channel_data(whp_data, fs=FS, time_window=[0, 10])
 # %%
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
-from matplotlib.gridspec import GridSpec
-from matplotlib.patches import Rectangle
 
-# Set the colorblind-friendly palette
-sns.set_palette("colorblind")
-palette = sns.color_palette("colorblind")
-
-# Add Montserrat font
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Montserrat"]
-
-# Set the style
-sns.set_theme(style="darkgrid")
-
-# Define font sizes with appropriate scaling
-TITLE_SIZE = 18
-SUBTITLE_SIZE = 16
-AXIS_LABEL_SIZE = 14
-TICK_SIZE = 12
-CAPTION_SIZE = 13
+# Define color palette - maintaining dark navy and using colorblind-friendly colors
+DARK_GREY_NAVY = "#2D3142"  # Dark navy for raw signals
+FILTER_COLORS = {
+    "bandpass": mpu.COLORS["blue"],
+    "ffc": mpu.COLORS["orange"],
+    "wavelet": mpu.COLORS["green"],
+}
+HIGHLIGHT_COLOR = mpu.COLORS["purple"]  # For zoom highlighting
 
 # Define data range
-start = 0
-end = int(10 * fs)
-zoom_start = int(1.9 * fs)
-zoom_end = int(2.2 * fs)
+DATA_START = 0
+DATA_END = int(10 * FS)
+ZOOM_START = int(1.9 * FS)
+ZOOM_END = int(2.2 * FS)
 
 # Get time values for the zoom highlight box
-zoom_start_time = zoom_start / fs
-zoom_end_time = zoom_end / fs
-zoom_width = zoom_end_time - zoom_start_time
+ZOOM_START_TIME = ZOOM_START / FS
+ZOOM_END_TIME = ZOOM_END / FS
+ZOOM_WIDTH = ZOOM_END_TIME - ZOOM_START_TIME
 
 # Create figure with GridSpec for custom layout
 # 4 rows, 5 columns with the right side being 1/4 of the left
 fig = plt.figure(figsize=(20, 16))
-gs = GridSpec(4, 5, width_ratios=[1, 1, 1, 1, 1])
-
-# Darker grey with navy tint
-dark_grey_navy = "#2D3142"
-
-# Choose a distinct color for the highlight box (orange from the colorblind palette)
-highlight_color = palette[0]  # Using a distinct color from the palette
+gs = mpu.GridSpec(4, 5, width_ratios=[1, 1, 1, 1, 1])
 
 # Calculate time arrays
-time_array = np.arange(end - start) / fs
-zoom_time_array = np.arange(zoom_end - zoom_start) / fs
+time_array = np.arange(DATA_END - DATA_START) / FS
+zoom_time_array = np.arange(ZOOM_END - ZOOM_START) / FS
+
+
+# Improved panel label function
+def add_panel_label(
+    ax,
+    label,
+    position="top-left",
+    offset_factor=0.1,
+    fontsize=None,
+    fontweight="bold",
+    color="black",
+):
+    """
+    Add a panel label (A, B, C, etc.) to a subplot with adaptive positioning.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes object to add the label to
+    label : str
+        Label text (typically a single letter like 'A', 'B', etc.)
+    position : str
+        Position of the label relative to the subplot. Options:
+        'top-left' (default), 'top-right', 'bottom-left', 'bottom-right'
+    offset_factor : float
+        Factor to determine the offset relative to subplot width/height.
+        Smaller values place the label closer to the subplot.
+        Typical values range from 0.05 to 0.2.
+    fontsize : int, optional
+        Font size for the label. If None, uses the FONT_SIZES["panel_label"]
+    fontweight : str
+        Font weight for the label
+    color : str
+        Color for the label text
+    """
+    # Get the position of the axes in figure coordinates
+    bbox = ax.get_position()
+    fig = plt.gcf()
+
+    # Set default font size if not specified
+    if fontsize is None:
+        fontsize = mpu.FONT_SIZES["panel_label"]
+
+    # Calculate offset based on subplot size and offset factor
+    # This will scale the offset proportionally to the subplot size
+    x_offset = bbox.width * offset_factor
+    y_offset = bbox.height * offset_factor
+
+    # Determine position coordinates based on selected position
+    if position == "top-left":
+        x = bbox.x0 - x_offset
+        y = bbox.y1 + y_offset
+    elif position == "top-right":
+        x = bbox.x1 + x_offset
+        y = bbox.y1 + y_offset
+    elif position == "bottom-left":
+        x = bbox.x0 - x_offset
+        y = bbox.y0 - y_offset
+    elif position == "bottom-right":
+        x = bbox.x1 + x_offset
+        y = bbox.y0 - y_offset
+    else:
+        # Default to top-left if invalid position
+        x = bbox.x0 - x_offset
+        y = bbox.y1 + y_offset
+
+    # Determine text alignment based on position
+    if "left" in position:
+        ha = "right"
+    else:
+        ha = "left"
+
+    if "top" in position:
+        va = "bottom"
+    else:
+        va = "top"
+
+    # Position the label outside the subplot
+    fig.text(
+        x,
+        y,
+        label,
+        fontsize=fontsize,
+        fontweight=fontweight,
+        va=va,
+        ha=ha,
+        color=color,
+    )
+
 
 # Plot 1: Original Raw Data (spanning first 4 columns)
 ax_raw = fig.add_subplot(gs[0, 0:4])
-ax_raw.plot(time_array, raw_data[start:end, 0], color=dark_grey_navy, linewidth=2)
-ax_raw.set_xlim(0, 10)
-ax_raw.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_raw.tick_params(labelsize=TICK_SIZE)
-ax_raw.set_title("Raw EMG Signal", fontsize=SUBTITLE_SIZE, weight="bold")
+ax_raw.plot(
+    time_array, raw_data[DATA_START:DATA_END, 0], color=DARK_GREY_NAVY, linewidth=2
+)
+mpu.format_axis(
+    ax_raw,
+    title="Raw EMG Signal",
+    xlabel=None,
+    ylabel="Amplitude",
+    xlim=(0, 10),
+)
 
 # Plot 2: Bandpass Filtered Data
 ax_bp = fig.add_subplot(gs[1, 0:4])
-ax_bp.plot(time_array, filter_data[start:end, 0], color=palette[0], linewidth=2)
-ax_bp.set_xlim(0, 10)
-ax_bp.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_bp.tick_params(labelsize=TICK_SIZE)
-ax_bp.set_title(
-    "Bandpass + Notch Filtered Signal", fontsize=SUBTITLE_SIZE, weight="bold"
+ax_bp.plot(
+    time_array,
+    filter_data[DATA_START:DATA_END, 0],
+    color=FILTER_COLORS["bandpass"],
+    linewidth=2,
+)
+mpu.format_axis(
+    ax_bp,
+    title="Bandpass + Notch Filtered Signal",
+    xlabel=None,
+    ylabel="Amplitude",
+    xlim=(0, 10),
 )
 
 # Plot 3: FFC Filtered Data
 ax_ffc = fig.add_subplot(gs[2, 0:4])
-ax_ffc.plot(time_array, ffc_data[start:end, 0], color=palette[1], linewidth=2)
-ax_ffc.set_xlim(0, 10)
-ax_ffc.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_ffc.tick_params(labelsize=TICK_SIZE)
-ax_ffc.set_title("FFC Notch Filtered Signal", fontsize=SUBTITLE_SIZE, weight="bold")
+ax_ffc.plot(
+    time_array,
+    ffc_data[DATA_START:DATA_END, 0],
+    color=FILTER_COLORS["ffc"],
+    linewidth=2,
+)
+mpu.format_axis(
+    ax_ffc,
+    title="FFC Notch Filtered Signal",
+    xlabel=None,
+    ylabel="Amplitude",
+    xlim=(0, 10),
+)
 
 # Add highlight box for FFC zoomed region using the zoom variables
 y_min, y_max = ax_ffc.get_ylim()
 height = y_max - y_min
-ffc_rect = Rectangle(
-    (zoom_start_time, y_min),
-    zoom_width,
+ffc_rect = plt.Rectangle(
+    (ZOOM_START_TIME, y_min),
+    ZOOM_WIDTH,
     height,
     linewidth=2,
-    edgecolor=highlight_color,
-    facecolor=highlight_color,
+    edgecolor=HIGHLIGHT_COLOR,
+    facecolor=HIGHLIGHT_COLOR,
     alpha=0.2,
 )
 ax_ffc.add_patch(ffc_rect)
@@ -183,28 +272,28 @@ ax_ffc.add_patch(ffc_rect)
 ax_whp = fig.add_subplot(gs[3, 0:4])
 ax_whp.plot(
     time_array[: len(whp_data)],
-    whp_data[start : min(end, len(whp_data)), 0],
-    color=palette[2],
+    whp_data[DATA_START : min(DATA_END, len(whp_data)), 0],
+    color=FILTER_COLORS["wavelet"],
     linewidth=2,
 )
-ax_whp.set_xlim(0, 10)
-ax_whp.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_whp.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_whp.tick_params(labelsize=TICK_SIZE)
-ax_whp.set_title(
-    "Wavelet Packet Harmonic Removal", fontsize=SUBTITLE_SIZE, weight="bold"
+mpu.format_axis(
+    ax_whp,
+    title="Wavelet Packet Harmonic Removal",
+    xlabel="Time [s]",
+    ylabel="Amplitude",
+    xlim=(0, 10),
 )
 
 # Add highlight box for Wavelet zoomed region using the zoom variables
 y_min, y_max = ax_whp.get_ylim()
 height = y_max - y_min
-whp_rect = Rectangle(
-    (zoom_start_time, y_min),
-    zoom_width,
+whp_rect = plt.Rectangle(
+    (ZOOM_START_TIME, y_min),
+    ZOOM_WIDTH,
     height,
     linewidth=2,
-    edgecolor=highlight_color,
-    facecolor=highlight_color,
+    edgecolor=HIGHLIGHT_COLOR,
+    facecolor=HIGHLIGHT_COLOR,
     alpha=0.2,
 )
 ax_whp.add_patch(whp_rect)
@@ -212,34 +301,55 @@ ax_whp.add_patch(whp_rect)
 # Plot 5: FFC Zoomed (spanning 2 rows on the right)
 ax_ffc_zoom = fig.add_subplot(gs[0:2, 4])
 ax_ffc_zoom.plot(
-    zoom_time_array, ffc_data[zoom_start:zoom_end, 0], color=palette[1], linewidth=2
+    zoom_time_array,
+    ffc_data[ZOOM_START:ZOOM_END, 0],
+    color=FILTER_COLORS["ffc"],
+    linewidth=2,
 )
-ax_ffc_zoom.set_xlim(0, zoom_width)
-ax_ffc_zoom.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_ffc_zoom.tick_params(labelsize=TICK_SIZE)
-ax_ffc_zoom.set_title("FFC Filter (Zoomed)", fontsize=SUBTITLE_SIZE, weight="bold")
+mpu.format_axis(
+    ax_ffc_zoom,
+    title="FFC Filter (Zoomed)",
+    xlabel=None,
+    ylabel="Amplitude",
+    xlim=(0, ZOOM_WIDTH),
+)
 
 # Plot 6: Wavelet Zoomed (spanning 2 rows on the right)
 ax_whp_zoom = fig.add_subplot(gs[2:4, 4])
 ax_whp_zoom.plot(
-    zoom_time_array[: min(len(zoom_time_array), zoom_end - zoom_start)],
-    whp_data[zoom_start : min(zoom_end, len(whp_data)), 0],
-    color=palette[2],
+    zoom_time_array[: min(len(zoom_time_array), ZOOM_END - ZOOM_START)],
+    whp_data[ZOOM_START : min(ZOOM_END, len(whp_data)), 0],
+    color=FILTER_COLORS["wavelet"],
     linewidth=2,
 )
-ax_whp_zoom.set_xlim(0, zoom_width)
-ax_whp_zoom.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_whp_zoom.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-ax_whp_zoom.tick_params(labelsize=TICK_SIZE)
-ax_whp_zoom.set_title("Wavelet Filter (Zoomed)", fontsize=SUBTITLE_SIZE, weight="bold")
-
-# Add overall title
-plt.suptitle(
-    "EMG Signal Filtering Comparison", fontsize=TITLE_SIZE, fontweight="bold", y=0.98
+mpu.format_axis(
+    ax_whp_zoom,
+    title="Wavelet Filter (Zoomed)",
+    xlabel="Time [s]",
+    ylabel="Amplitude",
+    xlim=(0, ZOOM_WIDTH),
 )
 
-# Adjust layout
+# Finalize the figure with our utility function
+mpu.finalize_figure(
+    fig,
+    title="EMG Signal Filtering Comparison",
+    title_y=0.98,
+)
+
+# Apply tight layout to finalize positions before adding panel labels
 plt.tight_layout(rect=[0, 0, 1, 0.96])  # Make room for the suptitle
+
+# Add panel labels with adaptive positioning
+add_panel_label(ax_raw, "A", offset_factor=0.05)
+add_panel_label(ax_bp, "B", offset_factor=0.05)
+add_panel_label(ax_ffc, "C", offset_factor=0.05)
+add_panel_label(ax_whp, "D", offset_factor=0.05)
+add_panel_label(ax_ffc_zoom, "E", offset_factor=0.05)
+add_panel_label(ax_whp_zoom, "F", offset_factor=0.05)
+
+# Save figure if needed
+mpu.save_figure(fig, "emg_filtering_comparison.png", dpi=600)
 
 plt.show()
 

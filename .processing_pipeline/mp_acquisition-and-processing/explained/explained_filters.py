@@ -1,35 +1,19 @@
 """
 /filters_explained.py
 Author: jpenalozaa
-Description: code to plot filter configurations
-
+Description: Code to plot filter configurations using mp_plotting_utils for standardized visualization
 """
 
 # %%
 import matplotlib.pyplot as plt
+import mp_plotting_utils as mpu
 import numpy as np
-import seaborn as sns
-from matplotlib.gridspec import GridSpec
 from scipy import signal
 
-# Set color constants
-ORIGINAL_SIGNAL_COLOR = "#2d3142"
-FILTERED_SIGNAL_COLOR = "#0173b2"
-
-# Add Montserrat font
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Montserrat"]
-
-# Set the figure size and style
-plt.figure(figsize=(14, 14))
-sns.set_theme(style="darkgrid")
-
-# Define font sizes with appropriate scaling
-TITLE_SIZE = 18
-SUBTITLE_SIZE = 16
-AXIS_LABEL_SIZE = 14
-TICK_SIZE = 12
-CAPTION_SIZE = 13
+# Define colors - maintaining original dark navy and blue scheme
+ORIGINAL_SIGNAL_COLOR = "#2d3142"  # Dark navy for original signal (keeping original)
+FILTERED_SIGNAL_COLOR = "#0173b2"  # Blue for filtered signal (keeping original)
+CUTOFF_COLOR = mpu.COLORS["green"]  # Green for cutoff markers (colorblind-friendly)
 
 # Define filter parameters
 LOWPASS_CUTOFF = 100
@@ -82,26 +66,29 @@ def plot_filter_response(ax, filter_type, cutoff, order=4, fs=8000, title=None):
 
     # Plot frequency response
     ax.semilogx(freq, 20 * np.log10(abs(h)), color=FILTERED_SIGNAL_COLOR, linewidth=2)
-    ax.set_xlim(1, 10000)
-    ax.set_ylim(-80, 5)
-    ax.set_xlabel("Frequency [Hz]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.set_ylabel("Magnitude [dB]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.tick_params(labelsize=TICK_SIZE)
+
+    # Format the axis with our utility function
+    mpu.format_axis(
+        ax,
+        title=title,
+        xlabel="Frequency [Hz]",
+        ylabel="Magnitude [dB]",
+        xlim=(1, 10000),
+        ylim=(-80, 5),
+        xscale="log",
+    )
 
     # Add cutoff frequency markers
     for cf in cutoff_marker:
-        ax.axvline(x=cf, color="r", linestyle="--", alpha=0.7)
-        ax.text(
-            cf,
-            -75,
-            f"{cf} Hz",
-            color="r",
-            horizontalalignment="center",
-            verticalalignment="center",
+        mpu.add_cutoff_marker(
+            ax,
+            x=cf,
+            label=f"{cf} Hz",
+            y_pos=-75,
+            color=CUTOFF_COLOR,
+            linestyle="--",
+            alpha=0.7,
         )
-
-    if title:
-        ax.set_title(title, fontsize=SUBTITLE_SIZE, weight="bold")
 
     return b, a
 
@@ -148,18 +135,120 @@ def plot_time_domain(ax, t, original_signal, filtered_signal, title=None):
         label="Filtered Signal",
     )
 
-    ax.set_xlim(0, 0.2)  # Show only first 0.2 seconds for better visibility
-    ax.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.tick_params(labelsize=TICK_SIZE)
-    ax.legend(loc="upper right", fontsize=TICK_SIZE)
+    # Format the axis with our utility function
+    mpu.format_axis(
+        ax,
+        title=title,
+        xlabel="Time [s]",
+        ylabel="Amplitude",
+        xlim=(0, 0.2),  # Show only first 0.2 seconds for better visibility
+    )
 
-    if title:
-        ax.set_title(title, fontsize=SUBTITLE_SIZE, weight="bold")
+    # Add legend
+    mpu.add_legend(ax, loc="upper right")
 
 
-# Create a grid for multiple subplots - 4x2 grid
-gs = GridSpec(4, 2, height_ratios=[1, 1, 1, 1])
+# Improved panel label function
+def add_panel_label(
+    ax,
+    label,
+    position="top-left",
+    offset_factor=0.1,
+    fontsize=20,
+    fontweight="bold",
+    fontfamily="Montserrat",
+    color="black",
+):
+    """
+    Add a panel label (A, B, C, etc.) to a subplot with adaptive positioning.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes object to add the label to
+    label : str
+        Label text (typically a single letter like 'A', 'B', etc.)
+    position : str
+        Position of the label relative to the subplot. Options:
+        'top-left' (default), 'top-right', 'bottom-left', 'bottom-right'
+    offset_factor : float
+        Factor to determine the offset relative to subplot width/height.
+        Smaller values place the label closer to the subplot.
+        Typical values range from 0.05 to 0.2.
+    fontsize : int
+        Font size for the label
+    fontweight : str
+        Font weight for the label
+    fontfamily : str
+        Font family for the label
+    color : str
+        Color for the label text
+    """
+    # Get the position of the axes in figure coordinates
+    bbox = ax.get_position()
+    fig = plt.gcf()
+
+    # Calculate width and height of the figure
+    fig_width, fig_height = fig.get_size_inches()
+
+    # Calculate offset based on subplot size and offset factor
+    # This will scale the offset proportionally to the subplot size
+    x_offset = bbox.width * offset_factor
+    y_offset = bbox.height * offset_factor
+
+    # Determine position coordinates based on selected position
+    if position == "top-left":
+        x = bbox.x0 - x_offset
+        y = bbox.y1 + y_offset
+    elif position == "top-right":
+        x = bbox.x1 + x_offset
+        y = bbox.y1 + y_offset
+    elif position == "bottom-left":
+        x = bbox.x0 - x_offset
+        y = bbox.y0 - y_offset
+    elif position == "bottom-right":
+        x = bbox.x1 + x_offset
+        y = bbox.y0 - y_offset
+    else:
+        # Default to top-left if invalid position
+        x = bbox.x0 - x_offset
+        y = bbox.y1 + y_offset
+
+    # Determine text alignment based on position
+    if "left" in position:
+        ha = "right"
+    else:
+        ha = "left"
+
+    if "top" in position:
+        va = "bottom"
+    else:
+        va = "top"
+
+    # Position the label outside the subplot
+    fig.text(
+        x,
+        y,
+        label,
+        fontsize=fontsize,
+        fontweight=fontweight,
+        va=va,
+        ha=ha,
+        color=color,
+        fontfamily=fontfamily,
+    )
+
+
+# Set publication style
+mpu.set_publication_style()
+
+# Create figure with grid
+fig, gs = mpu.create_figure_grid(
+    rows=4,
+    cols=2,
+    height_ratios=[1, 1, 1, 1],
+    figsize=(14, 14),
+)
 
 # Generate test signals
 t, lowpass_test, highpass_test, bandpass_test, notch_test = generate_test_signals(
@@ -186,7 +275,6 @@ highpass_filtered = signal.filtfilt(highpass_b, highpass_a, highpass_test)
 bandpass_filtered = signal.filtfilt(bandpass_b, bandpass_a, bandpass_test)
 notch_filtered = signal.filtfilt(notch_b, notch_a, notch_test)
 
-# Following layout you requested:
 # 1. Row: Time domain signals for lowpass and highpass
 ax1_1 = plt.subplot(gs[0, 0])
 plot_time_domain(
@@ -263,9 +351,31 @@ plot_filter_response(
     f"{NOTCH_FREQ} Hz Notch Filter",
 )
 
+# Finalize the figure
+mpu.finalize_figure(
+    fig,
+    title="Different Filtering Techniques: Lowpass, Highpass, Bandpass, and Notch",
+    title_y=1.02,
+    hspace=0.4,
+)
+
+# Use tight_layout to finalize positions before adding panel labels
 plt.tight_layout()
-plt.subplots_adjust(hspace=0.4)
-plt.savefig("./img/explained_filters.png", dpi=600, bbox_inches="tight")
+
+# Add panel labels with the improved function - using consistent offset_factor
+add_panel_label(ax1_1, "A", position="top-left", offset_factor=0.05)
+add_panel_label(ax1_2, "B", position="top-left", offset_factor=0.05)
+add_panel_label(ax2_1, "C", position="top-left", offset_factor=0.05)
+add_panel_label(ax2_2, "D", position="top-left", offset_factor=0.05)
+add_panel_label(ax3_1, "E", position="top-left", offset_factor=0.05)
+add_panel_label(ax3_2, "F", position="top-left", offset_factor=0.05)
+add_panel_label(ax4_1, "G", position="top-left", offset_factor=0.05)
+add_panel_label(ax4_2, "H", position="top-left", offset_factor=0.05)
+
+# Save the figure
+mpu.save_figure(fig, "explained_filters.png", dpi=600)
+
+# Show the plot
 plt.show()
 
 # %%

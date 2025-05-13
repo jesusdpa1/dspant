@@ -2,34 +2,17 @@
 /fir_vs_iir_filters.py
 Author: jpenalozaa
 Description: Code to visualize and compare FIR (Moving Average) and IIR (Butterworth) filters
+Modified: Using mp_plotting_utils for standardized publication formatting with colorblind-friendly palette
+#TODO UPDATE
 """
 
 # %%
 import matplotlib.pyplot as plt
+
+# Import our plotting utilities
+import mp_plotting_utils as mpu
 import numpy as np
-import seaborn as sns
-from matplotlib.gridspec import GridSpec
 from scipy import signal
-
-# Set color constants
-ORIGINAL_SIGNAL_COLOR = "#2d3142"
-FIR_SIGNAL_COLOR = "#0173b2"
-IIR_SIGNAL_COLOR = "#d55e00"
-
-# Add Montserrat font
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Montserrat"]
-
-# Set the figure size and style
-plt.figure(figsize=(14, 12))
-sns.set_theme(style="darkgrid")
-
-# Define font sizes with appropriate scaling
-TITLE_SIZE = 18
-SUBTITLE_SIZE = 16
-AXIS_LABEL_SIZE = 14
-TICK_SIZE = 12
-CAPTION_SIZE = 13
 
 # Define filter parameters
 CUTOFF_FREQ = 50  # Hz - cutoff frequency for both filters
@@ -38,8 +21,11 @@ MA_LENGTH = 51  # Length of moving average filter (make odd for symmetry)
 SAMPLING_FREQ = 8000  # Hz - sampling frequency
 NYQUIST = SAMPLING_FREQ / 2
 
-# Create a grid for multiple subplots - 3x2 grid
-gs = GridSpec(3, 2, height_ratios=[1, 1, 1])
+# Define consistent colors for our signal types - using colorblind-friendly palette
+ORIGINAL_SIGNAL_COLOR = mpu.PRIMARY_COLOR  # Dark navy blue for original signal
+FIR_SIGNAL_COLOR = mpu.COLORS["blue"]  # Blue for FIR filter
+IIR_SIGNAL_COLOR = mpu.COLORS["orange"]  # Orange for IIR filter
+CUTOFF_COLOR = mpu.COLORS["green"]  # Green for cutoff markers
 
 
 # Function to design Butterworth IIR filter
@@ -100,28 +86,29 @@ def plot_filter_response(
     ax.semilogx(
         freq, 20 * np.log10(abs(h)), color=color, linewidth=2, label=filter_name
     )
-    ax.set_xlim(1, fs / 2)
-    ax.set_ylim(-80, 5)
-    ax.set_xlabel("Frequency [Hz]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.set_ylabel("Magnitude [dB]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.tick_params(labelsize=TICK_SIZE)
 
-    # Add cutoff frequency marker
-    ax.axvline(x=CUTOFF_FREQ, color="r", linestyle="--", alpha=0.7)
-    ax.text(
-        CUTOFF_FREQ,
-        -75,
-        f"{CUTOFF_FREQ} Hz",
-        color="r",
-        horizontalalignment="center",
-        verticalalignment="center",
+    # Format the axis with our utility function
+    mpu.format_axis(
+        ax,
+        title=title,
+        xlabel="Frequency [Hz]",
+        ylabel="Magnitude [dB]",
+        xlim=(1, fs / 2),
+        ylim=(-80, 5),
+        xscale="log",
     )
 
-    # Add legend in the bottom left corner
-    ax.legend(loc="lower left", fontsize=TICK_SIZE)
+    # Add cutoff frequency marker
+    mpu.add_cutoff_marker(
+        ax,
+        x=CUTOFF_FREQ,
+        label=f"{CUTOFF_FREQ} Hz",
+        y_pos=-75,
+        color=CUTOFF_COLOR,
+    )
 
-    if title:
-        ax.set_title(title, fontsize=SUBTITLE_SIZE, weight="bold")
+    # Add legend
+    mpu.add_legend(ax, loc="lower left")
 
 
 # Function to plot time domain signals
@@ -151,18 +138,21 @@ def plot_time_domain(
         label="IIR Filtered (Butterworth)",
     )
 
-    if xlim:
-        ax.set_xlim(xlim)
-    else:
-        ax.set_xlim(0, 0.2)  # Show only first 0.2 seconds for better visibility
+    # Set default xlim if not provided
+    if xlim is None:
+        xlim = (0, 0.2)  # Show only first 0.2 seconds for better visibility
 
-    ax.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.tick_params(labelsize=TICK_SIZE)
-    ax.legend(loc="lower left", fontsize=TICK_SIZE)
+    # Format the axis with our utility function
+    mpu.format_axis(
+        ax,
+        title=title,
+        xlabel="Time [s]",
+        ylabel="Amplitude",
+        xlim=xlim,
+    )
 
-    if title:
-        ax.set_title(title, fontsize=SUBTITLE_SIZE, weight="bold")
+    # Add legend
+    mpu.add_legend(ax, loc="lower left")
 
 
 # Function to plot phase response
@@ -194,20 +184,39 @@ def plot_phase_response(ax, b, a, fs=8000, title=None):
         label="IIR (Butterworth)",
     )
 
-    ax.set_xlim(1, fs / 2)
-    ax.set_xlabel("Frequency [Hz]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.set_ylabel("Phase [degrees]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-    ax.tick_params(labelsize=TICK_SIZE)
+    # Format the axis with our utility function
+    mpu.format_axis(
+        ax,
+        title=title,
+        xlabel="Frequency [Hz]",
+        ylabel="Phase [degrees]",
+        xlim=(1, fs / 2),
+        xscale="log",
+    )
 
     # Add cutoff frequency marker
-    ax.axvline(x=CUTOFF_FREQ, color="r", linestyle="--", alpha=0.7)
+    mpu.add_cutoff_marker(
+        ax,
+        x=CUTOFF_FREQ,
+        color=CUTOFF_COLOR,
+        linestyle="--",
+        alpha=0.7,
+    )
 
-    # Add legend in bottom left corner
-    ax.legend(loc="lower left", fontsize=TICK_SIZE)
+    # Add legend
+    mpu.add_legend(ax, loc="lower left")
 
-    if title:
-        ax.set_title(title, fontsize=SUBTITLE_SIZE, weight="bold")
 
+# Set publication style with colorblind-friendly palette
+mpu.set_publication_style(use_seaborn=True)
+
+# Create figure with grid
+fig, gs = mpu.create_figure_grid(
+    rows=3,
+    cols=2,
+    height_ratios=[1, 1, 1],
+    figsize=(14, 12),
+)
 
 # Generate test signals
 t, noisy_signal, step_signal = generate_test_signals(SAMPLING_FREQ)
@@ -288,17 +297,27 @@ plot_time_domain(
     (0.02, 0.05),  # Zoomed to show details
 )
 
-# Add a title for the entire figure
-plt.suptitle(
-    "FIR vs. IIR Filters: Moving Average vs. Butterworth Comparison",
-    fontsize=TITLE_SIZE,
-    weight="bold",
-    y=0.98,
+# Finalize the figure with our utility function
+mpu.finalize_figure(
+    fig,
+    title="FIR vs. IIR Filters: Moving Average vs. Butterworth Comparison",
+    title_y=0.98,
+    left_margin=0.01,
+    hspace=0.4,
+    top_margin=0.12,
 )
 
-plt.tight_layout()
-plt.subplots_adjust(top=0.88, hspace=0.4)
-plt.savefig("./img/fir_vs_iir_filters.png", dpi=600, bbox_inches="tight")
-plt.show()
+# Now add panel labels after layout adjustments
+mpu.add_panel_label(ax1_1, "A", x_offset=-0.04, y_offset=0.02)
+mpu.add_panel_label(ax1_2, "B", x_offset=-0.04, y_offset=0.02)
+mpu.add_panel_label(ax2_1, "C", x_offset=-0.04, y_offset=0.02)
+mpu.add_panel_label(ax2_2, "D", x_offset=-0.04, y_offset=0.02)
+mpu.add_panel_label(ax3_1, "E", x_offset=-0.04, y_offset=0.02)
+mpu.add_panel_label(ax3_2, "F", x_offset=-0.04, y_offset=0.02)
 
+# Save the figure using our utility function
+mpu.save_figure(fig, "fir_vs_iir_filters.png", dpi=600)
+
+# Show the plot
+plt.show()
 # %%

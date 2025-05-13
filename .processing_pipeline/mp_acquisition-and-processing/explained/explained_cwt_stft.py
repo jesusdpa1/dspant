@@ -1,6 +1,6 @@
 """
-Functions to extract onset detection - Complete test script with Rust acceleration
-Author: Jesus Penaloza (Updated with envelope detection and onset detection)
+Time-Frequency Analysis Visualization
+Author: Jesus Penaloza (Enhanced with mp_plotting_utils for publication-quality plots)
 """
 
 # %%
@@ -9,10 +9,17 @@ import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import mp_plotting_utils as mpu
 import numpy as np
 import polars as pl
 import seaborn as sns
 from dotenv import load_dotenv
+from matplotlib.colors import PowerNorm
+from matplotlib.gridspec import GridSpec
+from matplotlib.patches import Rectangle
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from ssqueezepy import Wavelet, cwt, imshow, stft
+from ssqueezepy.experimental import scale_to_freq
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
@@ -24,131 +31,148 @@ from dspant.processors.filters.iir_filters import (
 )
 from dspant.visualization.general_plots import plot_multi_channel_data
 
+# Set publication style
+mpu.set_publication_style()
 load_dotenv()
-sns.set_theme(style="darkgrid")
+
 # %%
-data_dir = Path(os.getenv("DATA_DIR"))
-base_path = data_dir.joinpath(
+# CONSTANTS - Using capital letters for constants
+# Color constants
+HIGHLIGHT_COLOR = "#FFCC00"  # Bright mustard yellow
+SIGNAL_COLOR = mpu.PRIMARY_COLOR  # Dark navy blue for time series
+COLORMAP = "inferno"
+
+
+# Improved panel label function
+def add_panel_label(
+    ax,
+    label,
+    position="top-left",
+    offset_factor=0.1,
+    fontsize=None,
+    fontweight="bold",
+    color="black",
+):
+    """
+    Add a panel label (A, B, C, etc.) to a subplot with adaptive positioning.
+    """
+    # Get the position of the axes in figure coordinates
+    bbox = ax.get_position()
+    fig = plt.gcf()
+
+    # Set default font size if not specified
+    if fontsize is None:
+        fontsize = mpu.FONT_SIZES["panel_label"]
+
+    # Calculate offset based on subplot size and offset factor
+    x_offset = bbox.width * offset_factor
+    y_offset = bbox.height * offset_factor
+
+    # Determine position coordinates based on selected position
+    if position == "top-left":
+        x = bbox.x0 - x_offset
+        y = bbox.y1 + y_offset
+    elif position == "top-right":
+        x = bbox.x1 + x_offset
+        y = bbox.y1 + y_offset
+    elif position == "bottom-left":
+        x = bbox.x0 - x_offset
+        y = bbox.y0 - y_offset
+    elif position == "bottom-right":
+        x = bbox.x1 + x_offset
+        y = bbox.y0 - y_offset
+    else:
+        # Default to top-left if invalid position
+        x = bbox.x0 - x_offset
+        y = bbox.y1 + y_offset
+
+    # Determine text alignment based on position
+    if "left" in position:
+        ha = "right"
+    else:
+        ha = "left"
+
+    if "top" in position:
+        va = "bottom"
+    else:
+        va = "top"
+
+    # Position the label outside the subplot
+    fig.text(
+        x,
+        y,
+        label,
+        fontsize=fontsize,
+        fontweight=fontweight,
+        va=va,
+        ha=ha,
+        color=color,
+    )
+
+
+# %%
+# Load data - This would come from your actual data loading code
+DATA_DIR = Path(os.getenv("DATA_DIR"))
+BASE_PATH = DATA_DIR.joinpath(
     r"topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
 )
-#     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
+EMG_STREAM_PATH = BASE_PATH.joinpath("RawG.ant")
 
-emg_stream_path = base_path + r"/RawG.ant"
-# %%
 # Load EMG data
-stream_emg = StreamNode(emg_stream_path)
+stream_emg = StreamNode(str(EMG_STREAM_PATH))
 stream_emg.load_metadata()
 stream_emg.load_data()
-# Print stream_emg summary
-stream_emg.summarize()
+FS = stream_emg.fs  # Get sampling rate from the stream node
 
-# %%
-# Create and visualize filters before applying them
-fs = stream_emg.fs  # Get sampling rate from the stream node
+# Create filters
+bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
+notch_filter = create_notch_filter(60, q=60, fs=FS)
 
-# Create filters with improved visualization
-bandpass_filter = create_bandpass_filter(10, 2000, fs=fs, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=fs)
-# %%
-bandpass_plot = bandpass_filter.plot_frequency_response()
-notch_plot = notch_filter.plot_frequency_response()
-# %%
 # Create processing node with filters
 processor_emg = create_processing_node(stream_emg)
-# %%
-# Create processors
 notch_processor = FilterProcessor(
     filter_func=notch_filter.get_filter_function(), overlap_samples=40
 )
-# %%
 bandpass_processor = FilterProcessor(
     filter_func=bandpass_filter.get_filter_function(), overlap_samples=40
 )
-# %%
-# Add processors to the processing node
 processor_emg.add_processor([notch_processor, bandpass_processor], group="filters")
 
-# View summary of the processing node
-processor_emg.summarize()
-
-# %%
-# Apply filters and plot results
+# Apply filters and get data
 filter_data = processor_emg.process(group=["filters"]).persist()
-# %%
-multichannel_fig = plot_multi_channel_data(filter_data, fs=fs, time_window=[0, 10])
+
+# Extract data for time-frequency analysis
+START = int(FS * 0)
+END = int(FS * 30)
+base_data = filter_data[START:END, :]
 
 # %%
-start = int(fs * 0)
-end = int(fs * 30)
-base_data = filter_data[start:end, :]
-plt.plot(base_data)
-
-# %%
-from ssqueezepy import Wavelet, cwt, imshow, stft
-from ssqueezepy.experimental import scale_to_freq
-
+# Perform time-frequency analysis
 x = base_data.compute()[:, 0]
 wavelet = Wavelet()
 cwt_data, scales = cwt(x, wavelet)
 stft_data = stft(x)[::-1]
 cwt_data = np.flipud(cwt_data)
-cwt_frequencies = scale_to_freq(scales, wavelet, len(x), fs=fs)
-stft_frequencies = np.linspace(1, 0, len(stft_data)) * fs / 2
+cwt_frequencies = scale_to_freq(scales, wavelet, len(x), fs=FS)
+stft_frequencies = np.linspace(1, 0, len(stft_data)) * FS / 2
 
 # %%
-"""
-Time-Frequency Analysis Visualization
-Author: Jesus Penaloza (Enhanced for publication-quality plots)
-"""
-
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
-from matplotlib.colors import PowerNorm
-from matplotlib.gridspec import GridSpec
-from matplotlib.patches import Rectangle
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-# CONSTANTS - Using capital letters for constants
-# Color constants
-HIGHLIGHT_COLOR = "#FFCC00"  # Bright mustard yellow
-SIGNAL_COLOR = "#2D3142"  # Dark navy blue for time series
-COLORMAP = "inferno"
-
-# Set the colorblind-friendly palette
-sns.set_palette("colorblind")
-PALETTE = sns.color_palette("colorblind")
-
-# Add Montserrat font
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Montserrat"]
-
-# Set the style
-sns.set_theme(style="darkgrid")
-
-# Define font sizes with appropriate scaling
-TITLE_SIZE = 18
-SUBTITLE_SIZE = 16
-AXIS_LABEL_SIZE = 14
-TICK_SIZE = 12
-CAPTION_SIZE = 13
-
 # Signal processing parameters
 CONTRAST_STFT = 0.7  # Lower values increase contrast
 CONTRAST_CWT = 0.7  # Adjust based on your data
 
 # Define data range
 CHANNEL = 0
-START_LONG = int(0 * fs)
-END_LONG = int(5 * fs)
+START_LONG = int(0 * FS)
+END_LONG = int(5 * FS)
 
 # Define zoom window (adjust as needed)
-ZOOM_START = int(2 * fs)
-ZOOM_END = int(3 * fs)  # 1 second window
+ZOOM_START = int(2 * FS)
+ZOOM_END = int(3 * FS)  # 1 second window
 
 # Get time values for the zoom highlight box
-ZOOM_START_TIME = ZOOM_START / fs
-ZOOM_END_TIME = ZOOM_END / fs
+ZOOM_START_TIME = ZOOM_START / FS
+ZOOM_END_TIME = ZOOM_END / FS
 ZOOM_WIDTH = ZOOM_END_TIME - ZOOM_START_TIME
 
 # Define frequency range for visualization
@@ -190,17 +214,21 @@ STFT_MAX = np.percentile(np.abs(STFT_CHANNEL_LONG_FILTERED), 99)
 CWT_MIN = np.percentile(np.abs(CWT_CHANNEL_LONG_FILTERED), 5)
 CWT_MAX = np.percentile(np.abs(CWT_CHANNEL_LONG_FILTERED), 99)
 
+# %%
 # Create figure with GridSpec for custom layout
 FIG = plt.figure(figsize=(20, 16))  # Increased height for 3 rows
-GS = GridSpec(3, 5, width_ratios=[1, 1, 1, 1, 1])  # Removed the colorbar column
+GS = GridSpec(3, 5, width_ratios=[1, 1, 1, 1, 1])  # 5 columns layout
 
 # Plot 1: Raw Data (first row, spanning first 4 columns)
 AX_RAW = FIG.add_subplot(GS[0, 0:4])
 AX_RAW.plot(TIME_LONG, X_LONG, color=SIGNAL_COLOR, linewidth=1.5)
-AX_RAW.set_xlim(0, 5)
-AX_RAW.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-AX_RAW.tick_params(labelsize=TICK_SIZE)
-AX_RAW.set_title("Filtered", fontsize=SUBTITLE_SIZE, weight="bold")
+mpu.format_axis(
+    AX_RAW,
+    title="Filtered",
+    xlabel=None,
+    ylabel="Amplitude",
+    xlim=(0, 5),
+)
 
 # Add highlight box for Raw data zoomed region
 Y_MIN, Y_MAX = AX_RAW.get_ylim()
@@ -226,11 +254,14 @@ STFT_MESH = AX_STFT.pcolormesh(
     shading="auto",
     norm=PowerNorm(gamma=CONTRAST_STFT, vmin=STFT_MIN, vmax=STFT_MAX),
 )
-AX_STFT.set_ylim(MIN_FREQ, MAX_FREQ)
-AX_STFT.set_xlim(0, 5)
-AX_STFT.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-AX_STFT.tick_params(labelsize=TICK_SIZE)
-AX_STFT.set_title("STFT Scalogram", fontsize=SUBTITLE_SIZE, weight="bold")
+mpu.format_axis(
+    AX_STFT,
+    title="STFT Scalogram",
+    xlabel=None,
+    ylabel="Frequency (Hz)",
+    xlim=(0, 5),
+    ylim=(MIN_FREQ, MAX_FREQ),
+)
 
 # Add highlight box for STFT zoomed region
 Y_MIN, Y_MAX = AX_STFT.get_ylim()
@@ -256,12 +287,14 @@ CWT_MESH = AX_CWT.pcolormesh(
     shading="auto",
     norm=PowerNorm(gamma=CONTRAST_CWT, vmin=CWT_MIN, vmax=CWT_MAX),
 )
-AX_CWT.set_ylim(MIN_FREQ, MAX_FREQ)
-AX_CWT.set_xlim(0, 5)
-AX_CWT.set_xlabel("Time (s)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-AX_CWT.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-AX_CWT.tick_params(labelsize=TICK_SIZE)
-AX_CWT.set_title("CWT Scalogram", fontsize=SUBTITLE_SIZE, weight="bold")
+mpu.format_axis(
+    AX_CWT,
+    title="CWT Scalogram",
+    xlabel="Time (s)",
+    ylabel="Frequency (Hz)",
+    xlim=(0, 5),
+    ylim=(MIN_FREQ, MAX_FREQ),
+)
 
 # Add highlight box for CWT zoomed region
 Y_MIN, Y_MAX = AX_CWT.get_ylim()
@@ -280,13 +313,12 @@ AX_CWT.add_patch(CWT_RECT)
 # Plot 4: Raw Data Zoomed (first row, far right)
 AX_RAW_ZOOM = FIG.add_subplot(GS[0, 4])
 AX_RAW_ZOOM.plot(TIME_ZOOM, X_ZOOM, color=SIGNAL_COLOR, linewidth=1.5)
-AX_RAW_ZOOM.set_xlim(0, 1)
-AX_RAW_ZOOM.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-AX_RAW_ZOOM.tick_params(labelsize=TICK_SIZE)
-AX_RAW_ZOOM.set_title(
-    "Filtered Signal (Zoomed)",
-    fontsize=SUBTITLE_SIZE,
-    weight="bold",
+mpu.format_axis(
+    AX_RAW_ZOOM,
+    title="Filtered Signal (Zoomed)",
+    xlabel=None,
+    ylabel="Amplitude",
+    xlim=(0, 1),
 )
 
 # Add empty colorbar-like space for raw zoom plot to make it match others
@@ -304,21 +336,20 @@ STFT_ZOOM_MESH = AX_STFT_ZOOM.pcolormesh(
     shading="auto",
     norm=PowerNorm(gamma=CONTRAST_STFT, vmin=STFT_MIN, vmax=STFT_MAX),
 )
-AX_STFT_ZOOM.set_ylim(MIN_FREQ, MAX_FREQ)
-AX_STFT_ZOOM.set_xlim(0, 1)
-AX_STFT_ZOOM.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-AX_STFT_ZOOM.tick_params(labelsize=TICK_SIZE)
-AX_STFT_ZOOM.set_title(
-    "STFT (Zoomed)",
-    fontsize=SUBTITLE_SIZE,
-    weight="bold",
+mpu.format_axis(
+    AX_STFT_ZOOM,
+    title="STFT (Zoomed)",
+    xlabel=None,
+    ylabel="Frequency (Hz)",
+    xlim=(0, 1),
+    ylim=(MIN_FREQ, MAX_FREQ),
 )
 
 # Add STFT colorbar
 DIVIDER_STFT = make_axes_locatable(AX_STFT_ZOOM)
 CAX_STFT = DIVIDER_STFT.append_axes("right", size="5%", pad=0.05)
 CBAR_STFT = plt.colorbar(STFT_ZOOM_MESH, cax=CAX_STFT)
-CBAR_STFT.ax.tick_params(labelsize=TICK_SIZE)
+CAX_STFT.tick_params(labelsize=mpu.FONT_SIZES["tick_label"])
 
 # Plot 6: CWT Zoomed (third row, far right)
 AX_CWT_ZOOM = FIG.add_subplot(GS[2, 4])
@@ -330,33 +361,41 @@ CWT_ZOOM_MESH = AX_CWT_ZOOM.pcolormesh(
     shading="auto",
     norm=PowerNorm(gamma=CONTRAST_CWT, vmin=CWT_MIN, vmax=CWT_MAX),
 )
-AX_CWT_ZOOM.set_ylim(MIN_FREQ, MAX_FREQ)
-AX_CWT_ZOOM.set_xlim(0, 1)
-AX_CWT_ZOOM.set_xlabel("Time (s)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-AX_CWT_ZOOM.set_ylabel("Frequency (Hz)", fontsize=AXIS_LABEL_SIZE, weight="bold")
-AX_CWT_ZOOM.tick_params(labelsize=TICK_SIZE)
-AX_CWT_ZOOM.set_title(
-    "CWT (Zoomed)",
-    fontsize=SUBTITLE_SIZE,
-    weight="bold",
+mpu.format_axis(
+    AX_CWT_ZOOM,
+    title="CWT (Zoomed)",
+    xlabel="Time (s)",
+    ylabel="Frequency (Hz)",
+    xlim=(0, 1),
+    ylim=(MIN_FREQ, MAX_FREQ),
 )
 
 # Add CWT colorbar
 DIVIDER_CWT = make_axes_locatable(AX_CWT_ZOOM)
 CAX_CWT = DIVIDER_CWT.append_axes("right", size="5%", pad=0.05)
 CBAR_CWT = plt.colorbar(CWT_ZOOM_MESH, cax=CAX_CWT)
-CBAR_CWT.ax.tick_params(labelsize=TICK_SIZE)
+CAX_CWT.tick_params(labelsize=mpu.FONT_SIZES["tick_label"])
 
-# Add overall title
-plt.suptitle(
-    "Time-Frequency Analysis Comparison", fontsize=TITLE_SIZE, fontweight="bold", y=0.98
+# Finalize the figure
+mpu.finalize_figure(
+    FIG,
+    title="Time-Frequency Analysis Comparison",
+    title_y=0.98,
 )
 
-# Adjust layout
+# Apply tight layout before adding panel labels
 plt.tight_layout(rect=[0, 0, 1, 0.96])  # Make room for the suptitle
 
-# Save the figure at 600 DPI
-plt.savefig("time_frequency_analysis.png", dpi=600, bbox_inches="tight")
+# Add panel labels
+add_panel_label(AX_RAW, "A", offset_factor=0.07)
+add_panel_label(AX_STFT, "B", offset_factor=0.07)
+add_panel_label(AX_CWT, "C", offset_factor=0.07)
+add_panel_label(AX_RAW_ZOOM, "D", offset_factor=0.07)
+add_panel_label(AX_STFT_ZOOM, "E", offset_factor=0.07)
+add_panel_label(AX_CWT_ZOOM, "F", offset_factor=0.07)
 
-# Show the figure
+# Save the figure using mpu
+mpu.save_figure(FIG, "time_frequency_analysis.png", dpi=600)
+
 plt.show()
+# %%

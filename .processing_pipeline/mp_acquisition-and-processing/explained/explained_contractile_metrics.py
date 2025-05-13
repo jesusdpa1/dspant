@@ -1,6 +1,7 @@
 """
 EMG Contractile and Breathing Metrics Visualization with Y-Spread Channels
 Author: Jesus Penaloza (Updated with TKEO envelope and metrics analysis)
+Using mp_plotting_utils for standardized publication-quality visualization
 """
 
 # %%
@@ -11,9 +12,11 @@ from pathlib import Path
 import dotenv
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import mp_plotting_utils as mpu
 import numpy as np
 import polars as pl
 import seaborn as sns
+from matplotlib.gridspec import GridSpec
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
@@ -26,31 +29,101 @@ from dspant.processors.filters.iir_filters import (
     create_notch_filter,
 )
 
-sns.set_theme(style="darkgrid")
+# Set publication style
+mpu.set_publication_style()
+
+
+# %%
+# Improved panel label function
+def add_panel_label(
+    ax,
+    label,
+    position="top-left",
+    offset_factor=0.1,
+    fontsize=None,
+    fontweight="bold",
+    color="black",
+):
+    """
+    Add a panel label (A, B, C, etc.) to a subplot with adaptive positioning.
+    """
+    # Get the position of the axes in figure coordinates
+    bbox = ax.get_position()
+    fig = plt.gcf()
+
+    # Set default font size if not specified
+    if fontsize is None:
+        fontsize = mpu.FONT_SIZES["panel_label"]
+
+    # Calculate offset based on subplot size and offset factor
+    x_offset = bbox.width * offset_factor
+    y_offset = bbox.height * offset_factor
+
+    # Determine position coordinates based on selected position
+    if position == "top-left":
+        x = bbox.x0 - x_offset
+        y = bbox.y1 + y_offset
+    elif position == "top-right":
+        x = bbox.x1 + x_offset
+        y = bbox.y1 + y_offset
+    elif position == "bottom-left":
+        x = bbox.x0 - x_offset
+        y = bbox.y0 - y_offset
+    elif position == "bottom-right":
+        x = bbox.x1 + x_offset
+        y = bbox.y0 - y_offset
+    else:
+        # Default to top-left if invalid position
+        x = bbox.x0 - x_offset
+        y = bbox.y1 + y_offset
+
+    # Determine text alignment based on position
+    if "left" in position:
+        ha = "right"
+    else:
+        ha = "left"
+
+    if "top" in position:
+        va = "bottom"
+    else:
+        va = "top"
+
+    # Position the label outside the subplot
+    fig.text(
+        x,
+        y,
+        label,
+        fontsize=fontsize,
+        fontweight=fontweight,
+        va=va,
+        ha=ha,
+        color=color,
+    )
+
 
 # %%
 # Data loading (keep your existing data loading code)
-data_path = Path(os.getenv("DATA_DIR"))
-base_path = data_path.joinpath(
+DATA_DIR = Path(os.getenv("DATA_DIR"))
+BASE_PATH = DATA_DIR.joinpath(
     r"topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
 )
-emg_stream_path = base_path.joinpath(r"RawG.ant")
+EMG_STREAM_PATH = BASE_PATH.joinpath(r"RawG.ant")
 
 # %%
 # Load EMG data
-stream_emg = StreamNode(str(emg_stream_path))
+stream_emg = StreamNode(str(EMG_STREAM_PATH))
 stream_emg.load_metadata()
 stream_emg.load_data()
-fs = stream_emg.fs
+FS = stream_emg.fs
 
 # %%
 # Create and apply filters
 processor_emg = create_processing_node(stream_emg)
 
 # Create filters
-bandpass_filter = create_bandpass_filter(10, 2000, fs=fs, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=fs)
-lowpass_filter = create_lowpass_filter(20, fs)
+bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
+notch_filter = create_notch_filter(60, q=60, fs=FS)
+lowpass_filter = create_lowpass_filter(20, FS)
 
 # Create processors
 notch_processor = FilterProcessor(
@@ -72,7 +145,7 @@ filter_data = processor_emg.process(group=["filters"]).persist()
 # %%
 # TKEO Processing
 tkeo_processor = create_tkeo_envelope_rs(method="modified", cutoff_freq=15)
-tkeo_envelope = tkeo_processor.process(filter_data, fs=fs).persist()
+tkeo_envelope = tkeo_processor.process(filter_data, fs=FS).persist()
 
 # %%
 # Create visualization
@@ -81,29 +154,29 @@ tkeo_envelope = tkeo_processor.process(filter_data, fs=fs).persist()
 # Define adjustable parameters for the visualization
 class PlotParameters:
     # Data selection parameters
-    data_start = int(fs * 5)  # Start time in seconds
-    data_duration = int(fs * 8)  # Duration in seconds
-    zoom_start = int(fs * 6)  # Zoomed section start
-    zoom_duration = int(fs * 1.5)  # 1 second zoom
+    data_start = int(FS * 5)  # Start time in seconds
+    data_duration = int(FS * 8)  # Duration in seconds
+    zoom_start = int(FS * 6)  # Zoomed section start
+    zoom_duration = int(FS * 1.5)  # 1 second zoom
 
     # Ttot zoom parameters
-    zoom_start_ttot = int(fs * 6.8)  # Ttot zoomed section start
-    zoom_duration_ttot = int(fs * 1.5)  # 4 seconds zoom for Ttot
+    zoom_start_ttot = int(FS * 6.8)  # Ttot zoomed section start
+    zoom_duration_ttot = int(FS * 1.5)  # 4 seconds zoom for Ttot
 
     # Contractile metric parameters (in samples from zoom_start)
-    onset_position = int(fs * 0.32)  # Position of onset marker
-    peak_position = int(fs * 0.51)  # Position of peak marker
-    offset_position = int(fs * 0.6)  # Position of offset marker
+    onset_position = int(FS * 0.32)  # Position of onset marker
+    peak_position = int(FS * 0.51)  # Position of peak marker
+    offset_position = int(FS * 0.6)  # Position of offset marker
 
     # Breathing metric parameters
-    ti_start = int(fs * 0.32)  # Ti start (onset)
-    ti_end = int(fs * 0.51)  # Ti end (peak)
-    te0_start = int(fs * 0.51)  # Te start (peak)
-    te0_end = int(fs * 0.61)  # Te end (next onset)
-    te1_start = int(fs * 0.61)  # Te start (peak)
-    te1_end = int(fs * 1.02)  # Te end (next onset)
-    ttot_start = int(fs * 0.24)  # Ttot start (first onset)
-    ttot_end = int(fs * 0.9)  # Ttot end (second onset)
+    ti_start = int(FS * 0.32)  # Ti start (onset)
+    ti_end = int(FS * 0.51)  # Ti end (peak)
+    te0_start = int(FS * 0.51)  # Te start (peak)
+    te0_end = int(FS * 0.61)  # Te end (next onset)
+    te1_start = int(FS * 0.61)  # Te start (peak)
+    te1_end = int(FS * 1.02)  # Te end (next onset)
+    ttot_start = int(FS * 0.24)  # Ttot start (first onset)
+    ttot_end = int(FS * 0.9)  # Ttot end (second onset)
 
     # Channel to visualize
     channel = 1
@@ -115,44 +188,44 @@ class PlotParameters:
 
 
 # Extract data segments
-params = PlotParameters()
+PARAMS = PlotParameters()
 data_segment = filter_data[
-    params.data_start : params.data_start + params.data_duration, :
+    PARAMS.data_start : PARAMS.data_start + PARAMS.data_duration, :
 ]
 tkeo_segment = tkeo_envelope[
-    params.data_start : params.data_start + params.data_duration, :
+    PARAMS.data_start : PARAMS.data_start + PARAMS.data_duration, :
 ]
 
 # Create time arrays
-time_full = np.arange(len(data_segment)) / fs
-time_zoom = np.arange(params.zoom_duration) / fs
-time_zoom_ttot = np.arange(params.zoom_duration_ttot) / fs
+time_full = np.arange(len(data_segment)) / FS
+time_zoom = np.arange(PARAMS.zoom_duration) / FS
+time_zoom_ttot = np.arange(PARAMS.zoom_duration_ttot) / FS
 
 # Extract zoomed sections
 zoom_data = data_segment[
-    params.zoom_start - params.data_start : params.zoom_start
-    - params.data_start
-    + params.zoom_duration,
+    PARAMS.zoom_start - PARAMS.data_start : PARAMS.zoom_start
+    - PARAMS.data_start
+    + PARAMS.zoom_duration,
     :,
 ]
 zoom_tkeo = tkeo_segment[
-    params.zoom_start - params.data_start : params.zoom_start
-    - params.data_start
-    + params.zoom_duration,
+    PARAMS.zoom_start - PARAMS.data_start : PARAMS.zoom_start
+    - PARAMS.data_start
+    + PARAMS.zoom_duration,
     :,
 ]
 
 # Extract zoomed sections for Ttot
 zoom_data_ttot = data_segment[
-    params.zoom_start_ttot - params.data_start : params.zoom_start_ttot
-    - params.data_start
-    + params.zoom_duration_ttot,
+    PARAMS.zoom_start_ttot - PARAMS.data_start : PARAMS.zoom_start_ttot
+    - PARAMS.data_start
+    + PARAMS.zoom_duration_ttot,
     :,
 ]
 zoom_tkeo_ttot = tkeo_segment[
-    params.zoom_start_ttot - params.data_start : params.zoom_start_ttot
-    - params.data_start
-    + params.zoom_duration_ttot,
+    PARAMS.zoom_start_ttot - PARAMS.data_start : PARAMS.zoom_start_ttot
+    - PARAMS.data_start
+    + PARAMS.zoom_duration_ttot,
     :,
 ]
 
@@ -173,41 +246,52 @@ def normalize_tkeo_for_spread(emg_data, tkeo_data, emg_max_amplitude=None):
     return normalized_tkeo
 
 
-# Set up visualization style
-TITLE_SIZE = 20
-SUBTITLE_SIZE = 18
-AXIS_LABEL_SIZE = 16
-TICK_SIZE = 14
-ENVELOPE_LINEWIDTH = 4  # Thicker line for envelope
+# Define colors for visualization - preserve all original colors
+NAVY_BLUE = "#2D3142"  # Dark navy blue for time series (original)
+ORANGE_ENVELOPE = "#DE8F05"  # Original orange for envelope
+HIGHLIGHT_YELLOW = "#FFCC00"  # Original yellow for zoom highlight
+HIGHLIGHT_GREEN = "#90EE90"  # Original light green for Ttot highlight
+TI_COLOR = "#AEDFF7"  # Original light blue for Ti block
+TE0_COLOR = "#F9BFC1"  # Original light coral for Te0 block
+TE1_COLOR = "#DE4010"  # Original red for Te1 block
+TTOT_COLOR = HIGHLIGHT_GREEN  # Light green for Ttot block
+ONSET_COLOR = "green"  # Original color for onset line
+PEAK_COLOR = "blue"  # Original color for peak line
+OFFSET_COLOR = "purple"  # Original color for offset line
 
-# Get colorblind palette for breathing metrics
-colorblind_colors = sns.color_palette("colorblind")
-NAVY_BLUE = "#2D3142"  # Dark navy blue for time series
-ORANGE_ENVELOPE = colorblind_colors[1]  # Orange color for envelope
+# Font sizes - increased for better visibility
+TITLE_SIZE = 24 * 2  # Increased from 20
+SUBTITLE_SIZE = 20 * 2  # Increased from 18
+AXIS_LABEL_SIZE = 18 * 2  # Increased from 16
+TICK_SIZE = 16 * 2  # Increased from 14
+LEGEND_SIZE = 18 * 2  # Added for legend text
+
+# Line styles
+ENVELOPE_LINEWIDTH = 4  # Thicker line for envelope
 
 # Create figure with 2x3 grid
 fig = plt.figure(figsize=(36, 24))
-gs = fig.add_gridspec(2, 3, height_ratios=[1, 1], width_ratios=[1, 1, 1])
+gs = GridSpec(2, 3, height_ratios=[1, 1], width_ratios=[1, 1, 1])
 
 # Get max amplitude for normalization
-emg_max_amp = np.max(np.abs(data_segment[:, params.channel]))
+emg_max_amp = np.max(np.abs(data_segment[:, PARAMS.channel]))
 
 # Normalize TKEO data for y-spread
 tkeo_segment_normalized = normalize_tkeo_for_spread(
-    data_segment[:, params.channel], tkeo_segment[:, params.channel], emg_max_amp
+    data_segment[:, PARAMS.channel], tkeo_segment[:, PARAMS.channel], emg_max_amp
 )
 zoom_tkeo_normalized = normalize_tkeo_for_spread(
-    zoom_data[:, params.channel], zoom_tkeo[:, params.channel], emg_max_amp
+    zoom_data[:, PARAMS.channel], zoom_tkeo[:, PARAMS.channel], emg_max_amp
 )
 zoom_tkeo_ttot_normalized = normalize_tkeo_for_spread(
-    zoom_data_ttot[:, params.channel], zoom_tkeo_ttot[:, params.channel], emg_max_amp
+    zoom_data_ttot[:, PARAMS.channel], zoom_tkeo_ttot[:, PARAMS.channel], emg_max_amp
 )
 
 # ===== Row 1: Full EMG with TKEO in y-spread (3x1) =====
 ax1 = fig.add_subplot(gs[0, :])
 
 # Plot EMG with y offset
-emg_plot_data = data_segment[:, params.channel] / emg_max_amp * 1.5 + params.emg_offset
+emg_plot_data = data_segment[:, PARAMS.channel] / emg_max_amp * 1.5 + PARAMS.emg_offset
 ax1.plot(
     time_full,
     emg_plot_data,
@@ -217,7 +301,7 @@ ax1.plot(
 )
 
 # Plot TKEO envelope with y offset (placed above EMG)
-tkeo_plot_data = tkeo_segment_normalized / emg_max_amp * 1.5 + params.tkeo_offset
+tkeo_plot_data = tkeo_segment_normalized / emg_max_amp * 1.5 + PARAMS.tkeo_offset
 ax1.plot(
     time_full,
     tkeo_plot_data,
@@ -228,51 +312,56 @@ ax1.plot(
 )
 
 # Set y-ticks with channel labels
-y_ticks = [params.emg_offset, params.tkeo_offset]
+y_ticks = [PARAMS.emg_offset, PARAMS.tkeo_offset]
 y_labels = ["EMG", "TKEO"]
 ax1.set_yticks(y_ticks)
 ax1.set_yticklabels(y_labels)
 
 # Highlight zoomed sections
 # First zoom section
-zoom_start_time = (params.zoom_start - params.data_start) / fs
-zoom_end_time = zoom_start_time + params.zoom_duration / fs
+zoom_start_time = (PARAMS.zoom_start - PARAMS.data_start) / FS
+zoom_end_time = zoom_start_time + PARAMS.zoom_duration / FS
 highlight1 = patches.Rectangle(
     (zoom_start_time, ax1.get_ylim()[0]),
-    params.zoom_duration / fs,
+    PARAMS.zoom_duration / FS,
     ax1.get_ylim()[1] - ax1.get_ylim()[0],
-    color="yellow",
+    color=HIGHLIGHT_YELLOW,
     alpha=0.3,
     linewidth=0,
 )
 ax1.add_patch(highlight1)
 
 # Second zoom section (for Ttot)
-zoom_start_time_ttot = (params.zoom_start_ttot - params.data_start) / fs
-zoom_end_time_ttot = zoom_start_time_ttot + params.zoom_duration_ttot / fs
+zoom_start_time_ttot = (PARAMS.zoom_start_ttot - PARAMS.data_start) / FS
+zoom_end_time_ttot = zoom_start_time_ttot + PARAMS.zoom_duration_ttot / FS
 highlight2 = patches.Rectangle(
     (zoom_start_time_ttot, ax1.get_ylim()[0]),
-    params.zoom_duration_ttot / fs,
+    PARAMS.zoom_duration_ttot / FS,
     ax1.get_ylim()[1] - ax1.get_ylim()[0],
-    color="lightgreen",
+    color=HIGHLIGHT_GREEN,
     alpha=0.3,
     linewidth=0,
 )
 ax1.add_patch(highlight2)
 
-ax1.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE)
-ax1.set_ylabel("Signals", fontsize=AXIS_LABEL_SIZE)
-ax1.set_title("EMG Signal with TKEO Envelope (Y-Spread)", fontsize=SUBTITLE_SIZE)
-ax1.legend(fontsize=AXIS_LABEL_SIZE)
-ax1.tick_params(labelsize=TICK_SIZE)
-# ax1.grid(True, alpha=1)
+# Format axis using mpu with larger font sizes
+mpu.format_axis(
+    ax1,
+    title="EMG Signal with TKEO Envelope (Y-Spread)",
+    xlabel="Time [s]",
+    ylabel="Signals",
+    title_fontsize=SUBTITLE_SIZE,
+    label_fontsize=AXIS_LABEL_SIZE,
+    tick_fontsize=TICK_SIZE,
+)
+mpu.add_legend(ax1, fontsize=LEGEND_SIZE)
 
 # ===== Row 2, Column 1: EMG Contractile Metrics =====
 ax2 = fig.add_subplot(gs[1, 0])
 
 # Plot zoomed EMG and TKEO with y offset
-zoom_emg_data = zoom_data[:, params.channel] / emg_max_amp * 1.5 + params.emg_offset
-zoom_tkeo_data = zoom_tkeo_normalized / emg_max_amp * 1.5 + params.tkeo_offset
+zoom_emg_data = zoom_data[:, PARAMS.channel] / emg_max_amp * 1.5 + PARAMS.emg_offset
+zoom_tkeo_data = zoom_tkeo_normalized / emg_max_amp * 1.5 + PARAMS.tkeo_offset
 
 ax2.plot(time_zoom, zoom_emg_data, color=NAVY_BLUE, linewidth=2)
 ax2.plot(
@@ -288,20 +377,27 @@ ax2.set_yticks(y_ticks)
 ax2.set_yticklabels(y_labels)
 
 # Add contractile metric lines across both channels
-onset_time = params.onset_position / fs
-peak_time = params.peak_position / fs
-offset_time = params.offset_position / fs
+onset_time = PARAMS.onset_position / FS
+peak_time = PARAMS.peak_position / FS
+offset_time = PARAMS.offset_position / FS
 
-ax2.axvline(x=onset_time, color="green", linestyle="--", linewidth=3, label="Onset")
-ax2.axvline(x=peak_time, color="blue", linestyle="--", linewidth=3, label="Peak")
-ax2.axvline(x=offset_time, color="purple", linestyle="--", linewidth=3, label="Offset")
+ax2.axvline(x=onset_time, color=ONSET_COLOR, linestyle="--", linewidth=3, label="Onset")
+ax2.axvline(x=peak_time, color=PEAK_COLOR, linestyle="--", linewidth=3, label="Peak")
+ax2.axvline(
+    x=offset_time, color=OFFSET_COLOR, linestyle="--", linewidth=3, label="Offset"
+)
 
-ax2.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE)
-ax2.set_ylabel("Signals", fontsize=AXIS_LABEL_SIZE)
-ax2.set_title("EMG Contractile Metrics", fontsize=SUBTITLE_SIZE)
-ax2.legend(fontsize=AXIS_LABEL_SIZE)
-ax2.tick_params(labelsize=TICK_SIZE)
-# ax2.grid(True, alpha=0.3)
+# Format axis using mpu with larger font sizes
+mpu.format_axis(
+    ax2,
+    title="EMG Contractile Metrics",
+    xlabel="Time [s]",
+    ylabel="Signals",
+    title_fontsize=SUBTITLE_SIZE,
+    label_fontsize=AXIS_LABEL_SIZE,
+    tick_fontsize=TICK_SIZE,
+)
+mpu.add_legend(ax2, fontsize=LEGEND_SIZE)
 
 # ===== Row 2, Column 2: Single Breath (Ti and Te) =====
 ax3 = fig.add_subplot(gs[1, 1])
@@ -319,60 +415,64 @@ ax3.set_yticks(y_ticks)
 ax3.set_yticklabels(y_labels)
 
 # Add Ti block (spans both EMG and TKEO)
-ti_start_time = params.ti_start / fs
-ti_end_time = params.ti_end / fs
+ti_start_time = PARAMS.ti_start / FS
+ti_end_time = PARAMS.ti_end / FS
 ti_block = patches.Rectangle(
     (ti_start_time, ax3.get_ylim()[0]),
     ti_end_time - ti_start_time,
     ax3.get_ylim()[1] - ax3.get_ylim()[0],
-    color="lightblue",
+    color=TI_COLOR,
     alpha=0.5,
     label="Ti",
 )
 ax3.add_patch(ti_block)
 
 # Add Te0 block
-te_start_time = params.te0_start / fs
-te_end_time = min(params.te0_end / fs, time_zoom[-1])
+te_start_time = PARAMS.te0_start / FS
+te_end_time = min(PARAMS.te0_end / FS, time_zoom[-1])
 te_block = patches.Rectangle(
     (te_start_time, ax3.get_ylim()[0]),
     te_end_time - te_start_time,
     ax3.get_ylim()[1] - ax3.get_ylim()[0],
-    color="lightcoral",
+    color=TE0_COLOR,
     alpha=0.5,
     label="Te0",
 )
 ax3.add_patch(te_block)
 
-
 # Add Te1 block
-te1_start_time = params.te1_start / fs
-te1_end_time = min(params.te1_end / fs, time_zoom[-1])
+te1_start_time = PARAMS.te1_start / FS
+te1_end_time = min(PARAMS.te1_end / FS, time_zoom[-1])
 te1_block = patches.Rectangle(
     (te1_start_time, ax3.get_ylim()[0]),
     te1_end_time - te1_start_time,
     ax3.get_ylim()[1] - ax3.get_ylim()[0],
-    color="#DE4010",
+    color=TE1_COLOR,
     alpha=0.5,
     label="Te1",
 )
 ax3.add_patch(te1_block)
 
-ax3.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE)
-ax3.set_ylabel("Signals", fontsize=AXIS_LABEL_SIZE)
-ax3.set_title("Single Breath: Ti and Putative Te", fontsize=SUBTITLE_SIZE)
-ax3.legend(fontsize=AXIS_LABEL_SIZE)
-ax3.tick_params(labelsize=TICK_SIZE)
-# ax3.grid(True, alpha=0.3)
+# Format axis using mpu with larger font sizes
+mpu.format_axis(
+    ax3,
+    title="Single Breath: Ti and Putative Te",
+    xlabel="Time [s]",
+    ylabel="Signals",
+    title_fontsize=SUBTITLE_SIZE,
+    label_fontsize=AXIS_LABEL_SIZE,
+    tick_fontsize=TICK_SIZE,
+)
+mpu.add_legend(ax3, fontsize=LEGEND_SIZE)
 
 # ===== Row 2, Column 3: Two Breaths with Ttot =====
 ax4 = fig.add_subplot(gs[1, 2])
 
 # Plot EMG and TKEO with y offset for Ttot zoom
 ttot_emg_data = (
-    zoom_data_ttot[:, params.channel] / emg_max_amp * 1.5 + params.emg_offset
+    zoom_data_ttot[:, PARAMS.channel] / emg_max_amp * 1.5 + PARAMS.emg_offset
 )
-ttot_tkeo_data = zoom_tkeo_ttot_normalized / emg_max_amp * 1.5 + params.tkeo_offset
+ttot_tkeo_data = zoom_tkeo_ttot_normalized / emg_max_amp * 1.5 + PARAMS.tkeo_offset
 
 ax4.plot(time_zoom_ttot, ttot_emg_data, color=NAVY_BLUE, linewidth=2)
 ax4.plot(
@@ -388,37 +488,50 @@ ax4.set_yticks(y_ticks)
 ax4.set_yticklabels(y_labels)
 
 # Add Ttot block
-ttot_start_time = params.ttot_start / fs
-ttot_end_time = params.ttot_end / fs
+ttot_start_time = PARAMS.ttot_start / FS
+ttot_end_time = PARAMS.ttot_end / FS
 ttot_block = patches.Rectangle(
     (ttot_start_time, ax4.get_ylim()[0]),
     ttot_end_time - ttot_start_time,
     ax4.get_ylim()[1] - ax4.get_ylim()[0],
-    color="lightgreen",
+    color=TTOT_COLOR,
     alpha=0.5,
     label="Ttot",
 )
 ax4.add_patch(ttot_block)
 
-ax4.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE)
-ax4.set_ylabel("Signals", fontsize=AXIS_LABEL_SIZE)
-ax4.set_title("Two Breaths: Total Cycle Time (Ttot)", fontsize=SUBTITLE_SIZE)
-ax4.legend(fontsize=AXIS_LABEL_SIZE)
-ax4.tick_params(labelsize=TICK_SIZE)
-# ax4.grid(True, alpha=0.3)
+# Format axis using mpu with larger font sizes
+mpu.format_axis(
+    ax4,
+    title="Two Breaths: Total Cycle Time (Ttot)",
+    xlabel="Time [s]",
+    ylabel="Signals",
+    title_fontsize=SUBTITLE_SIZE,
+    label_fontsize=AXIS_LABEL_SIZE,
+    tick_fontsize=TICK_SIZE,
+)
+mpu.add_legend(ax4, fontsize=LEGEND_SIZE)
 
-# Overall title
-fig.suptitle(
-    "EMG Signal Analysis: Contractile and Breathing Metrics",
-    fontsize=TITLE_SIZE,
-    y=1.02,
+# Finalize the figure with mpu using larger font size for title
+mpu.finalize_figure(
+    fig,
+    title="EMG Signal Analysis: Contractile and Breathing Metrics",
+    title_y=1.02,
+    title_fontsize=TITLE_SIZE,
 )
 
-# Adjust layout
+# Apply tight layout before adding panel labels
 plt.tight_layout()
-# plt.savefig(
-#     "emg_contractile_breathing_metrics_2x3.png", dpi=300, bbox_inches="tight"
-# )
+
+# Add panel labels - using adaptive panel label function with larger font
+add_panel_label(ax1, "A", offset_factor=0.01, fontsize=SUBTITLE_SIZE)
+add_panel_label(ax2, "B", offset_factor=0.02, fontsize=SUBTITLE_SIZE)
+add_panel_label(ax3, "C", offset_factor=0.02, fontsize=SUBTITLE_SIZE)
+add_panel_label(ax4, "D", offset_factor=0.02, fontsize=SUBTITLE_SIZE)
+
+# Save figure if needed
+mpu.save_figure(fig, "emg_contractile_breathing_metrics.png", dpi=600)
+
 plt.show()
 
 # %%
@@ -426,30 +539,32 @@ plt.show()
 # Print current parameter values for easy adjustment
 print("Current Parameter Values:")
 print("-" * 50)
-print(f"Data start: {params.data_start / fs:.1f}s")
-print(f"Data duration: {params.data_duration / fs:.1f}s")
-print(f"Zoom start: {params.zoom_start / fs:.1f}s (relative to data start)")
-print(f"Zoom duration: {params.zoom_duration / fs:.1f}s")
-print(f"Zoom start (Ttot): {params.zoom_start_ttot / fs:.1f}s")
-print(f"Zoom duration (Ttot): {params.zoom_duration_ttot / fs:.1f}s")
+print(f"Data start: {PARAMS.data_start / FS:.1f}s")
+print(f"Data duration: {PARAMS.data_duration / FS:.1f}s")
+print(f"Zoom start: {PARAMS.zoom_start / FS:.1f}s (relative to data start)")
+print(f"Zoom duration: {PARAMS.zoom_duration / FS:.1f}s")
+print(f"Zoom start (Ttot): {PARAMS.zoom_start_ttot / FS:.1f}s")
+print(f"Zoom duration (Ttot): {PARAMS.zoom_duration_ttot / FS:.1f}s")
 print("-" * 50)
 print("Contractile Metrics (relative to zoom start):")
-print(f"Onset position: {params.onset_position / fs:.3f}s")
-print(f"Peak position: {params.peak_position / fs:.3f}s")
-print(f"Offset position: {params.offset_position / fs:.3f}s")
+print(f"Onset position: {PARAMS.onset_position / FS:.3f}s")
+print(f"Peak position: {PARAMS.peak_position / FS:.3f}s")
+print(f"Offset position: {PARAMS.offset_position / FS:.3f}s")
 print("-" * 50)
 print("Breathing Metrics (relative to zoom start):")
-print(f"Ti start: {params.ti_start / fs:.3f}s")
-print(f"Ti end: {params.ti_end / fs:.3f}s")
-print(f"Te start: {params.te_start / fs:.3f}s")
-print(f"Te end: {params.te_end / fs:.3f}s")
-print(f"Ttot start: {params.ttot_start / fs:.3f}s")
-print(f"Ttot end: {params.ttot_end / fs:.3f}s")
+print(f"Ti start: {PARAMS.ti_start / FS:.3f}s")
+print(f"Ti end: {PARAMS.ti_end / FS:.3f}s")
+print(f"Te0 start: {PARAMS.te0_start / FS:.3f}s")
+print(f"Te0 end: {PARAMS.te0_end / FS:.3f}s")
+print(f"Te1 start: {PARAMS.te1_start / FS:.3f}s")
+print(f"Te1 end: {PARAMS.te1_end / FS:.3f}s")
+print(f"Ttot start: {PARAMS.ttot_start / FS:.3f}s")
+print(f"Ttot end: {PARAMS.ttot_end / FS:.3f}s")
 print("-" * 50)
 print("Y-Spread Parameters:")
-print(f"Y-spread: {params.y_spread}")
-print(f"EMG offset: {params.emg_offset}")
-print(f"TKEO offset: {params.tkeo_offset}")
+print(f"Y-spread: {PARAMS.y_spread}")
+print(f"EMG offset: {PARAMS.emg_offset}")
+print(f"TKEO offset: {PARAMS.tkeo_offset}")
 print("-" * 50)
 
 # %%
