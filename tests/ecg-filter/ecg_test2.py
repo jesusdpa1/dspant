@@ -14,6 +14,10 @@ from scipy.signal import correlate
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
 from dspant.pattern.detection.peak import create_positive_peak_detector
+from dspant.pattern.subtraction.correlation import (
+    create_correlation_subtractor,
+    subtract_templates,
+)
 from dspant.processors.extractors.template_extractor import extract_template
 from dspant.processors.extractors.waveform_extractor import WaveformExtractor
 from dspant.processors.filters import FilterProcessor
@@ -33,16 +37,11 @@ BASE_PATH = DATA_DIR.joinpath(
     r"topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
 )
 EMG_STREAM_PATH = BASE_PATH.joinpath("RawG.ant")
-# HD_STREAM_PATH = BASE_PATH.joinpath("HDEG.ant")
 # %%
 # Load streams
 stream_emg = StreamNode(str(EMG_STREAM_PATH))
 stream_emg.load_metadata()
 stream_emg.load_data()
-
-# stream_hd = StreamNode(str(HD_STREAM_PATH))
-# stream_hd.load_metadata()
-# stream_hd.load_data()
 
 # Get sampling rate
 FS = stream_emg.fs
@@ -64,21 +63,18 @@ lowpass_processor = FilterProcessor(
 )
 # %%
 # Set up processing nodes
-# processor_hd = create_processing_node(stream_hd)
 processor_emg = create_processing_node(stream_emg)
 
 # Add processors to the nodes
-# processor_hd.add_processor([notch_processor, bandpass_processor], group="filters")
 processor_emg.add_processor([notch_processor, bandpass_processor], group="filters")
 
 # %%
 # Apply filters
-# filter_hd = processor_hd.process(group=["filters"]).persist()
 filter_emg = processor_emg.process(group=["filters"]).persist()
 
 # %%
 START_ = int(FS * 0)  # Starting from beginning of recording
-END_ = int(FS * 5)  # 5 seconds of data
+END_ = int(FS * 10)  # 5 seconds of data
 time_slice = slice(START_, END_)
 # Get common-mode reference
 reference_ecg = lowpass_processor.process(filter_emg, FS)
@@ -86,13 +82,12 @@ reference_ecg = lowpass_processor.process(filter_emg, FS)
 plt.plot(reference_ecg[time_slice])
 
 # %%
-
 # Slice the reference signal for peak detection
 reference_data = reference_ecg[time_slice, 0].persist()
 
 # Create a peak detector optimized for R-peaks
 r_peak_detector = create_positive_peak_detector(
-    threshold=10.0,
+    threshold=8.0,
     threshold_mode="mad",
     refractory_period=0.1,
 )
@@ -121,19 +116,15 @@ plt.tight_layout()
 plt.show()
 
 # %%
-# Simplified template extraction approach - mirroring the original working code
 # Extract ECG templates
-window_ms = 60  # Window size in milliseconds
+window_ms = 30  # Window size in milliseconds
 window_samples = int((window_ms / 1000) * FS)
 half_win = window_samples // 2
 waveform_processor = WaveformExtractor(filter_emg[:, 0], FS)
 
 # Extract waveforms
 ecg_waveforms = waveform_processor.extract_waveforms(
-    r_peak_indices,
-    pre_samples=half_win,
-    post_samples=half_win,
-    time_unit='samples'
+    r_peak_indices, pre_samples=half_win, post_samples=half_win, time_unit="samples"
 )
 
 # Extract template
@@ -153,9 +144,24 @@ plt.show()
 # Convert to numpy arrays for processing
 emg_data = filter_emg[time_slice, 0].compute()
 
+# %%
+# Using the new subtraction function with the new interface
+# Use the convenience function for direct template subtraction
+
+
+# Alternatively, using the class-based approach
+subtractor = create_correlation_subtractor()
+cleaned_emg_alt = subtractor.process(
+    data=filter_emg[time_slice, :1],
+    template=ecg_template[:, :1],
+    indices=r_peak_indices,
+    fs=FS,
+    mode=None,
+).compute()
+
 
 # %%
-# Template subtraction
+# For comparison, also use our manual implementation
 def subtract_ecg_template(data, template, peak_indices, half_window):
     """
     Subtract ECG template from signal using correlation alignment.
@@ -205,21 +211,29 @@ def subtract_ecg_template(data, template, peak_indices, half_window):
     return result
 
 
-# Apply template subtraction
-cleaned_emg = subtract_ecg_template(emg_data, template, r_peak_indices, half_win)
+# Apply manual template subtraction for comparison
+cleaned_emg_manual = subtract_ecg_template(emg_data, template, r_peak_indices, half_win)
 
-# Plot original and cleaned signal
-plt.figure(figsize=(15, 8))
-plt.subplot(2, 1, 1)
+# %%
+# Plot original and all cleaned signals for comparison
+plt.figure(figsize=(15, 15))
+plt.subplot(3, 1, 1)
 plt.plot(emg_data, label="Original EMG Signal")
 plt.plot(r_peak_indices, emg_data[r_peak_indices], "r*", markersize=8, label="R-peaks")
 plt.title("Original EMG Signal with R-peaks")
 plt.legend()
 plt.grid(True)
 
-plt.subplot(2, 1, 2)
-plt.plot(cleaned_emg, label="Cleaned EMG Signal")
-plt.title("EMG Signal after ECG Template Subtraction")
+
+plt.subplot(3, 1, 2)
+plt.plot(cleaned_emg_alt[:, 0], label="Cleaned EMG (create_correlation_subtractor)")
+plt.title("EMG Signal after ECG Template Subtraction (class-based approach)")
+plt.legend()
+plt.grid(True)
+
+plt.subplot(3, 1, 3)
+plt.plot(cleaned_emg_manual, label="Cleaned EMG (manual implementation)")
+plt.title("EMG Signal after ECG Template Subtraction (manual)")
 plt.xlabel("Samples")
 plt.legend()
 plt.grid(True)
@@ -227,26 +241,5 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 
-# Zoom in on a section to better see the difference
-zoom_start = 1000
-zoom_end = 2000
-plt.figure(figsize=(15, 8))
-plt.subplot(2, 1, 1)
-plt.plot(emg_data[zoom_start:zoom_end], label="Original EMG Signal")
-plt.title("Zoomed Original EMG Signal")
-plt.legend()
-plt.grid(True)
-
-plt.subplot(2, 1, 2)
-plt.plot(cleaned_emg[zoom_start:zoom_end], label="Cleaned EMG Signal")
-plt.title("Zoomed EMG Signal after ECG Template Subtraction")
-plt.xlabel("Samples")
-plt.legend()
-plt.grid(True)
-
-plt.tight_layout()
-plt.show()
-
-print("ECG template subtraction completed.")
 
 # %%
