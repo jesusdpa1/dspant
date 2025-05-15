@@ -6,6 +6,102 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use rayon::prelude::*;
 
+
+
+/// Bin spikes around event times with parallel processing
+/// 
+/// Args:
+///     spike_times: Spike times in samples
+///     event_times: Event times in samples
+///     pre_samples: Number of samples before events to include
+///     post_samples: Number of samples after events to include
+///     bin_edges: Bin edges relative to event times in samples
+///
+/// Returns:
+///     Binned spike counts (shape: n_bins × n_events)
+#[pyfunction]
+pub fn bin_spikes_by_events(
+    py: Python<'_>,
+    spike_times: PyReadonlyArray1<i32>,
+    event_times: PyReadonlyArray1<i32>,
+    pre_samples: i32,
+    post_samples: i32,
+    bin_edges: PyReadonlyArray1<f32>,
+) -> PyResult<Py<PyArray2<i32>>> {
+    // Convert inputs to Rust arrays
+    let spikes = spike_times.as_array().to_owned();
+    let events_array = event_times.as_array().to_owned();
+    let edges = bin_edges.as_array().to_owned();
+    
+    // Convert to Vec for parallelization
+    let events: Vec<i32> = events_array.iter().cloned().collect();
+    let spike_vec: Vec<i32> = spikes.iter().cloned().collect();
+    let bin_edges_vec: Vec<f32> = edges.iter().cloned().collect();
+    
+    // Calculate dimensions
+    let n_events = events.len();
+    let n_bins = bin_edges_vec.len() - 1;
+    
+    // Allow Python threads to run during computation
+    let binned_spikes = Python::allow_threads(py, || {
+        // Create output array: bins × events
+        let mut binned_spikes = Array2::<i32>::zeros((n_bins, n_events));
+        
+        // Process each event in parallel
+        let event_counts: Vec<_> = events
+            .par_iter()
+            .enumerate()
+            .map(|(e_idx, &event_time)| {
+                // Create histogram for this event
+                let mut event_counts = vec![0i32; n_bins];
+                
+                // Calculate window boundaries
+                let window_start = event_time - pre_samples;
+                let window_end = event_time + post_samples;
+                
+                // Find spikes within this window
+                for &spike_time in spike_vec.iter() {
+                    // Skip if spike is outside window
+                    if spike_time < window_start || spike_time >= window_end {
+                        continue;
+                    }
+                    
+                    // Calculate relative time
+                    let rel_time = (spike_time - event_time) as f32;
+                    
+                    // Find bin index using binary search
+                    let bin_idx = match bin_edges_vec.binary_search_by(|&edge| {
+                        edge.partial_cmp(&rel_time).unwrap_or(std::cmp::Ordering::Equal)
+                    }) {
+                        Ok(idx) => idx - 1,  // Exact match - use previous bin
+                        Err(idx) => idx - 1, // Not found - insertion point minus 1
+                    };
+                    
+                    // Ensure bin index is valid
+                    if bin_idx < n_bins {
+                        event_counts[bin_idx] += 1;
+                    }
+                }
+                
+                (e_idx, event_counts)
+            })
+            .collect();
+        
+        // Combine results
+        for (e_idx, counts) in event_counts {
+            for bin_idx in 0..n_bins {
+                binned_spikes[[bin_idx, e_idx]] = counts[bin_idx];
+            }
+        }
+        
+        binned_spikes
+    });
+    
+    // Convert back to Python array
+    Ok(binned_spikes.into_pyarray(py).into())
+}
+
+
 /// Compute PSTH (Peristimulus Time Histogram) for a single unit
 /// 
 /// Args:
@@ -17,6 +113,7 @@ use rayon::prelude::*;
 ///
 /// Returns:
 ///     Tuple of (binned_spikes, time_bins)
+/// 
 #[pyfunction]
 pub fn compute_psth(
     py: Python<'_>,

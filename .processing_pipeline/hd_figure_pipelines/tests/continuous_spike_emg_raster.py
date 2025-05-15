@@ -187,7 +187,7 @@ ax_density.set_yticklabels(used_unit_ids)
 for ax in axes:
     ax.set_xlim(start_time, end_time)  # Use the requested time range
     ax.grid(True, alpha=0.3)
-
+ax_density.grid(False)
 # Adjust layout
 plt.tight_layout()
 plt.show()

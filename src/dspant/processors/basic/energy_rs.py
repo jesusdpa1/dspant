@@ -63,25 +63,10 @@ class TKEORustProcessor:
                 use_rust: Whether to use Rust implementation (default: True if available)
 
         Returns:
-            Processed array with TKEO applied
+            Processed array with TKEO applied, same shape as input
         """
         use_parallel = kwargs.get("use_parallel", True)
         use_rust = kwargs.get("use_rust", _HAS_RUST)
-
-        # Fall back to Python implementation if Rust is not available or not requested
-        if not _HAS_RUST or not use_rust:
-            # Use the same implementation as Python version
-            if self.method == "classic":
-                tkeo_func = _classic_tkeo
-            else:
-                tkeo_func = _modified_tkeo
-
-            return data.map_overlap(
-                tkeo_func,
-                depth=(self.overlap_samples, 0),
-                boundary="reflect",
-                dtype=data.dtype,
-            )
 
         # Ensure data is correct format for Rust processing
         needs_reshape = False
@@ -89,38 +74,129 @@ class TKEORustProcessor:
             data = data.reshape(-1, 1)
             needs_reshape = True
 
-        # Define Rust processing function based on method and parallel setting
+        # Define processing function based on method
         def process_chunk(x):
             # Ensure array is contiguous and float32
             x = np.ascontiguousarray(x, dtype=np.float32)
+            original_shape = x.shape
 
             if self.method == "classic":
-                if use_parallel and x.ndim > 1 and x.shape[1] > 1:
-                    # Parallel implementation for multi-channel data
-                    return compute_tkeo_parallel(x)
-                elif x.ndim == 1:
-                    # 1D implementation for single channel data
-                    return compute_tkeo_classic(x)
-                else:
-                    # Regular 2D implementation
-                    return compute_tkeo(x)
-            else:  # modified method
-                if x.ndim > 1:
-                    # Process each channel separately for modified method
-                    result = np.zeros((x.shape[0], x.shape[1]), dtype=np.float32)
-                    for c in range(x.shape[1]):
-                        result[:, c] = compute_tkeo_modified(x[:, c])
-                    return result
-                else:
-                    # Direct 1D processing
-                    return compute_tkeo_modified(x)
+                # Classic TKEO reduces by 2 samples
+                if use_rust and _HAS_RUST:
+                    if use_parallel and x.ndim > 1 and x.shape[1] > 1:
+                        # Compute TKEO (returns N-2 samples)
+                        tkeo_result = compute_tkeo_parallel(x)
 
-        # Map the function across dask chunks
+                        # Create output array with original size
+                        output = np.zeros(original_shape, dtype=np.float32)
+
+                        # Copy TKEO result to the middle of the output
+                        output[1:-1] = tkeo_result
+
+                        # Handle boundaries - mirror adjacent values
+                        output[0] = output[1]
+                        output[-1] = output[-2]
+
+                        return output
+
+                    elif x.ndim == 1:
+                        # 1D array processing
+                        tkeo_result = compute_tkeo_classic(x)
+
+                        # Create output array with original size
+                        output = np.zeros(original_shape, dtype=np.float32)
+
+                        # Copy TKEO result to the middle of the output
+                        output[1:-1] = tkeo_result
+
+                        # Handle boundaries - mirror adjacent values
+                        output[0] = output[1]
+                        output[-1] = output[-2]
+
+                        return output
+
+                    else:
+                        # Multi-channel non-parallel processing
+                        tkeo_result = compute_tkeo(x)
+
+                        # Create output array with original size
+                        output = np.zeros(original_shape, dtype=np.float32)
+
+                        # Copy TKEO result to the middle of the output
+                        output[1:-1] = tkeo_result
+
+                        # Handle boundaries - mirror adjacent values
+                        output[0] = output[1]
+                        output[-1] = output[-2]
+
+                        return output
+                else:
+                    # Fall back to Python implementation
+                    output = np.zeros(original_shape, dtype=np.float32)
+                    for c in range(x.shape[1]):
+                        channel_result = _classic_tkeo(x[:, c])
+                        output[1:-1, c] = channel_result
+                        output[0, c] = output[1, c]
+                        output[-1, c] = output[-2, c]
+                    return output
+
+            else:  # modified method
+                # Modified TKEO reduces by 3 samples
+                if use_rust and _HAS_RUST:
+                    # Create output array with original size
+                    output = np.zeros(original_shape, dtype=np.float32)
+
+                    if x.ndim > 1:
+                        # Process each channel separately
+                        for c in range(x.shape[1]):
+                            # Compute modified TKEO for this channel
+                            tkeo_result = compute_tkeo_modified(x[:, c])
+
+                            # Copy result to output (leaving 3 boundary samples)
+                            output[1:-2, c] = tkeo_result
+
+                            # Handle boundaries - mirror adjacent values
+                            output[0, c] = output[1, c]
+                            output[-2, c] = output[-3, c]
+                            output[-1, c] = output[-3, c]
+                    else:
+                        # Direct 1D processing
+                        tkeo_result = compute_tkeo_modified(x)
+
+                        # Copy result to output (leaving boundary samples)
+                        output[1:-2] = tkeo_result
+
+                        # Handle boundaries
+                        output[0] = output[1]
+                        output[-2] = output[-3]
+                        output[-1] = output[-3]
+
+                    return output
+                else:
+                    # Fall back to Python implementation
+                    output = np.zeros(original_shape, dtype=np.float32)
+                    for c in range(x.shape[1]):
+                        channel_result = _modified_tkeo(x[:, c])
+                        output[1:-2, c] = channel_result
+                        output[0, c] = output[1, c]
+                        output[-2, c] = output[-3, c]
+                        output[-1, c] = output[-3, c]
+                    return output
+
+        # Calculate proper overlap depth based on method
+        if self.method == "classic":
+            # For classic TKEO, we need 2 extra samples for output of the same size
+            depth = {0: 2}
+        else:  # modified method
+            # For modified TKEO, we need 3 extra samples for output of the same size
+            depth = {0: 3}
+
+        # Map the function across chunks with proper overlap
         result = data.map_overlap(
             process_chunk,
-            depth=(self.overlap_samples, 0),
+            depth=depth,
             boundary="reflect",
-            dtype=data.dtype,
+            dtype=np.float32,
         )
 
         # Restore original shape if needed

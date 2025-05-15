@@ -1,3 +1,7 @@
+"""
+waveform extractor
+"""
+
 from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import dask.array as da
