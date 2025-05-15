@@ -42,7 +42,7 @@ BASE_PATH = DATA_DIR.joinpath(
     r"topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
 )
 #     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
-
+EMG_STREAM_PATH = 
 HD_STREAM_PATH = BASE_PATH.joinpath("HDEG.ant")
 
 # %%
