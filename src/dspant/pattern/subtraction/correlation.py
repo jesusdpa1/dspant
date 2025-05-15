@@ -26,17 +26,24 @@ class CorrelationSubtractor(BaseSubtractor):
     Useful for removing artifacts like ECG from EMG or EEG signals.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+    ):
+        """
+        Initialize the correlation subtractor.
+        """
         super().__init__()
+        self.processed_indices = []
 
     def process(
         self,
         data: da.Array,
-        template: Union[np.ndarray, da.Array],
-        fs: Optional[float] = None,
-        mode: Optional[Literal["global", None]] = None,
         indices: Optional[Union[np.ndarray, List[int]]] = None,
+        fs: Optional[float] = None,
+        template: Optional[Union[np.ndarray, da.Array]] = None,
+        mode: Optional[Literal["global", None]] = None,
         half_window: Optional[int] = None,
+        window_factor: Optional[float] = 2.0,
         **kwargs,
     ) -> da.Array:
         """
@@ -44,17 +51,25 @@ class CorrelationSubtractor(BaseSubtractor):
 
         Args:
             data: Dask array of shape (samples, channels).
-            template: Template array of shape (samples, channels) or (samples,).
+            indices: List or array of sample indices where templates are subtracted.
             fs: Sampling frequency in Hz (optional).
+            template: Template array of shape (samples, channels) or (samples,).
             mode: 'global' applies the first channel of template to all channels;
                   None uses per-channel subtraction.
-            indices: List or array of sample indices where templates are subtracted.
             half_window: Half-window size in samples (defaults to half template length).
+            window_factor: Multiplier for window size relative to template length.
             **kwargs: Reserved for future options.
 
         Returns:
             Data array with template artifacts subtracted.
         """
+        # Reset processed indices
+        self.processed_indices = []
+        self.window_factor = window_factor
+
+        if template is None:
+            raise ValueError("Template must be provided for subtraction")
+
         if indices is None:
             raise ValueError("Indices must be provided for template subtraction.")
 
@@ -77,11 +92,11 @@ class CorrelationSubtractor(BaseSubtractor):
         # Set up window parameters
         template_len = template.shape[0]
         half_window = half_window or template_len // 2
-        window_size = 2 * template_len
 
-        # Use a large overlap to ensure we don't miss any indices
-        # This is crucial - we need to have plenty of room around chunk boundaries
-        self._overlap_samples = window_size
+        # Critical fix: Use a much larger overlap to ensure proper boundary handling
+        # This is the key change that should fix the boundary issues
+        window_size = int(template_len * window_factor)
+        self._overlap_samples = window_size * 3  # Triple the window size for overlap
 
         # Ensure indices are sorted contiguous array for efficiency
         indices = np.sort(np.asarray(indices))
@@ -102,7 +117,10 @@ class CorrelationSubtractor(BaseSubtractor):
                                 if np.any(indices >= data.shape[0] + start):
                                     indices = indices - start
             except Exception as e:
-                print(f"Warning: Error adjusting indices: {e}")
+                pass
+
+        # Track processed indices across chunks
+        all_processed_indices = []
 
         def subtract_chunk(chunk, block_info=None):
             """Process a single chunk with proper boundary handling"""
@@ -117,12 +135,11 @@ class CorrelationSubtractor(BaseSubtractor):
             if block_info and 0 in block_info:
                 chunk_start = block_info[0]["array-location"][0][0]
 
-            # Use a large margin to catch indices that might affect this chunk
-            margin = window_size * 2
+            # Get chunk end
             chunk_end = chunk_start + chunk.shape[0]
 
-            # Find indices that might influence this chunk
-            # Use a very wide range to be safe
+            # Find relevant indices - use a wider margin to ensure boundary indices are processed
+            margin = window_size * 4
             mask = (indices >= chunk_start - margin) & (indices < chunk_end + margin)
             relevant_indices = indices[mask]
 
@@ -136,15 +153,26 @@ class CorrelationSubtractor(BaseSubtractor):
             # Create array of local indices within this chunk
             local_indices = relevant_indices - chunk_start
 
+            # List to collect processed indices for this chunk
+            chunk_processed_indices = []
+
             # Process each channel
             if mode == "global":
                 # Global mode: use same template channel for all data channels
                 template_ch = np.ascontiguousarray(template[:, 0])
                 for ch in range(result.shape[1]):
                     channel_data = np.ascontiguousarray(result[:, ch])
-                    result[:, ch] = self._subtract_from_channel(
-                        channel_data, template_ch, local_indices, half_window
+                    result[:, ch], processed = self._subtract_from_channel(
+                        channel_data,
+                        template_ch,
+                        local_indices,
+                        half_window,
                     )
+                    # Only collect indices from the first channel to avoid duplicates
+                    if ch == 0:
+                        # Convert local indices back to global indices
+                        global_indices = [idx + chunk_start for idx in processed]
+                        chunk_processed_indices.extend(global_indices)
             else:
                 # Per-channel mode: use matching template channel
                 for ch in range(result.shape[1]):
@@ -154,25 +182,44 @@ class CorrelationSubtractor(BaseSubtractor):
 
                     # Process channel
                     channel_data = np.ascontiguousarray(result[:, ch])
-                    result[:, ch] = self._subtract_from_channel(
-                        channel_data, template_ch, local_indices, half_window
+                    result[:, ch], processed = self._subtract_from_channel(
+                        channel_data,
+                        template_ch,
+                        local_indices,
+                        half_window,
                     )
+                    # For multi-channel, collect indices from each channel
+                    if ch == 0:  # Only collect once per template position
+                        # Convert local indices back to global indices
+                        global_indices = [idx + chunk_start for idx in processed]
+                        chunk_processed_indices.extend(global_indices)
+
+            # Collect the global indices that were processed in this chunk
+            all_processed_indices.extend(chunk_processed_indices)
 
             return result
 
         # Process data with overlap
         result = data.map_overlap(
             subtract_chunk,
-            depth={-2: self._overlap_samples},  # Keep this format
+            depth={-2: self._overlap_samples},  # Increased overlap depth
             boundary="reflect",
             dtype=data.dtype,
             block_info=True,
         )
 
+        # Store the processed indices
+        if all_processed_indices:
+            # Remove duplicates and sort
+            self.processed_indices = sorted(set(all_processed_indices))
+        else:
+            self.processed_indices = []
+
         # Save stats
         self._subtraction_stats.update(
             {
-                "num_indices": len(indices),
+                "num_input_indices": len(indices),
+                "num_processed_indices": len(self.processed_indices),
                 "window_size": window_size,
                 "template_length": template_len,
                 "fs": fs,
@@ -185,36 +232,48 @@ class CorrelationSubtractor(BaseSubtractor):
 
     def _subtract_from_channel(
         self,
-        data: np.ndarray,  # Changed from 'signal' to 'data'
+        data: np.ndarray,
         template: np.ndarray,
         indices: np.ndarray,
         half_window: int,
-    ) -> np.ndarray:
-        """Subtract template from a single channel at specified indices"""
+    ) -> tuple:
+        """
+        Subtract template from a single channel at specified indices.
+
+        Args:
+            data: Channel data array
+            template: Template to subtract
+            indices: Indices (in local coordinates) where templates should be subtracted
+            half_window: Half-window size for correlation
+
+        Returns:
+            Tuple of (processed_data, processed_indices)
+        """
         # Make a copy and ensure it's contiguous
-        result = np.ascontiguousarray(data.copy())  # Changed from 'signal' to 'data'
+        result = np.ascontiguousarray(data.copy())
         n_samples = len(result)
+
+        # Keep track of successfully processed indices
+        processed_indices = []
 
         # Process each index
         for idx in indices:
-            # Skip if out of range or too close to edge
-            if idx < half_window or idx >= n_samples - half_window:
+            # Skip if index is out of range or too close to edge
+            if idx < 0 or idx >= n_samples:
                 continue
 
             # Extract segment for correlation
             segment = result[idx - half_window : idx + half_window]
 
-            # Skip if segment size is wrong
-            if len(segment) != 2 * half_window:
+            # Skip if segment is too short
+            if len(segment) < half_window:
                 continue
 
             # Calculate correlation with full mode for better alignment
-            # Cross-correlation finds how much to shift the template to align with signal
             corr = correlate(segment, template, mode="full")
 
             # Find optimal lag (shift) to align template with signal
-            # The -1 term adjusts for zero-indexing
-            lag = np.argmax(corr) - (len(template) - 1)
+            lag = np.argmax(corr) - (len(corr) // 2)
 
             # Calculate start and end positions with shift
             start = idx - half_window + lag
@@ -233,17 +292,45 @@ class CorrelationSubtractor(BaseSubtractor):
 
             # Calculate optimal scaling factor to match template amplitude
             energy = np.dot(template, template)
-            if energy > 1e-10:  # Avoid division by zero
+            if energy > 1e-12:  # Avoid division by zero
                 scale = np.dot(aligned, template) / energy
 
                 # Subtract scaled template
                 result[start:end] -= scale * template
+                processed_indices.append(idx)
 
-        return result
+        return result, processed_indices
+
+    def get_processed_indices(self) -> list:
+        """Get the indices that were successfully processed."""
+        return self.processed_indices
 
     @property
     def summary(self) -> Dict[str, Any]:
-        return super().summary
+        """Get a summary of the subtractor configuration"""
+        base_summary = super().summary
+        if hasattr(self, "window_factor"):
+            base_summary.update(
+                {
+                    "window_factor": self.window_factor,
+                }
+            )
+
+        # Include information about processed indices
+        if hasattr(self, "processed_indices") and self.processed_indices:
+            base_summary.update(
+                {
+                    "num_processed_indices": len(self.processed_indices),
+                    "processed_indices_range": (
+                        min(self.processed_indices),
+                        max(self.processed_indices),
+                    )
+                    if self.processed_indices
+                    else None,
+                }
+            )
+
+        return base_summary
 
 
 @public_api
@@ -268,13 +355,14 @@ def subtract_templates(
         Signal with artifacts removed.
     """
     subtractor = CorrelationSubtractor()
-    return subtractor.process(
+    result = subtractor.process(
         data=data,
-        template=template,
         indices=indices,
+        template=template,
         half_window=half_window,
         mode=mode,
     )
+    return result
 
 
 @public_api
