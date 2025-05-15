@@ -10,174 +10,78 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
-from numba import jit, prange
 from scipy.signal import correlate
 
 from dspant.core.internals import public_api
 from dspant.pattern.subtraction.base import BaseSubtractor
 
 
-@jit(nopython=True, cache=True)
-def _align_and_scale_template(
-    segment: np.ndarray, template: np.ndarray, correlation_mode: str = "valid"
-) -> Tuple[int, float]:
-    """
-    Find optimal alignment and scaling for template.
-
-    Args:
-        segment: Signal segment
-        template: Template to align
-        correlation_mode: Mode for correlation calculation
-            "valid": Only compute where template and segment fully overlap
-            "same": Output is same size as segment
-            "full": Output is full correlation
-
-    Returns:
-        Tuple of (shift, scale_factor)
-    """
-    # Segment and template should be 1D arrays
-    if segment.ndim > 1 or template.ndim > 1:
-        # Flatten for single-channel operation
-        segment = segment.ravel()
-        template = template.ravel()
-
-    # Compute correlation
-    if correlation_mode == "valid":
-        # Manual valid-mode correlation
-        corr = np.zeros(len(segment) - len(template) + 1)
-        for i in range(len(corr)):
-            for j in range(len(template)):
-                corr[i] += segment[i + j] * template[j]
-        max_idx = np.argmax(corr)
-        shift = max_idx
-    elif correlation_mode == "same":
-        # Manual same-mode correlation (centered)
-        corr = np.zeros(len(segment))
-        template_half = len(template) // 2
-        for i in range(len(segment)):
-            for j in range(len(template)):
-                if i - template_half + j >= 0 and i - template_half + j < len(segment):
-                    corr[i] += segment[i - template_half + j] * template[j]
-        max_idx = np.argmax(corr)
-        shift = max_idx - len(segment) // 2
-    else:  # Full mode
-        # Manual full-mode correlation
-        corr = np.zeros(len(segment) + len(template) - 1)
-        for i in range(len(corr)):
-            for j in range(len(template)):
-                if i - j >= 0 and i - j < len(segment):
-                    corr[i] += segment[i - j] * template[j]
-        max_idx = np.argmax(corr)
-        shift = max_idx - (len(template) - 1)
-
-    # Calculate optimal scaling using dot product
-    # This minimizes the squared error between template and signal
-    start = max(0, shift)
-    end = min(len(segment), shift + len(template))
-
-    # Get the overlapping part
-    if end <= start:
-        return shift, 0.0  # No overlap
-
-    # Template portion that overlaps
-    template_start = max(0, -shift)
-    template_end = template_start + (end - start)
-
-    # Calculate scaling factor
-    template_portion = template[template_start:template_end]
-    segment_portion = segment[start:end]
-
-    # Dot products for scaling factor
-    numerator = 0.0
-    denominator = 0.0
-    for i in range(len(template_portion)):
-        numerator += segment_portion[i] * template_portion[i]
-        denominator += template_portion[i] * template_portion[i]
-
-    # Avoid division by zero
-    if denominator <= 1e-10:
-        scale = 0.0
-    else:
-        scale = numerator / denominator
-
-    return shift, scale
-
-
-@jit(nopython=True, parallel=True, cache=True)
-def _apply_subtraction_numba(
+def apply_subtraction(
     data: np.ndarray,
     template: np.ndarray,
     indices: np.ndarray,
     half_window: int,
-    correlation_mode: str = "valid",
 ) -> np.ndarray:
     """
-    Subtract templates from data at specified indices using Numba acceleration.
+    Subtract templates from data at specified indices using the exact algorithm
+    from the working example.
 
     Args:
-        data: Data array (samples x channels)
-        template: Template array (template_samples x channels)
+        data: Data array (1D)
+        template: Template array (1D)
         indices: Indices where templates should be subtracted
         half_window: Half size of window around each index
-        correlation_mode: Mode for correlation calculation
 
     Returns:
         Data with templates subtracted
     """
-    # Ensure data is contiguous for best performance
-    data = np.ascontiguousarray(data)
-    template = np.ascontiguousarray(template)
+    # Make a copy to avoid modifying input
+    result = data.copy()
+
+    # Handle 1D inputs (convert to 1D if needed)
+    if data.ndim > 1:
+        # Only support 1D for now to match working code
+        result = result.ravel()
+
+    # Make sure template is 1D
+    if template.ndim > 1:
+        template = template.ravel()
 
     # Get dimensions
-    n_samples, n_channels = data.shape
-    template_samples = template.shape[0]
-
-    # Create a copy for subtraction
-    output = data.copy()
+    n_samples = len(result)
+    window_samples = len(template)
 
     # Process each index
-    for idx_pos in range(len(indices)):
-        idx = indices[idx_pos]
-
-        # Skip if index is too close to edges
+    for idx in indices:
+        # Skip if index is too close to edges for extracting segment
         if idx < half_window or idx >= n_samples - half_window:
             continue
 
-        # Extract segment for each channel
-        start = idx - half_window
-        end = idx + half_window
+        # Extract segment for correlation
+        segment = result[idx - half_window : idx + half_window]
 
-        # Process each channel separately
-        for ch in prange(n_channels):
-            # Get channel data
-            segment = data[start:end, ch]
-            template_ch = template[:, min(ch, template.shape[1] - 1)]
+        # Calculate correlation
+        corr = correlate(segment, template, mode="valid")
 
-            # Align and scale template
-            shift, scale = _align_and_scale_template(
-                segment, template_ch, correlation_mode
-            )
+        # Calculate shift by centering correlation at middle of window
+        shift = np.argmax(corr) - (len(corr) // 2)
 
-            # Apply subtraction
-            # Shift is relative to the segment start
-            t_start = max(0, shift)
-            t_end = min(len(segment), shift + len(template_ch))
+        # Calculate start and end for extraction with shift
+        start = idx - half_window + shift
+        end = start + window_samples
 
-            # Skip if no overlap
-            if t_end <= t_start:
-                continue
+        # Safety check for boundaries
+        if start >= 0 and end < n_samples:
+            # Re-extract segment at aligned position
+            aligned_segment = result[start:end]
 
-            # Template portion that overlaps
-            template_start = max(0, -shift)
-            template_end = template_start + (t_end - t_start)
+            # Calculate scaling factor
+            scale = np.dot(aligned_segment, template) / np.dot(template, template)
 
-            # Apply subtraction to output
-            for i in range(t_end - t_start):
-                output[start + t_start + i, ch] -= (
-                    scale * template_ch[template_start + i]
-                )
+            # Subtract scaled template
+            result[start:end] -= scale * template
 
-    return output
+    return result
 
 
 @public_api
@@ -194,25 +98,16 @@ class CorrelationSubtractor(BaseSubtractor):
         self,
         template: Optional[np.ndarray] = None,
         window_samples: Optional[int] = None,
-        correlation_mode: str = "valid",
-        use_numba: bool = True,
     ):
         """
         Initialize the correlation-based subtractor.
 
         Args:
-            template: Template array to subtract (samples x channels)
+            template: Template array to subtract (1D)
             window_samples: Window size to use for subtraction
                             If None, determined from template size
-            correlation_mode: Mode for correlation calculation
-                "valid": Only compute where template and segment fully overlap
-                "same": Output is same size as segment
-                "full": Output is full correlation
-            use_numba: Whether to use Numba acceleration
         """
         super().__init__(template)
-        self.correlation_mode = correlation_mode
-        self.use_numba = use_numba
 
         # Initialize window size
         if template is not None:
@@ -239,12 +134,10 @@ class CorrelationSubtractor(BaseSubtractor):
         if template is not None:
             if template.ndim == 1:
                 # Single channel
-                if self._window_samples == 0:
-                    self._window_samples = len(template)
+                self._window_samples = len(template)
             else:
                 # Multi-channel
-                if self._window_samples == 0:
-                    self._window_samples = template.shape[0]
+                self._window_samples = template.shape[0]
 
         self._half_window = self._window_samples // 2
 
@@ -259,12 +152,10 @@ class CorrelationSubtractor(BaseSubtractor):
         Process data by subtracting templates at specified indices.
 
         Args:
-            data: Input data array
+            data: Input data array (1D)
             indices: Indices where templates should be subtracted
             fs: Sampling frequency (for metadata)
-            **kwargs: Additional parameters:
-                window_samples: Override window size
-                correlation_mode: Override correlation mode
+            **kwargs: Additional parameters
 
         Returns:
             Data with templates subtracted
@@ -275,14 +166,16 @@ class CorrelationSubtractor(BaseSubtractor):
 
         # Check for overrides
         window_samples = kwargs.get("window_samples", self._window_samples)
-        correlation_mode = kwargs.get("correlation_mode", self.correlation_mode)
+        half_window = window_samples // 2
 
         # Ensure we have a template
         if self.template is None:
             raise ValueError("No template provided for subtraction")
 
-        # Calculate window parameters
-        half_window = window_samples // 2
+        # Ensure template is 1D or first channel of multi-channel
+        template = self.template
+        if template.ndim > 1:
+            template = template[:, 0]  # Use first channel if multidimensional
 
         # Ensure indices are numpy array
         if isinstance(indices, list):
@@ -293,53 +186,30 @@ class CorrelationSubtractor(BaseSubtractor):
             """Process a single chunk of data"""
             # Filter indices to those within this chunk
             # Include extra buffer for window size
-            chunk_indices = (
-                indices[
-                    (indices >= chunk_offset + half_window)
-                    & (indices < chunk_offset + len(chunk) - half_window)
-                ]
-                - chunk_offset
-            )  # Adjust indices to chunk coordinates
+            chunk_indices = indices[
+                (indices >= chunk_offset + half_window)
+                & (indices < chunk_offset + len(chunk) - half_window)
+            ]
+
+            # Adjust indices to be relative to chunk
+            if len(chunk_indices) > 0:
+                chunk_indices = chunk_indices - chunk_offset
 
             # If no indices in this chunk, return unchanged
             if len(chunk_indices) == 0:
                 return chunk
 
-            # Prepare data
-            if chunk.ndim == 1:
-                # Reshape 1D data to 2D for consistent processing
-                chunk = chunk.reshape(-1, 1)
+            # Ensure chunk is 1D
+            if chunk.ndim > 1:
+                chunk = chunk.ravel()
 
-            # Prepare template
-            template = self.template
-            if template.ndim == 1:
-                # Reshape 1D template to 2D
-                template = template.reshape(-1, 1)
-
-            # Apply subtraction
-            if self.use_numba:
-                # Use Numba-accelerated implementation
-                result = _apply_subtraction_numba(
-                    chunk, template, chunk_indices, half_window, correlation_mode
-                )
-            else:
-                # Standard implementation
-                result = self._apply_subtraction_standard(
-                    chunk, template, chunk_indices, half_window, correlation_mode
-                )
-
-            # Return result with original shape
-            if chunk.ndim != result.ndim:
-                if chunk.shape[1] == 1:
-                    # Reshape back to 1D if input was 1D
-                    result = result.ravel()
-
-            return result
+            # Apply subtraction using the simple algorithm
+            return apply_subtraction(chunk, template, chunk_indices, half_window)
 
         # Apply subtraction with overlap
         processed_data = data.map_overlap(
             subtract_templates_from_chunk,
-            depth=self._window_samples,
+            depth=window_samples,
             boundary="reflect",
             dtype=data.dtype,
         )
@@ -349,98 +219,10 @@ class CorrelationSubtractor(BaseSubtractor):
             {
                 "num_indices": len(indices),
                 "window_samples": window_samples,
-                "correlation_mode": correlation_mode,
             }
         )
 
         return processed_data
-
-    def _apply_subtraction_standard(
-        self,
-        data: np.ndarray,
-        template: np.ndarray,
-        indices: np.ndarray,
-        half_window: int,
-        correlation_mode: str,
-    ) -> np.ndarray:
-        """
-        Standard (non-Numba) implementation of template subtraction.
-
-        Args:
-            data: Data array
-            template: Template array
-            indices: Indices where templates should be subtracted
-            half_window: Half size of window around each index
-            correlation_mode: Mode for correlation calculation
-
-        Returns:
-            Data with templates subtracted
-        """
-        # Create a copy to avoid modifying the input
-        result = data.copy()
-
-        # Get dimensions
-        n_samples, n_channels = data.shape
-
-        # Process each index
-        for idx in indices:
-            # Skip if index is too close to edges
-            if idx < half_window or idx >= n_samples - half_window:
-                continue
-
-            # Extract segment
-            start = idx - half_window
-            end = idx + half_window
-            segment = data[start:end, :]
-
-            # Process each channel
-            for ch in range(n_channels):
-                # Get channel data
-                segment_ch = segment[:, ch]
-                template_ch = template[:, min(ch, template.shape[1] - 1)]
-
-                # Find optimal alignment using correlation
-                corr = correlate(segment_ch, template_ch, mode=correlation_mode)
-                max_idx = np.argmax(corr)
-
-                # Calculate shift based on correlation mode
-                if correlation_mode == "valid":
-                    shift = max_idx
-                elif correlation_mode == "same":
-                    shift = max_idx - len(segment_ch) // 2
-                else:  # "full"
-                    shift = max_idx - (len(template_ch) - 1)
-
-                # Apply shift to get proper alignment
-                aligned_start = start + max(0, shift)
-                aligned_end = min(n_samples, aligned_start + len(template_ch))
-
-                # Skip if no overlap after alignment
-                if aligned_end <= aligned_start:
-                    continue
-
-                # Get template portion that overlaps
-                template_start = max(0, -shift)
-                template_end = template_start + (aligned_end - aligned_start)
-                template_portion = template_ch[template_start:template_end]
-
-                # Get data portion
-                data_portion = data[aligned_start:aligned_end, ch]
-
-                # Calculate scaling factor
-                numerator = np.dot(data_portion, template_portion)
-                denominator = np.dot(template_portion, template_portion)
-
-                # Avoid division by zero
-                if denominator <= 1e-10:
-                    scale = 0.0
-                else:
-                    scale = numerator / denominator
-
-                # Subtract scaled template
-                result[aligned_start:aligned_end, ch] -= scale * template_portion
-
-        return result
 
     @property
     def window_samples(self) -> int:
@@ -461,8 +243,6 @@ class CorrelationSubtractor(BaseSubtractor):
         base_summary.update(
             {
                 "window_samples": self._window_samples,
-                "correlation_mode": self.correlation_mode,
-                "use_numba": self.use_numba,
             }
         )
         return base_summary
@@ -472,7 +252,6 @@ class CorrelationSubtractor(BaseSubtractor):
 def create_correlation_subtractor(
     template: np.ndarray,
     window_samples: Optional[int] = None,
-    correlation_mode: str = "valid",
 ) -> CorrelationSubtractor:
     """
     Create a correlation-based template subtractor.
@@ -480,7 +259,6 @@ def create_correlation_subtractor(
     Args:
         template: Template array to subtract
         window_samples: Window size (default: template length)
-        correlation_mode: Mode for correlation calculation
 
     Returns:
         Configured CorrelationSubtractor
@@ -488,8 +266,6 @@ def create_correlation_subtractor(
     return CorrelationSubtractor(
         template=template,
         window_samples=window_samples,
-        correlation_mode=correlation_mode,
-        use_numba=True,
     )
 
 
@@ -511,11 +287,13 @@ def create_ecg_subtractor(
     # Calculate window size in samples
     window_samples = int((window_ms / 1000) * fs)
 
+    # Ensure template is 1D for ECG
+    if ecg_template.ndim > 1:
+        ecg_template = ecg_template[:, 0]  # Use first channel if multidimensional
+
     return CorrelationSubtractor(
         template=ecg_template,
         window_samples=window_samples,
-        correlation_mode="valid",
-        use_numba=True,
     )
 
 
@@ -525,7 +303,6 @@ def subtract_templates(
     template: np.ndarray,
     indices: Union[np.ndarray, List[int]],
     window_samples: Optional[int] = None,
-    correlation_mode: str = "valid",
 ) -> Union[np.ndarray, da.Array]:
     """
     Convenience function for one-off template subtraction.
@@ -535,7 +312,6 @@ def subtract_templates(
         template: Template to subtract
         indices: Indices where templates should be subtracted
         window_samples: Window size (default: template length)
-        correlation_mode: Mode for correlation calculation
 
     Returns:
         Data with templates subtracted
@@ -544,7 +320,6 @@ def subtract_templates(
     subtractor = CorrelationSubtractor(
         template=template,
         window_samples=window_samples,
-        correlation_mode=correlation_mode,
     )
 
     # Convert to dask array if numpy input
