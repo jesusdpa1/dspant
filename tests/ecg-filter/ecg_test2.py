@@ -117,7 +117,7 @@ plt.show()
 
 # %%
 # Extract ECG templates
-window_ms = 60  # Window size in milliseconds
+window_ms = 30  # Window size in milliseconds
 window_samples = int((window_ms / 1000) * FS)
 half_win = window_samples // 2
 waveform_processor = WaveformExtractor(filter_emg[:, 0], FS)
