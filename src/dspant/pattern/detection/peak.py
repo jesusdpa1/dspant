@@ -3,6 +3,15 @@ Peak detection algorithms for neural spike detection.
 
 This module implements various peak detection methods for identifying
 neural spikes and events in extracellular recordings.
+
+
+missing
+
+Prominence calculation
+
+Width calculation
+
+Plateau detection
 """
 
 from typing import Any, Dict, Literal, Optional, Tuple, Union
