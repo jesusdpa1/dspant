@@ -26,6 +26,7 @@ dependencies = [
     "polars>=1.21.0",
     "pyarrow>=19.0.0",
     "pydantic>=2.10.6",
+    "pyrefly>=0.15.2",
     "pywavelets>=1.8.0",
     "rich>=13.9.4",
     "scipy>=1.15.1",
@@ -144,3 +145,9 @@ members = [
 ]
 
 # [dependency-groups]
+[tool.pyrefly]
+project_includes = ["**/*"]
+project_excludes = [
+    "**/.[!/.]*",
+    "**/*venv/**/*",
+]
