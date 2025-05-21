@@ -32,75 +32,6 @@ from dspant.processors.filters.iir_filters import (
 # Set publication style
 mpu.set_publication_style()
 
-
-# %%
-# Improved panel label function
-def add_panel_label(
-    ax,
-    label,
-    position="top-left",
-    offset_factor=0.1,
-    fontsize=None,
-    fontweight="bold",
-    color="black",
-):
-    """
-    Add a panel label (A, B, C, etc.) to a subplot with adaptive positioning.
-    """
-    # Get the position of the axes in figure coordinates
-    bbox = ax.get_position()
-    fig = plt.gcf()
-
-    # Set default font size if not specified
-    if fontsize is None:
-        fontsize = mpu.FONT_SIZES["panel_label"]
-
-    # Calculate offset based on subplot size and offset factor
-    x_offset = bbox.width * offset_factor
-    y_offset = bbox.height * offset_factor
-
-    # Determine position coordinates based on selected position
-    if position == "top-left":
-        x = bbox.x0 - x_offset
-        y = bbox.y1 + y_offset
-    elif position == "top-right":
-        x = bbox.x1 + x_offset
-        y = bbox.y1 + y_offset
-    elif position == "bottom-left":
-        x = bbox.x0 - x_offset
-        y = bbox.y0 - y_offset
-    elif position == "bottom-right":
-        x = bbox.x1 + x_offset
-        y = bbox.y0 - y_offset
-    else:
-        # Default to top-left if invalid position
-        x = bbox.x0 - x_offset
-        y = bbox.y1 + y_offset
-
-    # Determine text alignment based on position
-    if "left" in position:
-        ha = "right"
-    else:
-        ha = "left"
-
-    if "top" in position:
-        va = "bottom"
-    else:
-        va = "top"
-
-    # Position the label outside the subplot
-    fig.text(
-        x,
-        y,
-        label,
-        fontsize=fontsize,
-        fontweight=fontweight,
-        va=va,
-        ha=ha,
-        color=color,
-    )
-
-
 # %%
 # Data loading (keep your existing data loading code)
 DATA_DIR = Path(os.getenv("DATA_DIR"))
@@ -524,10 +455,35 @@ mpu.finalize_figure(
 plt.tight_layout()
 
 # Add panel labels - using adaptive panel label function with larger font
-add_panel_label(ax1, "A", offset_factor=0.01, fontsize=SUBTITLE_SIZE)
-add_panel_label(ax2, "B", offset_factor=0.02, fontsize=SUBTITLE_SIZE)
-add_panel_label(ax3, "C", offset_factor=0.02, fontsize=SUBTITLE_SIZE)
-add_panel_label(ax4, "D", offset_factor=0.02, fontsize=SUBTITLE_SIZE)
+# Add panel labels - using the mpu module's function with larger font
+mpu.add_panel_label(
+    ax1,
+    "A",
+    x_offset_factor=0.01,
+    y_offset_factor=0.01,
+    fontsize=SUBTITLE_SIZE,
+)
+mpu.add_panel_label(
+    ax2,
+    "B",
+    x_offset_factor=0.02,
+    y_offset_factor=0.02,
+    fontsize=SUBTITLE_SIZE,
+)
+mpu.add_panel_label(
+    ax3,
+    "C",
+    x_offset_factor=0.02,
+    y_offset_factor=0.02,
+    fontsize=SUBTITLE_SIZE,
+)
+mpu.add_panel_label(
+    ax4,
+    "D",
+    x_offset_factor=0.02,
+    y_offset_factor=0.02,
+    fontsize=SUBTITLE_SIZE,
+)
 
 # Save figure if needed
 mpu.save_figure(fig, "emg_contractile_breathing_metrics.png", dpi=600)
