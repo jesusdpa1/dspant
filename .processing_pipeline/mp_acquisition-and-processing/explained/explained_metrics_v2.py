@@ -82,17 +82,13 @@ tkeo_envelope = tkeo_processor.process(filter_data, fs=FS).persist()
 # Create visualization
 
 
-# %%
-# Create visualization
-
-
 # Define adjustable parameters for the visualization
 class PlotParameters:
     # Data selection parameters
     data_start = int(FS * 5)  # Start time in seconds
     data_duration = int(FS * 8)  # Duration in seconds
     zoom_start = int(FS * 6)  # Zoomed section start
-    zoom_duration = int(FS * 1.5)  # 1 second zoom
+    zoom_duration = int(FS * 1)  # 1 second zoom
 
     # Ttot zoom parameters
     zoom_start_ttot = int(FS * 6.8)  # Ttot zoomed section start
@@ -101,15 +97,15 @@ class PlotParameters:
     # Contractile metric parameters (in samples from zoom_start)
     onset_position = int(FS * 0.32)  # Position of onset marker
     peak_position = int(FS * 0.51)  # Position of peak marker
-    offset_position = int(FS * 0.6)  # Position of offset marker
+    offset_position = int(FS * 0.61)  # Position of offset marker
 
     # Breathing metric parameters
-    ti_start = int(FS * 0.32)  # Ti start (onset)
-    ti_end = int(FS * 0.51)  # Ti end (peak)
-    te0_start = int(FS * 0.51)  # Te start (peak)
-    te0_end = int(FS * 0.61)  # Te end (next onset)
-    te1_start = int(FS * 0.61)  # Te start (peak)
-    te1_end = int(FS * 1.02)  # Te end (next onset)
+    ti_start = int(FS * 0.24)  # Ti start (onset)
+    ti_end = int(FS * 0.40)  # Ti end (peak)
+    te0_start = int(FS * 0.40)  # Te start (peak)
+    te0_end = int(FS * 0.55)  # Te end (next onset)
+    te1_start = int(FS * 0.55)  # Te start (peak)
+    te1_end = int(FS * 0.9)  # Te end (next onset)
     ttot_start = int(FS * 0.24)  # Ttot start (first onset)
     ttot_end = int(FS * 0.9)  # Ttot end (second onset)
 
@@ -186,9 +182,9 @@ NAVY_BLUE = "#2D3142"  # Dark navy blue for time series (original)
 ORANGE_ENVELOPE = "#DE8F05"  # Original orange for envelope
 HIGHLIGHT_YELLOW = "#FFCC00"  # Original yellow for zoom highlight
 HIGHLIGHT_GREEN = "#90EE90"  # Original light green for Ttot highlight
-TI_COLOR = "#AEDFF7"  # Original light blue for Ti block
-TE0_COLOR = "#F9BFC1"  # Original light coral for Te0 block
-TE1_COLOR = "#DE4010"  # Original red for Te1 block
+TI_COLOR = "#D8FF4B"  # Original light blue for Ti block
+TE0_COLOR = "#83BDFF"  # Original light coral for Te0 block
+TE1_COLOR = "#1066DE"  # Original red for Te1 block
 TTOT_COLOR = HIGHLIGHT_GREEN  # Light green for Ttot block
 ONSET_COLOR = "green"  # Original color for onset line
 PEAK_COLOR = "blue"  # Original color for peak line
@@ -207,7 +203,7 @@ ENVELOPE_LINEWIDTH = 4  # Thicker line for envelope
 
 # Create figure with 3x2 grid
 fig = plt.figure(figsize=(36, 36))  # Increased height for 3 rows
-gs = GridSpec(3, 2, height_ratios=[1, 1, 1], width_ratios=[1, 1])
+gs = GridSpec(3, 2, height_ratios=[1.1, 1.1, 1.1], width_ratios=[1.1, 1.1])
 
 # Get max amplitude for normalization
 emg_max_amp = np.max(np.abs(data_segment[:, PARAMS.channel]))
@@ -283,7 +279,7 @@ ax1.add_patch(highlight2)
 # Format axis using mpu with larger font sizes
 mpu.format_axis(
     ax1,
-    title="EMG Signal with TKEO Envelope (Y-Spread)",
+    title="EMG Signal with TKEO Envelope",
     xlabel="Time [s]",
     ylabel="Signals",
     title_fontsize=SUBTITLE_SIZE,
@@ -318,11 +314,19 @@ peak_time = PARAMS.peak_position / FS
 offset_time = PARAMS.offset_position / FS
 
 ax2.axvline(x=onset_time, color=ONSET_COLOR, linestyle="--", linewidth=3, label="Onset")
-ax2.axvline(x=peak_time, color=PEAK_COLOR, linestyle="--", linewidth=3, label="Peak")
+# ax2.axvline(x=peak_time, color=PEAK_COLOR, linestyle="--", linewidth=3, label="Peak")
 ax2.axvline(
     x=offset_time, color=OFFSET_COLOR, linestyle="--", linewidth=3, label="Offset"
 )
-
+# Fill the area under the TKEO curve to visualize AUC
+ax2.fill_between(
+    time_zoom[PARAMS.onset_position : PARAMS.peak_position],
+    2.5,  # baseline
+    zoom_tkeo_data[PARAMS.onset_position : PARAMS.peak_position],
+    color=AUC_COLOR,
+    alpha=0.3,
+    label="Time To Peak",
+)
 # Format axis using mpu with larger font sizes
 mpu.format_axis(
     ax2,
@@ -352,9 +356,9 @@ ax3.plot(
 
 # Fill the area under the TKEO curve to visualize AUC
 ax3.fill_between(
-    time_zoom,
-    PARAMS.emg_offset,  # baseline
-    zoom_tkeo_data,
+    time_zoom[PARAMS.onset_position : PARAMS.offset_position],
+    1,  # baseline
+    zoom_tkeo_data[PARAMS.onset_position : PARAMS.offset_position],
     color=AUC_COLOR,
     alpha=0.3,
     label="AUC",
@@ -378,13 +382,17 @@ mpu.format_axis(
     tick_fontsize=TICK_SIZE,
 )
 mpu.add_legend(ax3, fontsize=LEGEND_SIZE)
-
+# Plot EMG and TKEO with y offset for Ttot zoom
+ttot_emg_data = (
+    zoom_data_ttot[:, PARAMS.channel] / emg_max_amp * 1.5 + PARAMS.emg_offset
+)
+ttot_tkeo_data = zoom_tkeo_ttot_normalized / emg_max_amp * 1.5 + PARAMS.tkeo_offset
 # ===== Row 3, Column 1: Single Breath (Ti and Te) =====
 ax4 = fig.add_subplot(gs[2, 0])
-ax4.plot(time_zoom, zoom_emg_data, color=NAVY_BLUE, linewidth=2)
+ax4.plot(time_zoom_ttot, ttot_emg_data, color=NAVY_BLUE, linewidth=2)
 ax4.plot(
-    time_zoom,
-    zoom_tkeo_data,
+    time_zoom_ttot,
+    ttot_tkeo_data,
     color=ORANGE_ENVELOPE,
     linewidth=ENVELOPE_LINEWIDTH,
     alpha=0.9,
@@ -448,11 +456,6 @@ mpu.add_legend(ax4, fontsize=LEGEND_SIZE)
 # ===== Row 3, Column 2: Two Breaths with Ttot =====
 ax5 = fig.add_subplot(gs[2, 1])
 
-# Plot EMG and TKEO with y offset for Ttot zoom
-ttot_emg_data = (
-    zoom_data_ttot[:, PARAMS.channel] / emg_max_amp * 1.5 + PARAMS.emg_offset
-)
-ttot_tkeo_data = zoom_tkeo_ttot_normalized / emg_max_amp * 1.5 + PARAMS.tkeo_offset
 
 ax5.plot(time_zoom_ttot, ttot_emg_data, color=NAVY_BLUE, linewidth=2)
 ax5.plot(
@@ -514,35 +517,38 @@ mpu.add_panel_label(
 mpu.add_panel_label(
     ax2,
     "B",
-    x_offset_factor=0.02,
-    y_offset_factor=0.02,
+    x_offset_factor=0.01,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax3,
     "C",
-    x_offset_factor=0.02,
-    y_offset_factor=0.02,
+    x_offset_factor=0.01,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax4,
     "D",
-    x_offset_factor=0.02,
-    y_offset_factor=0.02,
+    x_offset_factor=0.01,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax5,
     "E",
-    x_offset_factor=0.02,
-    y_offset_factor=0.02,
+    x_offset_factor=0.01,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 
 # Save figure if needed
-mpu.save_figure(fig, "emg_contractile_breathing_metrics.png", dpi=600)
-
+# mpu.save_figure(fig, "emg_contractile_breathing_metrics.png", dpi=600)
+FIGURE_TITLE = "emg_metrics-breathing"
+FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
+FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
+mpu.save_figure(fig, FIGURE_PATH, dpi=600)
 plt.show()
 
 # %%

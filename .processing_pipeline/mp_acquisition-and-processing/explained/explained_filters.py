@@ -5,15 +5,21 @@ Description: Code to plot filter configurations using mp_plotting_utils for stan
 """
 
 # %%
+import os
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import mp_plotting_utils as mpu
 import numpy as np
+from dotenv import load_dotenv
 from scipy import signal
+
+load_dotenv()
 
 # Define colors - maintaining original dark navy and blue scheme
 ORIGINAL_SIGNAL_COLOR = "#2d3142"  # Dark navy for original signal (keeping original)
 FILTERED_SIGNAL_COLOR = "#0173b2"  # Blue for filtered signal (keeping original)
-CUTOFF_COLOR = mpu.COLORS["green"]  # Green for cutoff markers (colorblind-friendly)
+CUTOFF_COLOR = "#de8f05"  # Green for cutoff markers (colorblind-friendly)
 
 # Define filter parameters
 LOWPASS_CUTOFF = 100
@@ -88,6 +94,8 @@ def plot_filter_response(ax, filter_type, cutoff, order=4, fs=8000, title=None):
             color=CUTOFF_COLOR,
             linestyle="--",
             alpha=0.7,
+            fontsize=12,
+            fontweight="bold",
         )
 
     return b, a
@@ -146,97 +154,6 @@ def plot_time_domain(ax, t, original_signal, filtered_signal, title=None):
 
     # Add legend
     mpu.add_legend(ax, loc="upper right")
-
-
-# Improved panel label function
-def add_panel_label(
-    ax,
-    label,
-    position="top-left",
-    offset_factor=0.1,
-    fontsize=20,
-    fontweight="bold",
-    fontfamily="Montserrat",
-    color="black",
-):
-    """
-    Add a panel label (A, B, C, etc.) to a subplot with adaptive positioning.
-
-    Parameters
-    ----------
-    ax : matplotlib.axes.Axes
-        Axes object to add the label to
-    label : str
-        Label text (typically a single letter like 'A', 'B', etc.)
-    position : str
-        Position of the label relative to the subplot. Options:
-        'top-left' (default), 'top-right', 'bottom-left', 'bottom-right'
-    offset_factor : float
-        Factor to determine the offset relative to subplot width/height.
-        Smaller values place the label closer to the subplot.
-        Typical values range from 0.05 to 0.2.
-    fontsize : int
-        Font size for the label
-    fontweight : str
-        Font weight for the label
-    fontfamily : str
-        Font family for the label
-    color : str
-        Color for the label text
-    """
-    # Get the position of the axes in figure coordinates
-    bbox = ax.get_position()
-    fig = plt.gcf()
-
-    # Calculate width and height of the figure
-    fig_width, fig_height = fig.get_size_inches()
-
-    # Calculate offset based on subplot size and offset factor
-    # This will scale the offset proportionally to the subplot size
-    x_offset = bbox.width * offset_factor
-    y_offset = bbox.height * offset_factor
-
-    # Determine position coordinates based on selected position
-    if position == "top-left":
-        x = bbox.x0 - x_offset
-        y = bbox.y1 + y_offset
-    elif position == "top-right":
-        x = bbox.x1 + x_offset
-        y = bbox.y1 + y_offset
-    elif position == "bottom-left":
-        x = bbox.x0 - x_offset
-        y = bbox.y0 - y_offset
-    elif position == "bottom-right":
-        x = bbox.x1 + x_offset
-        y = bbox.y0 - y_offset
-    else:
-        # Default to top-left if invalid position
-        x = bbox.x0 - x_offset
-        y = bbox.y1 + y_offset
-
-    # Determine text alignment based on position
-    if "left" in position:
-        ha = "right"
-    else:
-        ha = "left"
-
-    if "top" in position:
-        va = "bottom"
-    else:
-        va = "top"
-
-    # Position the label outside the subplot
-    fig.text(
-        x,
-        y,
-        label,
-        fontsize=fontsize,
-        fontweight=fontweight,
-        va=va,
-        ha=ha,
-        color=color,
-        fontfamily=fontfamily,
-    )
 
 
 # Set publication style
@@ -363,17 +280,61 @@ mpu.finalize_figure(
 plt.tight_layout()
 
 # Add panel labels with the improved function - using consistent offset_factor
-add_panel_label(ax1_1, "A", position="top-left", offset_factor=0.05)
-add_panel_label(ax1_2, "B", position="top-left", offset_factor=0.05)
-add_panel_label(ax2_1, "C", position="top-left", offset_factor=0.05)
-add_panel_label(ax2_2, "D", position="top-left", offset_factor=0.05)
-add_panel_label(ax3_1, "E", position="top-left", offset_factor=0.05)
-add_panel_label(ax3_2, "F", position="top-left", offset_factor=0.05)
-add_panel_label(ax4_1, "G", position="top-left", offset_factor=0.05)
-add_panel_label(ax4_2, "H", position="top-left", offset_factor=0.05)
+mpu.add_panel_label(
+    ax1_1,
+    "A",
+    x_offset_factor=0.03,
+    y_offset_factor=0.02,
+)
+mpu.add_panel_label(
+    ax1_2,
+    "B",
+    x_offset_factor=0.03,
+    y_offset_factor=0.02,
+)
+mpu.add_panel_label(
+    ax2_1,
+    "C",
+    x_offset_factor=0.03,
+    y_offset_factor=0.02,
+)
+mpu.add_panel_label(
+    ax2_2,
+    "D",
+    x_offset_factor=0.03,
+    y_offset_factor=0.02,
+)
+mpu.add_panel_label(
+    ax3_1,
+    "E",
+    x_offset_factor=0.03,
+    y_offset_factor=0.02,
+)
+mpu.add_panel_label(
+    ax3_2,
+    "F",
+    x_offset_factor=0.03,
+    y_offset_factor=0.02,
+)
+mpu.add_panel_label(
+    ax4_1,
+    "G",
+    x_offset_factor=0.03,
+    y_offset_factor=0.02,
+)
+mpu.add_panel_label(
+    ax4_2,
+    "H",
+    x_offset_factor=0.03,
+    y_offset_factor=0.02,
+)
 
 # Save the figure
-mpu.save_figure(fig, "explained_filters.png", dpi=600)
+FIGURE_TITLE = "explained_filters"
+FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
+FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
+
+mpu.save_figure(fig, FIGURE_PATH, dpi=600)
 
 # Show the plot
 plt.show()

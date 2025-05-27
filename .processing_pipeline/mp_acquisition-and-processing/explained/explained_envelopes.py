@@ -236,24 +236,6 @@ ax3.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
 ax3.tick_params(labelsize=TICK_SIZE)
 ax3.set_title("TKEO Envelope", fontsize=SUBTITLE_SIZE, weight="bold")
 
-# # Plot 4: Empty placeholder for now (or you can add another envelope method if you have one)
-# ax4 = fig.add_subplot(gs[1, 3])
-# # Just set up the axes for consistency
-# ax4.set_xlim(0, max_time)
-# ax4.set_ylim(bottom=0)
-# ax4.set_xlabel("Time [s]", fontsize=AXIS_LABEL_SIZE, weight="bold")
-# ax4.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE, weight="bold")
-# ax4.tick_params(labelsize=TICK_SIZE)
-# ax4.set_title("Placeholder", fontsize=SUBTITLE_SIZE, weight="bold")
-# ax4.text(
-#     0.5,
-#     0.5,
-#     "Future Method",
-#     horizontalalignment="center",
-#     verticalalignment="center",
-#     transform=ax4.transAxes,
-#     fontsize=SUBTITLE_SIZE,
-# )
 
 # Add overall title
 plt.suptitle(
@@ -263,15 +245,6 @@ plt.suptitle(
 # Adjust layout
 plt.tight_layout(rect=[0, 0, 1, 0.95])  # Make room for the suptitle
 
-# # Add a caption/note if needed
-# plt.figtext(
-#     0.5,
-#     0.01,
-#     f"Channel {channel_to_plot} data, filtered with bandpass (10-2000 Hz) and notch (60 Hz) filters, window size: {window_size / fs * 1000:.0f}ms",
-#     ha="center",
-#     fontsize=CAPTION_SIZE,
-#     fontstyle="italic",
-# )
 
 plt.show()
 

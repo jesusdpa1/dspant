@@ -5,11 +5,21 @@ Description: Code to visualize the effects of aliasing and antialiasing in signa
 """
 
 # %%
+import os
+from pathlib import Path
+
 import matplotlib.pyplot as plt
+import mp_plotting_utils as mpu
 import numpy as np
 import seaborn as sns
+from dotenv import load_dotenv
 from matplotlib.gridspec import GridSpec
 from scipy import signal
+
+# %%
+
+mpu.set_publication_style()
+load_dotenv()
 
 # Set color constants
 ORIGINAL_SIGNAL_COLOR = "#2d3142"
@@ -23,6 +33,11 @@ plt.rcParams["font.sans-serif"] = ["Montserrat"]
 
 # Set the style
 sns.set_theme(style="darkgrid")
+
+# Set figure path
+FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
+FIGURE_TITLE = "aliased_explained"
+FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 
 # Define font sizes with appropriate scaling
 TITLE_SIZE = 18
@@ -364,7 +379,7 @@ plt.suptitle(
 
 plt.tight_layout()
 plt.subplots_adjust(top=0.95, hspace=0.4)
-# plt.savefig("aliasing_explained.png", dpi=600, bbox_inches="tight")
+plt.savefig(FIGURE_PATH, dpi=600, bbox_inches="tight")
 plt.show()
 
 # %%

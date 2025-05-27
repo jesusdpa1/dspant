@@ -1,30 +1,33 @@
 {
-  "editor.rulers": [88],
+  "editor.rulers": [
+    88
+  ],
+  "ruff.nativeServer": "on",
   "editor.wordWrapColumn": 80,
   "editor.wordWrap": "wordWrapColumn",
-
   // Ruff configuration
-  "ruff.enable": true,
   "ruff.lineLength": 88,
-  "ruff.lint.select": ["E", "F", "W", "C"],
-
+  "ruff.lint.select": [
+    "E",
+    "F",
+    "W",
+    "C"
+  ],
+  "ruff.organizeImports": true, // Add this
   "[python]": {
     "editor.codeActionsOnSave": {
-      "source.fixAll": "explicit",
-      "source.organizeImports": "explicit"
+      // "source.fixAll.ruff": "explicit", // More specific
+      "source.organizeImports.ruff": "explicit" // More specific
     },
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "charliermarsh.ruff"
   },
-
   // Python interpreter path
-  "python.envFile": "${workspaceFolder}/.env",
-
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
   // Rust with PyO3
   "rust-analyzer.cargo.extraEnv": {
-    "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"
+    "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe",
   },
-
   // Environment variables for integrated terminal
   "terminal.integrated.env.windows": {
     "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"

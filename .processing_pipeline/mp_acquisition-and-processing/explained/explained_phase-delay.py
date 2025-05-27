@@ -5,11 +5,20 @@ Description: Code to demonstrate phase delay in filtering operations (lfilter vs
 """
 
 # %%
+import os
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import mp_plotting_utils as mpu
 import numpy as np
+from dotenv import load_dotenv
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy import signal
+
+load_dotenv()
+
+# %%
+
 
 # Define custom colors - maintaining the original color scheme
 ORIGINAL_COLOR = "#2d3142"  # Dark navy for original signal
@@ -161,7 +170,7 @@ ax1.plot(
 # Format the axis with mpu
 mpu.format_axis(
     ax1,
-    title="Single-Pass Filtering (lfilter)",
+    title="Single-Pass Filtering",
     xlabel="Time [s]",
     ylabel="Amplitude",
     xlim=(0, 1),
@@ -182,7 +191,7 @@ ax2.plot(
 # Format the axis with mpu
 mpu.format_axis(
     ax2,
-    title="Zero-Phase Filtering (filtfilt)",
+    title="Zero-Phase Filtering",
     xlabel="Time [s]",
     ylabel="Amplitude",
     xlim=(0, 1),
@@ -236,12 +245,15 @@ mpu.finalize_figure(
 plt.tight_layout(rect=[0, 0, 1, 0.92])
 
 # Add panel labels with adaptive positioning
-add_panel_label(ax1, "A", offset_factor=0.05)
-add_panel_label(ax2, "B", offset_factor=0.05)
+mpu.add_panel_label(ax1, "A", x_offset_factor=0.02, y_offset_factor=0.02)
+mpu.add_panel_label(ax2, "B", x_offset_factor=0.02, y_offset_factor=0.02)
 
+FIGURE_TITLE = "explained_phase-delay-filters"
+FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
+FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 
 # Save the figure using mpu
-mpu.save_figure(fig, "explained_phase-delay-filters.png", dpi=600)
+mpu.save_figure(fig, FIGURE_PATH, dpi=600)
 
 plt.show()
 

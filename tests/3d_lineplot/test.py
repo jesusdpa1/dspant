@@ -4,7 +4,6 @@ Author: jpenalozaa
 """
 
 # %%
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import mp_plotting_utils as mpu
@@ -195,7 +194,7 @@ ax.text(
 
 # Finalize the figure
 mpu.finalize_figure(
-    fig, title="EMG Signal Analysis", title_fontsize=mpu.FONT_SIZES["title"]
+    fig,
 )
 
 # Show the plot

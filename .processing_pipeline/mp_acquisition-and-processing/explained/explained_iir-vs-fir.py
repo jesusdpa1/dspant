@@ -3,17 +3,22 @@
 Author: jpenalozaa
 Description: Code to visualize and compare FIR (Moving Average) and IIR (Butterworth) filters
 Modified: Using mp_plotting_utils for standardized publication formatting with colorblind-friendly palette
-#TODO UPDATE
+Added yellow highlight boxes to show zoom regions
 """
 
 # %%
+import os
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 
 # Import our plotting utilities
 import mp_plotting_utils as mpu
 import numpy as np
+from matplotlib.patches import Rectangle
 from scipy import signal
 
+# %%
 # Define filter parameters
 CUTOFF_FREQ = 50  # Hz - cutoff frequency for both filters
 BUTTERWORTH_ORDER = 4  # Filter order for Butterworth
@@ -26,6 +31,11 @@ ORIGINAL_SIGNAL_COLOR = mpu.PRIMARY_COLOR  # Dark navy blue for original signal
 FIR_SIGNAL_COLOR = mpu.COLORS["blue"]  # Blue for FIR filter
 IIR_SIGNAL_COLOR = mpu.COLORS["orange"]  # Orange for IIR filter
 CUTOFF_COLOR = mpu.COLORS["green"]  # Green for cutoff markers
+
+# Set figure path
+FIGURE_TITLE = "iir_vs_fir"
+FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
+FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 
 
 # Function to design Butterworth IIR filter
@@ -74,6 +84,27 @@ def generate_test_signals(fs=8000, duration=1.0):
     return t, noisy_signal, step_signal
 
 
+# Function to add highlight box for zoom regions
+def add_zoom_highlight(ax, x_start, x_end, highlight_color="#FFCC00", alpha=0.3):
+    """
+    Add a yellow highlight box to indicate zoom region
+    """
+    y_min, y_max = ax.get_ylim()
+    height = y_max - y_min
+    width = x_end - x_start
+
+    rect = Rectangle(
+        (x_start, y_min),
+        width,
+        height,
+        linewidth=2,
+        edgecolor=highlight_color,
+        facecolor=highlight_color,
+        alpha=alpha,
+    )
+    ax.add_patch(rect)
+
+
 # Function to plot filter frequency response
 def plot_filter_response(
     ax, b, a, fs=8000, title=None, color=FIR_SIGNAL_COLOR, filter_name=""
@@ -113,7 +144,15 @@ def plot_filter_response(
 
 # Function to plot time domain signals
 def plot_time_domain(
-    ax, t, original_signal, fir_filtered, iir_filtered, title=None, xlim=None
+    ax,
+    t,
+    original_signal,
+    fir_filtered,
+    iir_filtered,
+    title=None,
+    xlim=None,
+    add_zoom_box=False,
+    zoom_xlim=None,
 ):
     ax.plot(
         t,
@@ -150,6 +189,10 @@ def plot_time_domain(
         ylabel="Amplitude",
         xlim=xlim,
     )
+
+    # Add zoom highlight box if requested
+    if add_zoom_box and zoom_xlim is not None:
+        add_zoom_highlight(ax, zoom_xlim[0], zoom_xlim[1])
 
     # Add legend
     mpu.add_legend(ax, loc="lower left")
@@ -209,6 +252,13 @@ def plot_phase_response(ax, b, a, fs=8000, title=None):
 
 # Set publication style with colorblind-friendly palette
 mpu.set_publication_style(use_seaborn=True)
+HIGHLIGHT_COLOR = "#FFCC00"  # Bright yellow for highlight box
+
+# Define zoom regions
+STEP_ZOOM_START = 0.1
+STEP_ZOOM_END = 0.4
+NOISY_ZOOM_START = 0.02
+NOISY_ZOOM_END = 0.05
 
 # Create figure with grid
 fig, gs = mpu.create_figure_grid(
@@ -271,7 +321,7 @@ plot_time_domain(
     ma_filtered_step,
     butter_filtered_step,
     "Step Response Comparison",
-    (0.1, 0.4),  # Focus on the step transition part
+    (STEP_ZOOM_START, STEP_ZOOM_END),  # Focus on the step transition part
 )
 
 # 3. Row: Time domain comparison - noisy signal filtering and zoomed view
@@ -284,6 +334,8 @@ plot_time_domain(
     butter_filtered_noisy,
     "Noisy Signal Filtering Comparison",
     (0, 0.1),  # Show only first 0.1 seconds
+    add_zoom_box=True,  # Add yellow highlight box
+    zoom_xlim=(NOISY_ZOOM_START, NOISY_ZOOM_END),  # Highlight the zoomed region
 )
 
 ax3_2 = plt.subplot(gs[2, 1])
@@ -294,7 +346,7 @@ plot_time_domain(
     ma_filtered_noisy,
     butter_filtered_noisy,
     "Zoomed View of Filtered Signals",
-    (0.02, 0.05),  # Zoomed to show details
+    (NOISY_ZOOM_START, NOISY_ZOOM_END),  # Zoomed to show details
 )
 
 # Finalize the figure with our utility function
@@ -308,15 +360,15 @@ mpu.finalize_figure(
 )
 
 # Now add panel labels after layout adjustments
-mpu.add_panel_label(ax1_1, "A", x_offset=-0.04, y_offset=0.02)
-mpu.add_panel_label(ax1_2, "B", x_offset=-0.04, y_offset=0.02)
-mpu.add_panel_label(ax2_1, "C", x_offset=-0.04, y_offset=0.02)
-mpu.add_panel_label(ax2_2, "D", x_offset=-0.04, y_offset=0.02)
-mpu.add_panel_label(ax3_1, "E", x_offset=-0.04, y_offset=0.02)
-mpu.add_panel_label(ax3_2, "F", x_offset=-0.04, y_offset=0.02)
+mpu.add_panel_label(ax1_1, "A", x_offset_factor=0.05, y_offset_factor=0.02)
+mpu.add_panel_label(ax1_2, "B", x_offset_factor=0.05, y_offset_factor=0.02)
+mpu.add_panel_label(ax2_1, "C", x_offset_factor=0.05, y_offset_factor=0.02)
+mpu.add_panel_label(ax2_2, "D", x_offset_factor=0.05, y_offset_factor=0.02)
+mpu.add_panel_label(ax3_1, "E", x_offset_factor=0.05, y_offset_factor=0.02)
+mpu.add_panel_label(ax3_2, "F", x_offset_factor=0.05, y_offset_factor=0.02)
 
 # Save the figure using our utility function
-mpu.save_figure(fig, "fir_vs_iir_filters.png", dpi=600)
+mpu.save_figure(fig, FIGURE_PATH, dpi=600)
 
 # Show the plot
 plt.show()
