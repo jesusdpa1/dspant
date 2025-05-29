@@ -27,6 +27,7 @@ dependencies = [
     "pyarrow>=19.0.0",
     "pydantic>=2.10.6",
     "pywavelets>=1.8.0",
+    "rerun-sdk>=0.23.3",
     "rich>=13.9.4",
     "scipy>=1.15.1",
     "seaborn>=0.13.2",
