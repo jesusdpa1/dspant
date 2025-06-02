@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from matplotlib.colors import PowerNorm
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import ScalarFormatter
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from ssqueezepy import Wavelet, cwt, imshow, stft
 from ssqueezepy.experimental import scale_to_freq
@@ -154,6 +155,16 @@ mpu.format_axis(
     tick_fontsize=TICK_SIZE,
 )
 
+# Format y-axis of raw data plot to scientific notation
+formatter_raw = ScalarFormatter(useMathText=True)
+formatter_raw.set_scientific(True)
+formatter_raw.set_powerlimits((-2, 2))  # Forces scientific notation
+AX_RAW.yaxis.set_major_formatter(formatter_raw)
+AX_RAW.ticklabel_format(
+    style="scientific", axis="y", scilimits=(0, 0), useMathText=True
+)
+AX_RAW.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
+
 # Plot 2: STFT (second row)
 AX_STFT = FIG.add_subplot(GS[1, 0])
 STFT_MESH = AX_STFT.pcolormesh(
@@ -176,11 +187,31 @@ mpu.format_axis(
     tick_fontsize=TICK_SIZE,
 )
 
+# Format y-axis of STFT plot to scientific notation
+formatter_stft = ScalarFormatter(useMathText=True)
+formatter_stft.set_scientific(True)
+formatter_stft.set_powerlimits((-2, 2))  # Forces scientific notation
+AX_STFT.yaxis.set_major_formatter(formatter_stft)
+AX_STFT.ticklabel_format(
+    style="scientific", axis="y", scilimits=(0, 0), useMathText=True
+)
+AX_STFT.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
+
 # Add STFT colorbar
 DIVIDER_STFT = make_axes_locatable(AX_STFT)
 CAX_STFT = DIVIDER_STFT.append_axes("right", size="3%", pad=0.05)
 CBAR_STFT = plt.colorbar(STFT_MESH, cax=CAX_STFT)
 CAX_STFT.tick_params(labelsize=TICK_SIZE)
+
+# Format STFT colorbar to scientific notation
+formatter_cbar_stft = ScalarFormatter(useMathText=True)
+formatter_cbar_stft.set_scientific(True)
+formatter_cbar_stft.set_powerlimits((-2, 2))
+CAX_STFT.yaxis.set_major_formatter(formatter_cbar_stft)
+CAX_STFT.ticklabel_format(
+    style="scientific", axis="y", scilimits=(0, 0), useMathText=True
+)
+CAX_STFT.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 
 # Plot 3: CWT (third row)
 AX_CWT = FIG.add_subplot(GS[2, 0])
@@ -204,11 +235,31 @@ mpu.format_axis(
     tick_fontsize=TICK_SIZE,
 )
 
+# Format y-axis of CWT plot to scientific notation
+formatter_cwt = ScalarFormatter(useMathText=True)
+formatter_cwt.set_scientific(True)
+formatter_cwt.set_powerlimits((-2, 2))  # Forces scientific notation
+AX_CWT.yaxis.set_major_formatter(formatter_cwt)
+AX_CWT.ticklabel_format(
+    style="scientific", axis="y", scilimits=(0, 0), useMathText=True
+)
+AX_CWT.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
+
 # Add CWT colorbar
 DIVIDER_CWT = make_axes_locatable(AX_CWT)
 CAX_CWT = DIVIDER_CWT.append_axes("right", size="3%", pad=0.05)
 CBAR_CWT = plt.colorbar(CWT_MESH, cax=CAX_CWT)
 CAX_CWT.tick_params(labelsize=TICK_SIZE)
+
+# Format CWT colorbar to scientific notation
+formatter_cbar_cwt = ScalarFormatter(useMathText=True)
+formatter_cbar_cwt.set_scientific(True)
+formatter_cbar_cwt.set_powerlimits((-2, 2))
+CAX_CWT.yaxis.set_major_formatter(formatter_cbar_cwt)
+CAX_CWT.ticklabel_format(
+    style="scientific", axis="y", scilimits=(0, 0), useMathText=True
+)
+CAX_CWT.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 
 # Finalize the figure
 mpu.finalize_figure(
@@ -225,22 +276,22 @@ plt.tight_layout(rect=[0, 0, 1, 0.96])
 mpu.add_panel_label(
     AX_RAW,
     "A",
-    x_offset_factor=0.02,
-    y_offset_factor=0.01,
+    x_offset_factor=0.03,
+    y_offset_factor=0.04,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX_STFT,
     "B",
-    x_offset_factor=0.02,
-    y_offset_factor=0.01,
+    x_offset_factor=0.03,
+    y_offset_factor=0.04,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX_CWT,
     "C",
-    x_offset_factor=0.02,
-    y_offset_factor=0.01,
+    x_offset_factor=0.03,
+    y_offset_factor=0.04,
     fontsize=SUBTITLE_SIZE,
 )
 

@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import mp_plotting_utils as mpu
 import numpy as np
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import FormatStrFormatter
 from scipy import signal
 
 # %%
@@ -25,6 +26,13 @@ BUTTERWORTH_ORDER = 4  # Filter order for Butterworth
 MA_LENGTH = 51  # Length of moving average filter (make odd for symmetry)
 SAMPLING_FREQ = 8000  # Hz - sampling frequency
 NYQUIST = SAMPLING_FREQ / 2
+
+# Define font sizes with appropriate scaling
+FONT_SIZE = 25
+TITLE_SIZE = int(FONT_SIZE * 1)
+SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 0.6)
+TICK_SIZE = int(FONT_SIZE * 0.5)
 
 # Define consistent colors for our signal types - using colorblind-friendly palette
 ORIGINAL_SIGNAL_COLOR = mpu.PRIMARY_COLOR  # Dark navy blue for original signal
@@ -127,6 +135,9 @@ def plot_filter_response(
         xlim=(1, fs / 2),
         ylim=(-80, 5),
         xscale="log",
+        title_fontsize=SUBTITLE_SIZE,
+        label_fontsize=AXIS_LABEL_SIZE,
+        tick_fontsize=TICK_SIZE,
     )
 
     # Add cutoff frequency marker
@@ -136,10 +147,11 @@ def plot_filter_response(
         label=f"{CUTOFF_FREQ} Hz",
         y_pos=-75,
         color=CUTOFF_COLOR,
+        fontsize=AXIS_LABEL_SIZE,
     )
 
     # Add legend
-    mpu.add_legend(ax, loc="lower left")
+    mpu.add_legend(ax, loc="lower left", fontsize=TICK_SIZE)
 
 
 # Function to plot time domain signals
@@ -188,6 +200,9 @@ def plot_time_domain(
         xlabel="Time [s]",
         ylabel="Amplitude",
         xlim=xlim,
+        title_fontsize=SUBTITLE_SIZE,
+        label_fontsize=AXIS_LABEL_SIZE,
+        tick_fontsize=TICK_SIZE,
     )
 
     # Add zoom highlight box if requested
@@ -195,7 +210,7 @@ def plot_time_domain(
         add_zoom_highlight(ax, zoom_xlim[0], zoom_xlim[1])
 
     # Add legend
-    mpu.add_legend(ax, loc="lower left")
+    mpu.add_legend(ax, loc="lower left", fontsize=TICK_SIZE)
 
 
 # Function to plot phase response
@@ -235,6 +250,9 @@ def plot_phase_response(ax, b, a, fs=8000, title=None):
         ylabel="Phase [degrees]",
         xlim=(1, fs / 2),
         xscale="log",
+        title_fontsize=SUBTITLE_SIZE,
+        label_fontsize=AXIS_LABEL_SIZE,
+        tick_fontsize=TICK_SIZE,
     )
 
     # Add cutoff frequency marker
@@ -244,10 +262,11 @@ def plot_phase_response(ax, b, a, fs=8000, title=None):
         color=CUTOFF_COLOR,
         linestyle="--",
         alpha=0.7,
+        fontsize=AXIS_LABEL_SIZE,
     )
 
     # Add legend
-    mpu.add_legend(ax, loc="lower left")
+    mpu.add_legend(ax, loc="lower left", fontsize=TICK_SIZE)
 
 
 # Set publication style with colorblind-friendly palette
@@ -306,7 +325,7 @@ plot_filter_response(
     SAMPLING_FREQ,
     "FIR Filter: Moving Average Frequency Response",
     FIR_SIGNAL_COLOR,
-    f"Moving Average (Length {MA_LENGTH})",
+    f"MA (Length {MA_LENGTH})",
 )
 
 # 2. Row: Phase response and step response
@@ -353,19 +372,62 @@ plot_time_domain(
 mpu.finalize_figure(
     fig,
     title="FIR vs. IIR Filters: Moving Average vs. Butterworth Comparison",
-    title_y=0.98,
+    title_y=0.96,
     left_margin=0.01,
     hspace=0.4,
     top_margin=0.12,
+    title_fontsize=TITLE_SIZE,
 )
 
+# Format all axes to show 1 decimal place
+all_axes = [ax1_1, ax1_2, ax2_1, ax2_2, ax3_1, ax3_2]
+for ax in all_axes:
+    ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+    ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+
 # Now add panel labels after layout adjustments
-mpu.add_panel_label(ax1_1, "A", x_offset_factor=0.05, y_offset_factor=0.02)
-mpu.add_panel_label(ax1_2, "B", x_offset_factor=0.05, y_offset_factor=0.02)
-mpu.add_panel_label(ax2_1, "C", x_offset_factor=0.05, y_offset_factor=0.02)
-mpu.add_panel_label(ax2_2, "D", x_offset_factor=0.05, y_offset_factor=0.02)
-mpu.add_panel_label(ax3_1, "E", x_offset_factor=0.05, y_offset_factor=0.02)
-mpu.add_panel_label(ax3_2, "F", x_offset_factor=0.05, y_offset_factor=0.02)
+mpu.add_panel_label(
+    ax1_1,
+    "A",
+    x_offset_factor=0.05,
+    y_offset_factor=0.02,
+    fontsize=SUBTITLE_SIZE,
+)
+mpu.add_panel_label(
+    ax1_2,
+    "B",
+    x_offset_factor=0.05,
+    y_offset_factor=0.02,
+    fontsize=SUBTITLE_SIZE,
+)
+mpu.add_panel_label(
+    ax2_1,
+    "C",
+    x_offset_factor=0.05,
+    y_offset_factor=0.02,
+    fontsize=SUBTITLE_SIZE,
+)
+mpu.add_panel_label(
+    ax2_2,
+    "D",
+    x_offset_factor=0.05,
+    y_offset_factor=0.02,
+    fontsize=SUBTITLE_SIZE,
+)
+mpu.add_panel_label(
+    ax3_1,
+    "E",
+    x_offset_factor=0.05,
+    y_offset_factor=0.02,
+    fontsize=SUBTITLE_SIZE,
+)
+mpu.add_panel_label(
+    ax3_2,
+    "F",
+    x_offset_factor=0.05,
+    y_offset_factor=0.02,
+    fontsize=SUBTITLE_SIZE,
+)
 
 # Save the figure using our utility function
 mpu.save_figure(fig, FIGURE_PATH, dpi=600)
