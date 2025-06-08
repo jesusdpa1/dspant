@@ -406,7 +406,7 @@ mpu.finalize_figure(
 plt.tight_layout(rect=[0, 0, 1, 0.96])
 
 # Save the figure
-# mpu.save_figure(FIG, FIGURE_PATH, dpi=600)
+mpu.save_figure(FIG, FIGURE_PATH, dpi=600)
 
 plt.show()
 
