@@ -498,7 +498,7 @@ mpu.add_legend(ax5, fontsize=LEGEND_SIZE)
 # Finalize the figure with mpu using larger font size for title
 mpu.finalize_figure(
     fig,
-    title="EMG Signal Analysis: Contractile and Breathing Metrics",
+    # title="EMG Signal Analysis: Contractile and Breathing Metrics",
     title_y=1.02,
     title_fontsize=TITLE_SIZE,
 )

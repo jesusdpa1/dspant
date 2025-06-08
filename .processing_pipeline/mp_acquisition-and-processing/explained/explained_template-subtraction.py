@@ -1,4 +1,5 @@
 """
+ECG Template Subtraction Script - Final Layout
 Simplified script for ECG removal using template subtraction
 """
 
@@ -7,8 +8,12 @@ import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import mp_plotting_utils as mpu
 import numpy as np
 from dotenv import load_dotenv
+from matplotlib.gridspec import GridSpec
+from matplotlib.patches import Rectangle
+from matplotlib.ticker import ScalarFormatter
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
@@ -25,11 +30,22 @@ from dspant.processors.filters.iir_filters import (
     create_notch_filter,
 )
 
+# Set publication style
+mpu.set_publication_style()
+
 # Load environment variables
 load_dotenv()
+
+# Define font sizes with appropriate scaling (consistent with first script)
+FONT_SIZE = 25
+TITLE_SIZE = int(FONT_SIZE * 1)
+SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 0.6)
+TICK_SIZE = int(FONT_SIZE * 0.5)
+
 # %%
 
-FIGURE_TITLE = "ecg_template subtraction"
+FIGURE_TITLE = "ecg_template_subtraction"
 FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
 FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 
@@ -78,7 +94,7 @@ filter_emg = processor_emg.process(group=["filters"]).persist()
 
 # %%
 START_ = int(FS * 0)  # Starting from beginning of recording
-END_ = int(FS * 10)  # 5 seconds of data
+END_ = int(FS * 10)  # 10 seconds of data
 time_slice = slice(START_, END_)
 # Get common-mode reference
 reference_ecg = lowpass_processor.process(filter_emg, FS)
@@ -152,7 +168,6 @@ emg_data = filter_emg[time_slice, 0].compute()
 # Using the new subtraction function with the new interface
 # Use the convenience function for direct template subtraction
 
-
 # Alternatively, using the class-based approach
 subtractor = create_correlation_subtractor()
 cleaned_emg_alt = subtractor.process(
@@ -170,22 +185,12 @@ Enhanced Visualization for ECG removal using template subtraction
 Using a 2x5 grid layout with highlight boxes and improved organization
 """
 
-import matplotlib.pyplot as plt
-import mp_plotting_utils as mpu
-from matplotlib.gridspec import GridSpec
-from matplotlib.patches import Rectangle
-
-# %%
-# Set publication style
-mpu.set_publication_style()
-
 # Define constants
-FS = 2000  # Sampling rate (placeholder - in real code, get this from the data)
 HIGHLIGHT_COLOR = "#FFCC00"  # Bright yellow for highlight box
 
 # Time ranges
 FULL_START = 0
-FULL_END = int(FS * 100)  # Show 10 seconds of data
+FULL_END = int(FS * 10)  # Show 10 seconds of data
 ZOOM_START = int(FS * 2)  # Start zooming at 2 seconds
 ZOOM_END = int(FS * 3)  # End zooming at 3 seconds
 
@@ -201,24 +206,27 @@ ZOOM_WIDTH = ZOOM_END_TIME - ZOOM_START_TIME
 
 # Create the figure with a custom grid layout
 # 2 rows, 5 columns layout
-fig = plt.figure(figsize=(1, 8))
-gs = GridSpec(2, 5, width_ratios=[1, 1, 1, 1, 1])
+FIG = plt.figure(figsize=(15, 8))
+GS = GridSpec(2, 5, width_ratios=[1.1, 1.1, 1.1, 1.1, 1.1])
 
-# Row 1: Unfiltered signal with ECG (spans columns 1-4)
-ax1 = fig.add_subplot(gs[0, 0:4])
-ax1.plot(
+# Row 1: Unfiltered signal with ECG (spans columns 0-2, 3 columns total)
+AX1 = FIG.add_subplot(GS[0, 0:3])
+AX1.plot(
     full_time, filter_emg[FULL_START:FULL_END, 0], color=mpu.PRIMARY_COLOR, linewidth=2
 )
 mpu.format_axis(
-    ax1,
-    title="Filtered EMG Signal with ECG Artifacts",
+    AX1,
+    title="EMG Signal with ECG Artifacts",
     xlabel=None,  # No xlabel for the top plot
     ylabel="Amplitude",
     xlim=(0, 10),
+    title_fontsize=SUBTITLE_SIZE,
+    label_fontsize=AXIS_LABEL_SIZE,
+    tick_fontsize=TICK_SIZE,
 )
 
 # Add highlight box for the zoom region in the first plot
-y_min, y_max = ax1.get_ylim()
+y_min, y_max = AX1.get_ylim()
 height = y_max - y_min
 rect1 = Rectangle(
     (ZOOM_START_TIME, y_min),
@@ -229,33 +237,36 @@ rect1 = Rectangle(
     facecolor=HIGHLIGHT_COLOR,
     alpha=0.3,
 )
-ax1.add_patch(rect1)
+AX1.add_patch(rect1)
 
 # Mark R-peaks on the first plot
 for peak_idx in r_peak_indices:
     if FULL_START <= peak_idx < FULL_END:
-        ax1.axvline(
+        AX1.axvline(
             x=peak_idx / FS, color=mpu.COLORS["orange"], linestyle="--", alpha=0.5
         )
 
-# Row 2: Cleaned signal (spans columns 1-4)
-ax2 = fig.add_subplot(gs[1, 0:4])
-ax2.plot(
+# Row 2: Cleaned signal (spans columns 0-2, 3 columns total)
+AX2 = FIG.add_subplot(GS[1, 0:3])
+AX2.plot(
     full_time,
     cleaned_emg_alt[FULL_START:FULL_END, 0],
     color=mpu.COLORS["blue"],
     linewidth=2,
 )
 mpu.format_axis(
-    ax2,
+    AX2,
     title="EMG Signal with ECG Artifacts Removed",
-    xlabel="Time [s]",
+    xlabel="Time (s)",
     ylabel="Amplitude",
     xlim=(0, 10),
+    title_fontsize=SUBTITLE_SIZE,
+    label_fontsize=AXIS_LABEL_SIZE,
+    tick_fontsize=TICK_SIZE,
 )
 
 # Add highlight box for the zoom region in the second plot
-y_min, y_max = ax2.get_ylim()
+y_min, y_max = AX2.get_ylim()
 height = y_max - y_min
 rect2 = Rectangle(
     (ZOOM_START_TIME, y_min),
@@ -266,31 +277,22 @@ rect2 = Rectangle(
     facecolor=HIGHLIGHT_COLOR,
     alpha=0.3,
 )
-ax2.add_patch(rect2)
+AX2.add_patch(rect2)
 
-# Create an inset axes for the ECG template in the second row, bottom left corner
-ax_inset = fig.add_axes([0.66, 0.1, 0.1, 0.1])  # [left, bottom, width, height]
-template_time = np.arange(len(template)) / FS
-ax_inset.plot(template_time, template, color=mpu.COLORS["orange"], linewidth=2)
-mpu.format_axis(
-    ax_inset,
-    title="ECG Template",
-    xlabel="Time [s]",
-    ylabel="Amp",
-    xlim=(0, len(template) / FS),
-)
-
-# Row 1, Column 5: Zoomed ECG signal
-ax_zoom_ecg = fig.add_subplot(gs[0, 4])
-ax_zoom_ecg.plot(
+# Row 1, Column 3: Zoomed ECG signal (1 column)
+AX_ZOOM_ECG = FIG.add_subplot(GS[0, 3])
+AX_ZOOM_ECG.plot(
     zoom_time, filter_emg[ZOOM_START:ZOOM_END, 0], color=mpu.PRIMARY_COLOR, linewidth=2
 )
 mpu.format_axis(
-    ax_zoom_ecg,
-    title="Zoomed ECG Artifacts",
+    AX_ZOOM_ECG,
+    title="Zoomed Signal",
     xlabel=None,
     ylabel="Amplitude",
     xlim=(0, zoom_duration),
+    title_fontsize=SUBTITLE_SIZE,
+    label_fontsize=AXIS_LABEL_SIZE,
+    tick_fontsize=TICK_SIZE,
 )
 
 # Mark R-peaks on the zoomed plot
@@ -298,76 +300,117 @@ for peak_idx in r_peak_indices:
     if ZOOM_START <= peak_idx < ZOOM_END:
         # Adjust the peak index to match our zoomed time array
         t_idx = peak_idx - ZOOM_START
-        ax_zoom_ecg.axvline(
+        AX_ZOOM_ECG.axvline(
             x=t_idx / FS, color=mpu.COLORS["orange"], linestyle="--", alpha=0.7
         )
 
 # Get the y-axis limits from the ECG zoom plot
-zoom_ylim = ax_zoom_ecg.get_ylim()
+zoom_ylim = AX_ZOOM_ECG.get_ylim()
 
-# Row 2, Column 5: Zoomed Cleaned signal
-ax_zoom_clean = fig.add_subplot(gs[1, 4])
-ax_zoom_clean.plot(
+# Row 1, Column 4: ECG Template (1 column)
+AX_TEMPLATE = FIG.add_subplot(GS[0, 4])
+template_time = np.arange(len(template)) / FS
+AX_TEMPLATE.plot(template_time, template, color=mpu.COLORS["orange"], linewidth=2)
+mpu.format_axis(
+    AX_TEMPLATE,
+    title="ECG Template",
+    xlabel=None,
+    ylabel="Amplitude",
+    xlim=(0, len(template) / FS),
+    title_fontsize=SUBTITLE_SIZE,
+    label_fontsize=AXIS_LABEL_SIZE,
+    tick_fontsize=TICK_SIZE,
+)
+
+
+# Row 2, Columns 3-4: Zoomed Cleaned signal (spans 2 columns)
+AX_ZOOM_CLEAN = FIG.add_subplot(GS[1, 3:5])
+AX_ZOOM_CLEAN.plot(
     zoom_time,
     cleaned_emg_alt[ZOOM_START:ZOOM_END, 0],
     color=mpu.COLORS["blue"],
     linewidth=2,
 )
 mpu.format_axis(
-    ax_zoom_clean,
+    AX_ZOOM_CLEAN,
     title="Zoomed Cleaned Signal",
-    xlabel="Time [s]",
+    xlabel="Time (s)",
     ylabel="Amplitude",
     xlim=(0, zoom_duration),
+    title_fontsize=SUBTITLE_SIZE,
+    label_fontsize=AXIS_LABEL_SIZE,
+    tick_fontsize=TICK_SIZE,
 )
 
 # Apply the same y-axis limits to the cleaned signal zoom plot
-ax_zoom_clean.set_ylim(zoom_ylim)
+AX_ZOOM_CLEAN.set_ylim(zoom_ylim)
+
+# Format y-axis to scientific notation for all plots
+formatter = ScalarFormatter(useMathText=True)
+formatter.set_scientific(True)
+formatter.set_powerlimits((-2, 2))  # Forces scientific notation
+
+for ax in [AX1, AX2, AX_ZOOM_ECG, AX_ZOOM_CLEAN, AX_TEMPLATE]:
+    ax.yaxis.set_major_formatter(formatter)
+    ax.ticklabel_format(
+        style="scientific", axis="y", scilimits=(0, 0), useMathText=True
+    )
+    ax.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
+
 # Add panel labels with the specified formatting
 mpu.add_panel_label(
-    ax1,
+    AX1,
     "A",
-    x_offset_factor=0.15,
-    y_offset_factor=-0.08,
+    x_offset_factor=0.2,
+    y_offset_factor=0.04,
+    fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
-    ax2,
+    AX_ZOOM_ECG,
     "B",
-    x_offset_factor=0.15,
-    y_offset_factor=-0.08,
+    x_offset_factor=-0.1,
+    y_offset_factor=0.04,
+    fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
-    ax_zoom_ecg,
+    AX_TEMPLATE,
     "C",
-    x_offset_factor=-0.3,
-    y_offset_factor=-0.08,
+    x_offset_factor=-0.4,
+    y_offset_factor=0.04,
+    fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
-    ax_zoom_clean,
+    AX2,
     "D",
-    x_offset_factor=-0.3,
-    y_offset_factor=-0.08,
+    x_offset_factor=0.2,
+    y_offset_factor=-0.01,
+    fontsize=SUBTITLE_SIZE,
 )
-# mpu.add_panel_label(
-#     ax_inset,
-#     "E",
-#     x_offset_factor=0.2,
-#     y_offset_factor=0.01,
-# )
+mpu.add_panel_label(
+    AX_ZOOM_CLEAN,
+    "E",
+    x_offset_factor=-0.03,
+    y_offset_factor=-0.01,
+    fontsize=SUBTITLE_SIZE,
+)
 
 # Finalize the figure
 mpu.finalize_figure(
-    fig,
-    title="ECG Artifact Removal using Template Subtraction",
+    FIG,
+    # title="ECG Artifact Removal using Template Subtraction",
     title_y=0.98,
-    hspace=0.3,
+    title_fontsize=TITLE_SIZE,
 )
 
-plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust layout to make room for the title
+# Apply tight layout before saving
+plt.tight_layout(rect=[0, 0, 1, 0.96])
 
 # Save the figure
-mpu.save_figure(fig, FIGURE_PATH, dpi=600)
+# mpu.save_figure(FIG, FIGURE_PATH, dpi=600)
 
 plt.show()
+
+print(f"Figure saved to: {FIGURE_PATH}")
+print("ECG template subtraction analysis complete.")
 
 # %%

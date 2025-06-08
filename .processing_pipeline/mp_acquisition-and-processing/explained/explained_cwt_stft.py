@@ -264,7 +264,7 @@ CAX_CWT.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 # Finalize the figure
 mpu.finalize_figure(
     FIG,
-    title="Time-Frequency Analysis Comparison",
+    # title="Time-Frequency Analysis Comparison",
     title_y=0.98,
     title_fontsize=TITLE_SIZE,
 )

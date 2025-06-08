@@ -366,7 +366,7 @@ apply_scientific_notation(ax_square_tkeo_lp, SCIENTIFIC_NOTATION_SIZE)
 # Finalize the figure with mpu
 mpu.finalize_figure(
     fig,
-    title="EMG Signal Processing: Rectification and Envelope Methods",
+    # title="EMG Signal Processing: Rectification and Envelope Methods",
     title_y=0.98,
     title_fontsize=TITLE_SIZE,
 )

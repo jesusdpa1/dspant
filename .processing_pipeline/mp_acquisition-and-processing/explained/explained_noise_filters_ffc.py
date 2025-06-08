@@ -467,7 +467,7 @@ mpu.format_axis(
 # Finalize the figure with our utility function
 mpu.finalize_figure(
     fig,
-    title="EMG Signal Filtering Comparison with VisuShrink Wavelet Denoising",
+    # title="EMG Signal Filtering Comparison with VisuShrink Wavelet Denoising",
     title_y=0.98,
 )
 

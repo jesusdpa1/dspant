@@ -392,7 +392,7 @@ mpu.add_legend(ax5_2, fontsize=TICK_SIZE)
 # Finalize the figure
 mpu.finalize_figure(
     fig,
-    title="Comprehensive Filter Analysis: Types and Phase Behavior",
+    # title="Comprehensive Filter Analysis: Types and Phase Behavior",
     title_y=0.98,
     hspace=0.4,
     title_fontsize=TITLE_SIZE,

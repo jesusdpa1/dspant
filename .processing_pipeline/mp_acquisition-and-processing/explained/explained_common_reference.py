@@ -299,7 +299,7 @@ ax_ref.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 # Finalize the figure using mpu
 mpu.finalize_figure(
     fig,
-    title="Effect of Common Median Reference (CMR) on Neural Signals",
+    # title="Effect of Common Median Reference (CMR) on Neural Signals",
     title_y=0.98,
     title_fontsize=TITLE_SIZE,
 )

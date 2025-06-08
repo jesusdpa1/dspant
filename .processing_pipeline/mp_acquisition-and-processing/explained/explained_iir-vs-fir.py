@@ -371,7 +371,7 @@ plot_time_domain(
 # Finalize the figure with our utility function
 mpu.finalize_figure(
     fig,
-    title="FIR vs. IIR Filters: Moving Average vs. Butterworth Comparison",
+    # title="FIR vs. IIR Filters: Moving Average vs. Butterworth Comparison",
     title_y=0.96,
     left_margin=0.01,
     hspace=0.4,
