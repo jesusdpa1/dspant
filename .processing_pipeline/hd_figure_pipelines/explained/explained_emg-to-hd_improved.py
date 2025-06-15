@@ -109,15 +109,15 @@ START_TIME = int(0.0 * FS)  # Start time in seconds
 END_TIME = int(5.0 * 60 * FS)  # End time in seconds
 # Create time range for processing
 time_range = slice(START_TIME, END_TIME)
-
+print(time_range)
+# %%
 filtered_hd = processor_hd.process(group=["filters"]).persist()[START_TIME:END_TIME, :]
-
+# %%
 filtered_emg = processor_emg.process(group=["filters"]).persist()[
     START_TIME:END_TIME, :
 ]
 
 # %%
-
 
 cmr_hd_small = cmr_processor.process(
     filtered_hd,
@@ -128,69 +128,505 @@ whiten_hd_small = whiten_processor.process(cmr_hd_small, fs=FS).persist()
 
 # %%
 
-# Template grouping and visualization
+# %%
+# Fresh start - EMG and Neural Template Visualization
+# Fresh start - EMG and Neural Template Visualization
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.gridspec import GridSpec
 
-# Define groups (assuming correction for GROUP_03 and GROUP_04)
-GROUP_01 = np.arange(0, 16, 2)  # [0, 2, 4, 6, 8, 10, 12, 14]
-GROUP_01_COLORS = ["#1A0083", "#4512FA"]
-GROUP_02 = np.arange(1, 17, 2)  # [1, 3, 5, 7, 9, 11, 13, 15]
-GROUP_02_COLORS = ["#00833B", "#3CFE53"]
-GROUP_03 = np.arange(18, 32, 2)  # [18, 20, 22, 24, 26, 28, 30]
-GROUP_03_COLORS = ["#830000", "#FE4343"]
-GROUP_04 = np.arange(19, 33, 2)  # [19, 21, 23, 25, 27, 29, 31]
-GROUP_04_COLORS = ["#835100", "#FAC812"]
+# Configuration
+SELECTED_UNITS = [21, 20, 47, 22, 6, 15, 8]  # 7 templates
+TEMPLATE_COLOR = "#1A0083"  # Blue for templates
+EMG_COLOR = "#830000"  # Red for EMG
+RECORDING_START_TIME = 10.0  # Start time in seconds
+WINDOW_DURATION = 1.0  # 1 second window
+ROW_SPACING = 3.0  # Vertical spacing between rows
+FIGURE_SIZE = (15, 12)
 
-
-GROUP_ID = "19-33-2"
-TEMPLATE_CHANNELS = GROUP_04.tolist()  # Example channel group
-COLOR_WAVEFORM = GROUP_04_COLORS
+# Template extraction parameters
 NUM_SPIKES_TO_TEMPLATE = 500
-PRE_SAMPLES_MS = 2.0  # 1ms before spike
-POST_SAMPLES_MS = 2.0  # 2ms after spike
-
-# Grid layout constants
-TEMPLATES_PER_ROW = 4
-X_SPACING = 1.0
-Y_SPACING = 7.0
-Y_COLUMN_OFFSET = 3.5  # Vertical offset for alternating columns (staggered pattern)
-TIME_SCALE = 0.2
-FIGURE_SIZE = (8, 10)
-
-# Color constants
-
-
-# Quality control constants
+PRE_SAMPLES_MS = 2.0
+POST_SAMPLES_MS = 2.0
 MIN_SPIKES_THRESHOLD = 50
 
-# Define channels to analyze
 
-
-def get_units_for_channels(channel_list):
-    """Get all good units that belong to specified channels"""
-    units_in_channels = []
+def extract_template_and_reconstruct(unit_id, start_time_s, duration_s):
+    """Extract template and reconstruct signal over time window"""
+    # Get unit's primary channel
     templates = sorter_data.templates_data["templates"]
+    unit_template = templates[unit_id]
+    max_channel = np.argmax(np.max(np.abs(unit_template), axis=0))
+    unit_channel = max_channel - 1
 
-    for unit_id in sorter_data.unit_ids:
-        # Find the channel with maximum amplitude for this unit
-        unit_template = templates[unit_id]
-        max_channel = np.argmax(np.max(np.abs(unit_template), axis=0))
-        unit_channel = max_channel - 1
+    # Get all spike times for this unit
+    unit_mask = sorter_data.spike_clusters == unit_id
+    all_spike_times = sorter_data.spike_times[unit_mask]
 
-        # Check if unit belongs to our channel group and has enough spikes
-        if unit_channel in channel_list:
-            unit_mask = sorter_data.spike_clusters == unit_id
-            n_spikes = np.sum(unit_mask)
-            if n_spikes >= MIN_SPIKES_THRESHOLD:  # Quality threshold
-                units_in_channels.append(unit_id)
+    if len(all_spike_times) < MIN_SPIKES_THRESHOLD:
+        return None
 
-    return units_in_channels
+    # Extract template from subset of spikes
+    if len(all_spike_times) > NUM_SPIKES_TO_TEMPLATE:
+        np.random.seed(42)
+        sampled_indices = np.random.choice(
+            len(all_spike_times), NUM_SPIKES_TO_TEMPLATE, replace=False
+        )
+        sampled_spikes = all_spike_times[sampled_indices]
+    else:
+        sampled_spikes = all_spike_times
+
+    # Extract template waveforms
+    pre_samples = int(PRE_SAMPLES_MS * FS / 1000)
+    post_samples = int(POST_SAMPLES_MS * FS / 1000)
+
+    waveforms = []
+    for spike_time in sampled_spikes:
+        start_idx = spike_time - pre_samples
+        end_idx = spike_time + post_samples + 1
+
+        if start_idx >= 0 and end_idx < whiten_hd_small.shape[0]:
+            waveform = whiten_hd_small[start_idx:end_idx, unit_channel].compute()
+            waveforms.append(waveform)
+
+    if not waveforms:
+        return None
+
+    # Create normalized template
+    waveforms_array = np.array(waveforms)
+    template_mean = np.mean(waveforms_array, axis=0)
+    template_normalized = (template_mean - np.mean(template_mean)) / np.std(
+        template_mean
+    )
+
+    # Reconstruct signal in time window
+    start_sample = int(start_time_s * FS)
+    end_sample = int((start_time_s + duration_s) * FS)
+    window_length = end_sample - start_sample
+
+    # Create empty signal array
+    reconstructed_signal = np.zeros(window_length)
+
+    # Find spikes in window
+    spikes_in_window = all_spike_times[
+        (all_spike_times >= start_sample) & (all_spike_times < end_sample)
+    ]
+
+    # Place template at each spike location
+    for spike_time in spikes_in_window:
+        spike_pos = spike_time - start_sample
+        template_start = spike_pos - pre_samples
+        template_end = spike_pos + post_samples + 1
+
+        if template_start >= 0 and template_end <= window_length:
+            reconstructed_signal[template_start:template_end] += template_normalized
+        elif template_start < window_length and template_end > 0:
+            # Handle partial overlap
+            window_start = max(0, template_start)
+            window_end = min(window_length, template_end)
+            template_offset_start = max(0, -template_start)
+            template_offset_end = template_offset_start + (window_end - window_start)
+
+            reconstructed_signal[window_start:window_end] += template_normalized[
+                template_offset_start:template_offset_end
+            ]
+
+    # Create time array
+    time_s = np.arange(window_length) / FS
+
+    return {
+        "reconstructed_signal": reconstructed_signal,
+        "time_s": time_s,
+        "unit_id": unit_id,
+        "n_spikes_in_window": len(spikes_in_window),
+    }
 
 
-def extract_normalized_template(unit_id, num_spikes=NUM_SPIKES_TO_TEMPLATE):
-    """Extract and normalize template for a single unit"""
+# Extract neural data
+print(f"Processing units: {SELECTED_UNITS}")
+reconstructed_data = {}
+
+for unit_id in SELECTED_UNITS:
+    result = extract_template_and_reconstruct(
+        unit_id, RECORDING_START_TIME, WINDOW_DURATION
+    )
+    if result:
+        reconstructed_data[unit_id] = result
+        print(f"Unit {unit_id}: {result['n_spikes_in_window']} spikes")
+
+# Extract EMG data
+start_sample = int(RECORDING_START_TIME * FS)
+end_sample = int((RECORDING_START_TIME + WINDOW_DURATION) * FS)
+
+emg_data = filtered_emg[start_sample:end_sample, 0].compute()  # First channel only
+emg_time = np.arange(len(emg_data)) / FS
+
+# Normalize EMG - better normalization
+emg_mean = np.mean(emg_data)
+emg_std = np.std(emg_data)
+if emg_std > 0:
+    emg_normalized = (emg_data - emg_mean) / emg_std
+else:
+    emg_normalized = emg_data - emg_mean
+
+# Create plot
+fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+
+valid_units = [unit_id for unit_id in SELECTED_UNITS if unit_id in reconstructed_data]
+total_rows = 1 + len(valid_units)  # EMG + neural units
+
+# Plot EMG at top
+emg_y_position = (total_rows - 1) * ROW_SPACING
+ax.plot(
+    emg_time, emg_normalized + emg_y_position, color=EMG_COLOR, linewidth=1.5, alpha=0.8
+)
+ax.text(
+    -0.02,
+    emg_y_position,
+    "EMG",
+    ha="right",
+    va="center",
+    fontsize=10,
+    fontweight="bold",
+    color=EMG_COLOR,
+    transform=ax.get_yaxis_transform(),
+)
+
+# Plot neural units below
+for row_idx, unit_id in enumerate(valid_units):
+    reconstruction = reconstructed_data[unit_id]
+    y_position = (len(valid_units) - 1 - row_idx) * ROW_SPACING
+
+    ax.plot(
+        reconstruction["time_s"],
+        reconstruction["reconstructed_signal"] + y_position,
+        color=TEMPLATE_COLOR,
+        linewidth=1.5,
+        alpha=0.8,
+    )
+
+    ax.text(
+        -0.02,
+        y_position,
+        f"Unit {unit_id}",
+        ha="right",
+        va="center",
+        fontsize=10,
+        fontweight="bold",
+        color=TEMPLATE_COLOR,
+        transform=ax.get_yaxis_transform(),
+    )
+
+# Format plot
+ax.set_xlabel("Time (s)", fontsize=12)
+ax.set_ylabel("Signals", fontsize=12)
+ax.set_title(f"EMG and Neural Activity - {WINDOW_DURATION}s Window", fontsize=14)
+ax.set_xlim(0, WINDOW_DURATION)
+ax.set_yticks([])
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.grid(True, alpha=0.3, axis="x")
+
+plt.tight_layout()
+plt.show()
+
+print(f"\nDisplayed: 1 EMG channel + {len(valid_units)} neural units")
+print(
+    f"Time window: {RECORDING_START_TIME}s - {RECORDING_START_TIME + WINDOW_DURATION}s"
+)
+
+# %%
+#
+import matplotlib.pyplot as plt
+import mp_plotting_utils as mpu
+import numpy as np
+
+# Set publication style
+mpu.set_publication_style()
+TRANSPARENT_BACKGROUND = True  # Set to False for white background
+
+# Use same units and colors as the perspective plot
+SELECTED_UNITS = [21, 20, 47, 22, 6, 15, 8, 12, 34, 18, 25, 9]  # 12 templates
+TEMPLATE_COLORS = [
+    "#00833B",  # Green
+    "#830000",  # Red
+    "#835100",  # Orange
+    "#3CFE53",  # Light green
+    "#FE4343",  # Light red
+    "#FA8C12",  # Orange variant
+    "#8B0000",  # Dark red
+    "#228B22",  # Forest green
+    "#FF6347",  # Tomato
+    "#DAA520",  # Goldenrod
+    "#CD853F",  # Peru
+    "#A0522D",  # Sienna
+]
+
+DARK_GREY_NAVY = "#2D3142"  # Dark navy for EMG
+RECORDING_START_TIME = 10.0  # Start time in seconds
+WINDOW_DURATION = 1.0  # 1 second window
+ROW_SPACING = 2.0  # Vertical spacing between rows
+PERSPECTIVE_SHIFT = 0.1  # Horizontal shift for 3D perspective effect
+FIGURE_SIZE = (20, 12)
+
+# Font sizes using mpu scaling
+FONT_SIZE = 35
+SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 0.6)
+TICK_SIZE = int(FONT_SIZE * 0.8)
+LABEL_SIZE = int(FONT_SIZE * 0.8)
+
+# Template extraction parameters
+NUM_SPIKES_TO_TEMPLATE = 500
+PRE_SAMPLES_MS = 2.0
+POST_SAMPLES_MS = 2.0
+MIN_SPIKES_THRESHOLD = 50
+
+
+def extract_template_and_reconstruct(unit_id, start_time_s, duration_s):
+    """Extract template and reconstruct signal over time window"""
+    # Get unit's primary channel
+    templates = sorter_data.templates_data["templates"]
+    unit_template = templates[unit_id]
+    max_channel = np.argmax(np.max(np.abs(unit_template), axis=0))
+    unit_channel = max_channel - 1
+
+    # Get all spike times for this unit
+    unit_mask = sorter_data.spike_clusters == unit_id
+    all_spike_times = sorter_data.spike_times[unit_mask]
+
+    if len(all_spike_times) < MIN_SPIKES_THRESHOLD:
+        return None
+
+    # Extract template from subset of spikes
+    if len(all_spike_times) > NUM_SPIKES_TO_TEMPLATE:
+        np.random.seed(42)
+        sampled_indices = np.random.choice(
+            len(all_spike_times), NUM_SPIKES_TO_TEMPLATE, replace=False
+        )
+        sampled_spikes = all_spike_times[sampled_indices]
+    else:
+        sampled_spikes = all_spike_times
+
+    # Extract template waveforms
+    pre_samples = int(PRE_SAMPLES_MS * FS / 1000)
+    post_samples = int(POST_SAMPLES_MS * FS / 1000)
+
+    waveforms = []
+    for spike_time in sampled_spikes:
+        start_idx = spike_time - pre_samples
+        end_idx = spike_time + post_samples + 1
+
+        if start_idx >= 0 and end_idx < whiten_hd_small.shape[0]:
+            waveform = whiten_hd_small[start_idx:end_idx, unit_channel].compute()
+            waveforms.append(waveform)
+
+    if not waveforms:
+        return None
+
+    # Create normalized template
+    waveforms_array = np.array(waveforms)
+    template_mean = np.mean(waveforms_array, axis=0)
+    template_normalized = (template_mean - np.mean(template_mean)) / np.std(
+        template_mean
+    )
+
+    # Reconstruct signal in time window
+    start_sample = int(start_time_s * FS)
+    end_sample = int((start_time_s + duration_s) * FS)
+    window_length = end_sample - start_sample
+
+    # Create empty signal array
+    reconstructed_signal = np.zeros(window_length)
+
+    # Find spikes in window
+    spikes_in_window = all_spike_times[
+        (all_spike_times >= start_sample) & (all_spike_times < end_sample)
+    ]
+
+    # Place template at each spike location
+    for spike_time in spikes_in_window:
+        spike_pos = spike_time - start_sample
+        template_start = spike_pos - pre_samples
+        template_end = spike_pos + post_samples + 1
+
+        if template_start >= 0 and template_end <= window_length:
+            reconstructed_signal[template_start:template_end] += template_normalized
+        elif template_start < window_length and template_end > 0:
+            # Handle partial overlap
+            window_start = max(0, template_start)
+            window_end = min(window_length, template_end)
+            template_offset_start = max(0, -template_start)
+            template_offset_end = template_offset_start + (window_end - window_start)
+
+            reconstructed_signal[window_start:window_end] += template_normalized[
+                template_offset_start:template_offset_end
+            ]
+
+    # Create time array
+    time_s = np.arange(window_length) / FS
+
+    return {
+        "reconstructed_signal": reconstructed_signal,
+        "time_s": time_s,
+        "unit_id": unit_id,
+        "n_spikes_in_window": len(spikes_in_window),
+    }
+
+
+# Extract neural data
+print(f"Processing units: {SELECTED_UNITS}")
+reconstructed_data = {}
+
+for unit_id in SELECTED_UNITS:
+    result = extract_template_and_reconstruct(
+        unit_id, RECORDING_START_TIME, WINDOW_DURATION
+    )
+    if result:
+        reconstructed_data[unit_id] = result
+        print(f"Unit {unit_id}: {result['n_spikes_in_window']} spikes")
+
+# Extract EMG data
+start_sample = int(RECORDING_START_TIME * FS)
+end_sample = int((RECORDING_START_TIME + WINDOW_DURATION) * FS)
+
+emg_data = filtered_emg[start_sample:end_sample, 0].compute()  # First channel only
+emg_time = np.arange(len(emg_data)) / FS
+
+# Normalize EMG - z-score normalization
+emg_mean = np.mean(emg_data)
+emg_std = np.std(emg_data)
+if emg_std > 0:
+    emg_normalized = (emg_data - emg_mean) / emg_std
+else:
+    emg_normalized = emg_data - emg_mean
+
+# Create plot
+fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+
+valid_units = [unit_id for unit_id in SELECTED_UNITS if unit_id in reconstructed_data]
+total_rows = 1 + len(valid_units)  # EMG + neural units
+
+# Plot EMG at top with perspective shift and alpha
+emg_y_position = (total_rows - 1) * ROW_SPACING
+emg_x_shift = (total_rows - 1) * PERSPECTIVE_SHIFT
+shifted_emg_time = emg_time + emg_x_shift
+
+ax.plot(
+    shifted_emg_time,
+    emg_normalized + emg_y_position,
+    color=DARK_GREY_NAVY,
+    linewidth=1.5,
+    alpha=0.8,  # Alpha only for EMG
+)
+ax.text(
+    shifted_emg_time[0] - 0.05,
+    emg_y_position,
+    "EMG",
+    ha="right",
+    va="center",
+    fontsize=LABEL_SIZE,
+    fontweight="bold",
+    color=DARK_GREY_NAVY,
+)
+
+# Plot neural units below with perspective shifts
+for row_idx, unit_id in enumerate(valid_units):
+    reconstruction = reconstructed_data[unit_id]
+    y_position = (len(valid_units) - 1 - row_idx) * ROW_SPACING
+    x_shift = (len(valid_units) - 1 - row_idx) * PERSPECTIVE_SHIFT
+    shifted_time = reconstruction["time_s"] + x_shift
+
+    # Use different muted color for each unit
+    unit_color = TEMPLATE_COLORS[row_idx % len(TEMPLATE_COLORS)]
+
+    # Plot reconstructed signal only (no template at end)
+    ax.plot(
+        shifted_time,
+        reconstruction["reconstructed_signal"] + y_position,
+        color=unit_color,
+        linewidth=1.5,
+        alpha=0.8,  # No alpha for neural units
+    )
+
+    ax.text(
+        shifted_time[0] - 0.05,
+        y_position,
+        f"Unit {unit_id}",
+        ha="right",
+        va="center",
+        fontsize=LABEL_SIZE,
+        fontweight="bold",
+        color=unit_color,
+    )
+
+# Draw perspective connection lines
+for i in range(total_rows - 1):
+    y1 = i * ROW_SPACING
+    y2 = (i + 1) * ROW_SPACING
+    x1_start = i * PERSPECTIVE_SHIFT
+    x1_end = WINDOW_DURATION + i * PERSPECTIVE_SHIFT
+    x2_start = (i + 1) * PERSPECTIVE_SHIFT
+    x2_end = WINDOW_DURATION + (i + 1) * PERSPECTIVE_SHIFT
+
+    # Left perspective lines
+    ax.plot([x1_start, x2_start], [y1, y2], "k--", alpha=0.3, linewidth=1)
+    # Right perspective lines
+    ax.plot([x1_end, x2_end], [y1, y2], "k--", alpha=0.3, linewidth=1)
+
+# Format plot - clean minimal style with mpu aesthetics
+ax.set_xticks([])  # No x ticks
+ax.set_yticks([])  # No y ticks
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["bottom"].set_visible(False)
+ax.spines["left"].set_visible(False)
+# Set background based on option
+if TRANSPARENT_BACKGROUND:
+    fig.patch.set_alpha(0.0)  # Transparent figure background
+    ax.patch.set_alpha(0.0)  # Transparent axes background
+# Set background color and ensure it covers the entire plot area
+
+
+# Apply mpu styling
+mpu.finalize_figure(fig, title=None)
+plt.tight_layout()
+plt.show()
+
+print(f"\nDisplayed: 1 EMG channel + {len(valid_units)} neural units")
+print(
+    f"Time window: {RECORDING_START_TIME}s - {RECORDING_START_TIME + WINDOW_DURATION}s"
+)
+print(f"Colors: Muted palette (no blues), EMG with alpha transparency")
+
+# %%
+
+# TEMPLATES
+
+# Template extraction constants (reuse from previous code)
+NUM_SPIKES_TO_TEMPLATE = 500
+PRE_SAMPLES_MS = 2.5  # ms before spike
+POST_SAMPLES_MS = 2.5  # ms after spike
+MIN_SPIKES_THRESHOLD = 50
+
+# Grid layout constants - TWO COLUMNS
+TEMPLATES_PER_ROW = 6  # Two columns
+X_SPACING = 2.0  # Horizontal spacing between columns
+Y_SPACING = 8.0  # Vertical spacing between rows
+TIME_SCALE = 0.2
+FIGURE_SIZE = (20, 8)  # Wider for two columns
+
+# Background options
+TRANSPARENT_BACKGROUND = True  # Set to False for white background
+
+# Font sizes using mpu scaling
+FONT_SIZE = 35
+LABEL_SIZE = int(FONT_SIZE * 0.7)
+
+# Extract templates for specified units (reuse extraction function from previous code)
+print(f"Extracting templates for units: {SELECTED_UNITS}")
+
+templates_data = {}
+for unit_id in SELECTED_UNITS:
     # Get unit's primary channel
     templates = sorter_data.templates_data["templates"]
     unit_template = templates[unit_id]
@@ -201,17 +637,22 @@ def extract_normalized_template(unit_id, num_spikes=NUM_SPIKES_TO_TEMPLATE):
     unit_mask = sorter_data.spike_clusters == unit_id
     all_spike_times = sorter_data.spike_times[unit_mask]
 
+    # Check if unit has enough spikes
+    if len(all_spike_times) < MIN_SPIKES_THRESHOLD:
+        print(f"Unit {unit_id}: Only {len(all_spike_times)} spikes, below threshold")
+        continue
+
     # Subsample spikes if necessary
-    if len(all_spike_times) > num_spikes:
+    if len(all_spike_times) > NUM_SPIKES_TO_TEMPLATE:
         np.random.seed(42)
         sampled_indices = np.random.choice(
-            len(all_spike_times), num_spikes, replace=False
+            len(all_spike_times), NUM_SPIKES_TO_TEMPLATE, replace=False
         )
         sampled_spikes = all_spike_times[sampled_indices]
     else:
         sampled_spikes = all_spike_times
 
-    # Extract waveforms around spike times using constants
+    # Extract waveforms around spike times
     pre_samples = int(PRE_SAMPLES_MS * FS / 1000)
     post_samples = int(POST_SAMPLES_MS * FS / 1000)
 
@@ -234,74 +675,65 @@ def extract_normalized_template(unit_id, num_spikes=NUM_SPIKES_TO_TEMPLATE):
         )
 
         # Create time array in milliseconds
-        time_ms = np.arange(pre_samples + post_samples + 1) / FS * 1000 - (
-            PRE_SAMPLES_MS
-        )
+        time_ms = np.arange(pre_samples + post_samples + 1) / FS * 1000 - PRE_SAMPLES_MS
 
-        return {
+        templates_data[unit_id] = {
             "template": template_normalized,
             "time_ms": time_ms,
             "n_waveforms": len(waveforms),
             "channel": unit_channel,
         }
 
-    return None
-
-
-# Get units and extract templates
-units_to_plot = get_units_for_channels(TEMPLATE_CHANNELS)
-print(f"Found {len(units_to_plot)} units in channels {TEMPLATE_CHANNELS}")
-
-templates_data = {}
-for unit_id in units_to_plot:
-    template_info = extract_normalized_template(unit_id)
-    if template_info:
-        templates_data[unit_id] = template_info
-        print(f"Unit {unit_id}: Template from {template_info['n_waveforms']} spikes")
+        print(
+            f"Unit {unit_id}: Template from {len(waveforms)} spikes on channel {unit_channel}"
+        )
 
 print(f"Successfully extracted {len(templates_data)} templates")
 
-# Create clean grid plot with transparent background
+# Create clean plot
 fig, ax = plt.subplots(figsize=FIGURE_SIZE)
-fig.patch.set_alpha(0.0)  # Transparent figure background
-ax.patch.set_alpha(0.0)  # Transparent axes background
 
-# Plot templates in staggered grid using constants
-unit_list = list(templates_data.keys())
-for i, unit_id in enumerate(unit_list):
-    # Calculate grid position
+# Set background based on option
+if TRANSPARENT_BACKGROUND:
+    fig.patch.set_alpha(0.0)  # Transparent figure background
+    ax.patch.set_alpha(0.0)  # Transparent axes background
+else:
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+
+# Plot templates in two-column grid
+valid_units = [unit_id for unit_id in SELECTED_UNITS if unit_id in templates_data]
+
+for i, unit_id in enumerate(valid_units):
+    # Calculate grid position (two columns)
     row = i // TEMPLATES_PER_ROW
     col = i % TEMPLATES_PER_ROW
 
-    # Grid coordinates with staggered column offset
+    # Grid coordinates
     x_pos = col * X_SPACING
     y_pos = -row * Y_SPACING
-
-    # Add vertical offset for alternating columns (brick/staggered pattern)
-    if col % 2 == 1:  # Odd columns (1, 3, 5...) get shifted down
-        y_pos -= Y_COLUMN_OFFSET
 
     # Get template data
     template_info = templates_data[unit_id]
 
-    # Get alternating color
-    color = COLOR_WAVEFORM[i % len(COLOR_WAVEFORM)]
+    # Get specific color for this unit (same order as perspective plot)
+    color = TEMPLATE_COLORS[i % len(TEMPLATE_COLORS)]
 
     # Plot normalized template
     ax.plot(
         template_info["time_ms"] * TIME_SCALE + x_pos,
         template_info["template"] + y_pos,
         color=color,
-        linewidth=2,
+        linewidth=7,
         alpha=0.8,
     )
 
-    # Add unit label at top left corner of template
+    # Add unit label at left of template
     ax.text(
         x_pos - 0.6,  # Left of template
         y_pos + 1.2,  # Above template
         f"U{unit_id}",
-        fontsize=9,
+        fontsize=LABEL_SIZE,
         ha="left",
         va="bottom",
         fontweight="bold",
@@ -316,208 +748,15 @@ ax.spines["right"].set_visible(False)
 ax.spines["bottom"].set_visible(False)
 ax.spines["left"].set_visible(False)
 
+# Apply mpu styling and finalize
+mpu.finalize_figure(fig, title=None)
 plt.tight_layout()
-
-plt.tight_layout()
-
-# Save the figure
-FIGURE_TITLE = f"{GROUP_ID}_templates"
-FIGURE_DIR = Path(os.getenv("FIGURE_DIR_HD"))
-FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
-
-mpu.save_figure(fig, FIGURE_PATH, dpi=600)
-
-# Show the plot
 plt.show()
-# %%
 
-# Single row template visualization
-from pathlib import Path
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-# Template extraction constants
-NUM_SPIKES_TO_TEMPLATE = 500
-PRE_SAMPLES_MS = 2.0  # ms before spike
-POST_SAMPLES_MS = 2.0  # ms after spike
-
-# Grid layout constants - SINGLE COLUMN
-TEMPLATES_PER_COLUMN = 5  # Single column of 5 units
-X_SPACING = 1.0
-Y_SPACING = 5.0  # Reduced spacing for vertical layout
-TIME_SCALE = 0.2
-FIGURE_SIZE = (4, 12)  # Taller, narrower for single column
-
-# Define specific units and their colors
-WAVEFORM_UNITS = [21, 20, 47, 22, 6]  # Specify exactly which units to plot
-WAVEFORM_COLORS = [
-    "#00833B",
-    "#00833B",
-    "#1A0083",
-    "#830000",
-    "#835100",
-]  # 5 different colors
-
-# Quality control constants
-MIN_SPIKES_THRESHOLD = 50
-
-# Save constants
-GROUP_ID = "single_column"  # Identifier for saving
-
-
-def extract_normalized_template(unit_id, num_spikes=NUM_SPIKES_TO_TEMPLATE):
-    """Extract and normalize template for a single unit"""
-    # Get unit's primary channel
-    templates = sorter_data.templates_data["templates"]
-    unit_template = templates[unit_id]
-    max_channel = np.argmax(np.max(np.abs(unit_template), axis=0))
-    unit_channel = max_channel - 1
-
-    # Get spike times for this unit
-    unit_mask = sorter_data.spike_clusters == unit_id
-    all_spike_times = sorter_data.spike_times[unit_mask]
-
-    # Check if unit has enough spikes
-    if len(all_spike_times) < MIN_SPIKES_THRESHOLD:
-        print(f"Unit {unit_id}: Only {len(all_spike_times)} spikes, below threshold")
-        return None
-
-    # Subsample spikes if necessary
-    if len(all_spike_times) > num_spikes:
-        np.random.seed(42)
-        sampled_indices = np.random.choice(
-            len(all_spike_times), num_spikes, replace=False
-        )
-        sampled_spikes = all_spike_times[sampled_indices]
-    else:
-        sampled_spikes = all_spike_times
-
-    # Extract waveforms around spike times using constants
-    pre_samples = int(PRE_SAMPLES_MS * FS / 1000)
-    post_samples = int(POST_SAMPLES_MS * FS / 1000)
-
-    waveforms = []
-    for spike_time in sampled_spikes:
-        start_idx = spike_time - pre_samples
-        end_idx = spike_time + post_samples + 1
-
-        if start_idx >= 0 and end_idx < whiten_hd_small.shape[0]:
-            waveform = whiten_hd_small[start_idx:end_idx, unit_channel].compute()
-            waveforms.append(waveform)
-
-    if waveforms:
-        waveforms_array = np.array(waveforms)
-        template_mean = np.mean(waveforms_array, axis=0)
-
-        # Z-score normalization for this unit
-        template_normalized = (template_mean - np.mean(template_mean)) / np.std(
-            template_mean
-        )
-
-        # Create time array in milliseconds
-        time_ms = np.arange(pre_samples + post_samples + 1) / FS * 1000 - (
-            PRE_SAMPLES_MS
-        )
-
-        return {
-            "template": template_normalized,
-            "time_ms": time_ms,
-            "n_waveforms": len(waveforms),
-            "channel": unit_channel,
-        }
-
-    return None
-
-
-# Extract templates for specified units
-print(f"Extracting templates for units: {WAVEFORM_UNITS}")
-
-templates_data = {}
-for unit_id in WAVEFORM_UNITS:
-    template_info = extract_normalized_template(unit_id)
-    if template_info:
-        templates_data[unit_id] = template_info
-        print(
-            f"Unit {unit_id}: Template from {template_info['n_waveforms']} spikes on channel {template_info['channel']}"
-        )
-    else:
-        print(f"Unit {unit_id}: Failed to extract template")
-
-print(f"Successfully extracted {len(templates_data)} templates")
-
-# Only proceed if we have templates
-if templates_data:
-    # Create clean grid plot with transparent background
-    fig, ax = plt.subplots(figsize=FIGURE_SIZE)
-    fig.patch.set_alpha(0.0)  # Transparent figure background
-    ax.patch.set_alpha(0.0)  # Transparent axes background
-
-    # Plot templates in single column
-    for i, unit_id in enumerate(WAVEFORM_UNITS):
-        if unit_id not in templates_data:
-            continue  # Skip units that failed extraction
-
-        # Calculate position (single column, so col=0)
-        row = i
-        x_pos = 0  # Single column at x=0
-        y_pos = -row * Y_SPACING  # Stack vertically downward
-
-        # Get template data
-        template_info = templates_data[unit_id]
-
-        # Get specific color for this unit
-        color = WAVEFORM_COLORS[i % len(WAVEFORM_COLORS)]
-
-        # Plot normalized template
-        ax.plot(
-            template_info["time_ms"] * TIME_SCALE + x_pos,
-            template_info["template"] + y_pos,
-            color=color,
-            linewidth=2,
-            alpha=0.8,
-        )
-
-        # Add unit label at top left corner of template
-        ax.text(
-            x_pos - 0.6,  # Left of template
-            y_pos + 1.2,  # Above template
-            f"U{unit_id}",
-            fontsize=9,
-            ha="left",
-            va="bottom",
-            fontweight="bold",
-            color=color,
-        )
-
-    # Remove all visual elements except the waveforms
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["bottom"].set_visible(False)
-    ax.spines["left"].set_visible(False)
-
-    plt.tight_layout()
-
-    # Save the figure
-    FIGURE_TITLE = f"{GROUP_ID}_templates"
-    FIGURE_DIR = Path(os.getenv("FIGURE_DIR_HD"))
-    FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
-
-    mpu.save_figure(fig, FIGURE_PATH, dpi=600)
-
-    # Show the plot
-    plt.show()
-
-    print(f"\nSingle Column Summary:")
-    print(f"- {len(templates_data)} templates plotted")
-    print(f"- Template window: {PRE_SAMPLES_MS}ms pre + {POST_SAMPLES_MS}ms post")
-    print(f"- Subsampled to {NUM_SPIKES_TO_TEMPLATE} spikes per unit")
-    print(f"- Units plotted: {list(templates_data.keys())}")
-    print(f"- Colors used: {WAVEFORM_COLORS[: len(templates_data)]}")
-
-else:
-    print("No valid templates extracted. Check unit IDs and data availability.")
+print(f"\nTemplate Summary:")
+print(f"- {len(templates_data)} templates plotted")
+print(f"- Template window: {PRE_SAMPLES_MS}ms pre + {POST_SAMPLES_MS}ms post")
+print(f"- Subsampled to {NUM_SPIKES_TO_TEMPLATE} spikes per unit")
+print(f"- Units plotted: {list(templates_data.keys())}")
 
 # %%
