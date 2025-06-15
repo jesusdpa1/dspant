@@ -11,19 +11,17 @@ import matplotlib.pyplot as plt
 import mp_plotting_utils as mpu
 import numpy as np
 from dotenv import load_dotenv
-from matplotlib.gridspec import GridSpec
-from matplotlib.patches import FancyArrowPatch, Rectangle
-from mpl_toolkits.mplot3d import proj3d
+from matplotlib.patches import Rectangle
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
 from dspant.processors.filters import FilterProcessor
 from dspant.processors.filters.iir_filters import (
     create_bandpass_filter,
-    create_lowpass_filter,
     create_notch_filter,
 )
-
+from dspant.processors.spatial.common_reference_rs import create_cmr_processor_rs
+from dspant.processors.spatial.whiten_rs import create_whitening_processor_rs
 # Set publication style
 mpu.set_publication_style()
 
@@ -54,29 +52,44 @@ FS = stream_emg.fs
 
 # %%
 # Create and apply filters
+processor_emg = create_processing_node(stream_emg)
 processor_hd = create_processing_node(stream_hd)
 
 # Create filters
-bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
 notch_filter = create_notch_filter(60, q=30, fs=FS)
-lowpass_filter = create_lowpass_filter(200, fs=FS, order=5)
+bandpass_filter_emg = create_bandpass_filter(10, 2000, fs=FS, order=5)
+bandpass_filter_hd = create_bandpass_filter(300, 6000, fs=FS, order=5)
+
 
 # Create processors
 notch_processor = FilterProcessor(
     filter_func=notch_filter.get_filter_function(), overlap_samples=40
 )
-bandpass_processor = FilterProcessor(
-    filter_func=bandpass_filter.get_filter_function(), overlap_samples=40
+bandpass_processor_emg = FilterProcessor(
+    filter_func=bandpass_filter_emg.get_filter_function(), overlap_samples=40
 )
-lowpass_processor = FilterProcessor(
-    filter_func=lowpass_filter.get_filter_function(), overlap_samples=40
+
+bandpass_processor_hd = FilterProcessor(
+    filter_func=bandpass_filter_hd.get_filter_function(), overlap_samples=40
 )
+
 
 # Add processors
-processor_hd.add_processor([notch_processor, bandpass_processor], group="filters")
-
+processor_emg.add_processor([notch_processor, bandpass_processor_emg], group="filters")
+processor_hd.add_processor([notch_processor, bandpass_processor_hd], group="filters")
 # Apply filters
+filtered_emg = processor_hd.process(group=["filters"]).persist()
 filtered_hd = processor_hd.process(group=["filters"]).persist()
+
+#%%
+
+cmr_processor = create_cmr_processor_rs()
+whiten_processor = create_whitening_processor_rs()
+
+#%%
+cmr_hd = cmr_processor.process(filtered_hd, fs=FS).persist()
+#%%
+whiten_hd = whiten_processor.process(cmr_hd, fs=FS).persist()
 
 # %%
 # Helper functions for 3D perspective visualization
@@ -275,3 +288,153 @@ plt.tight_layout()
 mpu.finalize_figure(fig, title="EMG to HD-EMG Signal Analysis", title_fontsize=18)
 # mpu.save_figure(fig, "emg_to_hd_perspective_visualization.png", dpi=600)
 plt.show()
+# %%
+
+# %%
+# Data preparation - FIXED VERSION
+
+# Constants in uppercase
+START_TIME = 5  # seconds
+DURATION = 1  # seconds
+NUM_HD_CHANNELS = 4  # First 4 channels from HD-EMG
+NUM_EMG_CHANNELS = 2  # Both channels from EMG
+TOTAL_CHANNELS = NUM_HD_CHANNELS + NUM_EMG_CHANNELS  # Total of 6 channels
+TITLE = "EMGtoHD"
+
+START_SAMPLE = int(START_TIME * FS)
+END_SAMPLE = START_SAMPLE + int(DURATION * FS)
+
+# Extract data segments for visualization
+hd_segment = filtered_hd[
+    START_SAMPLE:END_SAMPLE, :NUM_HD_CHANNELS
+].compute()  # First 4 channels
+emg_segment = filtered_emg[START_SAMPLE:END_SAMPLE, :].compute()  # Both EMG channels
+
+# Combine the data: first 4 HD channels, then 2 EMG channels
+combined_data = np.concatenate([hd_segment, emg_segment], axis=1)
+
+# Create time array
+time = np.arange(combined_data.shape[0]) / FS
+
+# Normalize each channel for better visualization
+normalized_data = np.zeros_like(combined_data, dtype=float)
+for i in range(TOTAL_CHANNELS):
+    channel_data = combined_data[:, i]
+    max_abs = np.max(np.abs(channel_data))
+    if max_abs > 0:
+        normalized_data[:, i] = channel_data / max_abs
+    else:
+        normalized_data[:, i] = channel_data
+
+# %%
+# Create Figure - UPDATED VERSION
+
+# Set up figure
+fig = plt.figure(figsize=(15, 10))
+fig.text(1.0, 0.98, TITLE, ha="right", va="top", fontsize=12, fontstyle="italic")
+
+# Create main plot area - only one section for the signal
+ax1 = fig.add_subplot(111)
+
+# Set title
+ax1.set_title("EMG to HD-EMG Multichannel Recording", fontsize=16, color="darkblue")
+
+# Generate perspective shifts
+y_shifts, x_shifts = create_perspective_shifts(TOTAL_CHANNELS)
+
+# Plot each channel with perspective shift
+channel_names = []
+for i in range(TOTAL_CHANNELS):
+    channel_data = normalized_data[:, i]
+    shifted_time = time + x_shifts[i]
+    shifted_data = channel_data + y_shifts[i]
+
+    # Plot the channel data
+    ax1.plot(shifted_time, shifted_data, "b-", linewidth=1.5)
+
+    # Add channel label - distinguish between HD and EMG channels
+    if i < NUM_HD_CHANNELS:
+        channel_name = f"HD-Ch {i + 1}"
+    else:
+        emg_ch_num = i - NUM_HD_CHANNELS + 1
+        channel_name = f"EMG-Ch {emg_ch_num}"
+
+    channel_names.append(channel_name)
+    ax1.text(
+        shifted_time[0] - 0.05,
+        y_shifts[i],
+        channel_name,
+        ha="right",
+        va="center",
+        fontsize=10,
+    )
+
+# Draw perspective lines
+draw_perspective_lines(ax1, time[0], time[-1], y_shifts)
+
+# Add arrows and annotations for perspective
+create_arrow_with_text(
+    ax1,
+    time[0],
+    y_shifts[0] - 0.5,
+    0.1,
+    0,
+    "Time (s)",
+    arrow_props=dict(arrowstyle="->", color="blue", lw=2),
+)
+
+create_arrow_with_text(
+    ax1,
+    time[0] - 0.05,
+    y_shifts[0],
+    0,
+    y_shifts[-1] - y_shifts[0],
+    "Channels",
+    arrow_props=dict(arrowstyle="->", color="green", lw=2),
+)
+
+# Add shaded region highlighting specific time period
+HIGHLIGHT_START = 0.3  # seconds from start of segment
+HIGHLIGHT_DURATION = 0.2  # seconds
+highlight_start_idx = int(HIGHLIGHT_START * FS)
+highlight_end_idx = highlight_start_idx + int(HIGHLIGHT_DURATION * FS)
+
+# Draw highlight across all channels
+for i in range(TOTAL_CHANNELS - 1):
+    rect = Rectangle(
+        (time[highlight_start_idx] + x_shifts[i], y_shifts[i]),
+        time[highlight_end_idx] - time[highlight_start_idx],
+        y_shifts[i + 1] - y_shifts[i],
+        color="yellow",
+        alpha=0.3,
+        linewidth=0,
+    )
+    ax1.add_patch(rect)
+
+# Draw connecting lines for the highlight
+highlight_x1 = time[highlight_start_idx] + x_shifts[0]
+highlight_x2 = time[highlight_end_idx] + x_shifts[0]
+highlight_y1 = y_shifts[0]
+highlight_y2 = y_shifts[-1]
+
+ax1.plot(
+    [highlight_x1, highlight_x1 + x_shifts[-1]],
+    [highlight_y1, highlight_y2],
+    "k--",
+    alpha=0.5,
+)
+ax1.plot(
+    [highlight_x2, highlight_x2 + x_shifts[-1]],
+    [highlight_y1, highlight_y2],
+    "k--",
+    alpha=0.5,
+)
+
+# Format axes
+ax1.set_xlabel("Time (s)")
+ax1.set_ylabel("Channel Amplitude")
+ax1.set_yticks([])  # Hide y-ticks since they're not meaningful with the shifts
+ax1.spines["top"].set_visible(False)
+ax1.spines["right"].set_visible(False)
+
+# %%
