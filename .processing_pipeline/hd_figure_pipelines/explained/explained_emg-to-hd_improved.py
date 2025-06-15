@@ -47,12 +47,17 @@ load_dotenv()
 # Data loading configuration
 data_dir = Path(os.getenv("DATA_DIR"))
 hd_path = data_dir.joinpath(r"test_/00_baseline/drv_00_baseline/HDEG.ant")
+emg_path = data_dir.joinpath(r"test_/00_baseline/drv_00_baseline/RawG.ant")
 
 sorter_path = data_dir.joinpath(
     r"test_/00_baseline/output_2025-04-01_18-50/testSubject-250326_00_baseline_kilosort4_output/sorter_output"
 )
 
-# Load EMG and spike data
+
+stream_emg = StreamNode(str(emg_path))
+stream_emg.load_metadata()
+stream_emg.load_data()
+
 stream_hd = StreamNode(str(hd_path))
 stream_hd.load_metadata()
 stream_hd.load_data()
@@ -61,19 +66,24 @@ stream_hd.load_data()
 sorter_data = load_kilosort(sorter_path, load_templates=True)
 
 # %%
-
 # Get sampling rate
 FS = stream_hd.fs
+
 # %%
 notch_filter = create_notch_filter(60, q=10, fs=FS)
 bandpass_filter_hd = create_bandpass_filter(300, 6000, fs=FS, order=4)
-
+bandpass_filter_emg = create_bandpass_filter(20, 2000, fs=FS, order=4)
 # Create pre-processing functions
 notch_processor = FilterProcessor(
     filter_func=notch_filter.get_filter_function(), overlap_samples=40
 )
+
 bandpass_processor_hd = FilterProcessor(
     filter_func=bandpass_filter_hd.get_filter_function(), overlap_samples=40
+)
+
+bandpass_processor_emg = FilterProcessor(
+    filter_func=bandpass_filter_emg.get_filter_function(), overlap_samples=40
 )
 
 cmr_processor = create_cmr_processor_rs()
@@ -81,18 +91,38 @@ whiten_processor = create_whitening_processor_rs()
 # %%
 # Create and apply filters for HD data
 processor_hd = create_processing_node(stream_hd)
-
+processor_emg = create_processing_node(stream_emg)
 # Add processors
 processor_hd.add_processor(
     [notch_processor, bandpass_processor_hd],
     group="filters",
 )
 
+processor_emg.add_processor(
+    [notch_processor, bandpass_processor_emg],
+    group="filters",
+)
+
 # %%
-# Apply filters to HD data
-filtered_hd_small = processor_hd.process(group=["filters"]).persist()
+# Slice recordings 5min
+START_TIME = int(0.0 * FS)  # Start time in seconds
+END_TIME = int(5.0 * 60 * FS)  # End time in seconds
+# Create time range for processing
+time_range = slice(START_TIME, END_TIME)
+
+filtered_hd = processor_hd.process(group=["filters"]).persist()[START_TIME:END_TIME, :]
+
+filtered_emg = processor_emg.process(group=["filters"]).persist()[
+    START_TIME:END_TIME, :
+]
+
 # %%
-cmr_hd_small = cmr_processor.process(filtered_hd_small, fs=FS).persist()
+
+
+cmr_hd_small = cmr_processor.process(
+    filtered_hd,
+    fs=FS,
+).persist()
 # %%
 whiten_hd_small = whiten_processor.process(cmr_hd_small, fs=FS).persist()
 
