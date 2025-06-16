@@ -27,7 +27,7 @@ def ls(directory: Path):
     return path_list
 
 
-tank_path = home.joinpath(r"testSubject\24-11-01_3869-2_testSubject_DST+Contusion")
+tank_path = home.joinpath(r"testSubject/24-11-01_3869-2_testSubject_DST+Contusion")
 # output_path = tank_path.joinpath("drv")
 a = ls(tank_path)
 filtered_paths = [entry for entry in a if entry.name != "drv"]

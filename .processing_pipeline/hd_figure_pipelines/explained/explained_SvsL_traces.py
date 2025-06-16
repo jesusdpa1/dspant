@@ -23,9 +23,9 @@ from scipy import stats
 from dspant.engine import create_processing_node
 from dspant.io.loaders.phy_kilosort_loarder import load_kilosort
 from dspant.nodes import StreamNode
+from dspant.pattern.detection.peak import create_threshold_detector
 from dspant.processors.basic.energy_rs import create_tkeo_envelope_rs
 from dspant.processors.basic.normalization import create_normalizer
-from dspant.processors.extractors.template_extractor import TemplateExtractor
 from dspant.processors.extractors.waveform_extractor import WaveformExtractor
 from dspant.processors.filters import FilterProcessor
 from dspant.processors.filters.iir_filters import (
@@ -40,11 +40,12 @@ from dspant_neuroproc.processors.spike_analytics.psth import PSTHAnalyzer
 sns.set_theme(style="darkgrid")
 load_dotenv()
 # %%
+# r"topoMapping/25-02-26_9881-2_testSubject_topoMapping/00_baseline/drv_00_baseline/HDEG.ant"
 
 # Data loading configuration
 data_dir = Path(os.getenv("DATA_DIR"))
 hd_path = data_dir.joinpath(
-    r"topoMapping/25-02-26_9881-2_testSubject_topoMapping/00_baseline/drv_00_baseline/HDEG.ant"
+    r"testSubject/24-09-06_5042-2_testSubject_DST-and-contusion/drv/drv_00_baseline/EMGM.ant"
 )
 
 # sorter_path = data_dir.joinpath(
@@ -56,7 +57,7 @@ hd_path = data_dir.joinpath(
 stream_hd = StreamNode(str(hd_path))
 stream_hd.load_metadata()
 stream_hd.load_data()
-
+stream_hd.summarize()
 # %%
 # Get sampling rate
 FS = stream_hd.fs
@@ -94,13 +95,16 @@ time_range = slice(START_TIME, END_TIME)
 print(time_range)
 # %%
 filtered_hd = processor_hd.process(group=["filters"]).persist()[START_TIME:END_TIME, :]
+
 # %%
 cmr_hd_small = cmr_processor.process(
     filtered_hd,
     fs=FS,
 ).persist()
+
 # %%
 whiten_hd_small = whiten_processor.process(cmr_hd_small, fs=FS).persist()
+
 # %%
 START_ = int(10.25 * FS)
 END_ = int((10.25 + 3) * FS)
@@ -126,8 +130,8 @@ mpu.set_publication_style()
 
 # Configuration
 # small contacts = [0, 2, 5, 9, 15, 23, 27, 30]
-CHANNELS = [0, 2, 5, 9, 15, 23, 27, 30]  # 8 channels to plot
-RECORDING_START_TIME = 10.25  # Start time in seconds
+CHANNELS = [0, 1, 2, 4, 6, 18, 22, 25]  # 8 channels to plot
+RECORDING_START_TIME = 10.05  # Start time in seconds
 WINDOW_DURATION = 0.35  # Window duration in seconds
 ROW_SPACING = 35.0  # Vertical spacing between channels
 FIGURE_SIZE = (15, 12)
@@ -236,4 +240,6 @@ print(
 print(f"Data source: whiten_hd_small (filtered + CMR + whitened)")
 print(f"Trace amplification: {AMPLIFICATION}")
 print(f"Compact layout with minimal margins")
+
 # %%
+
