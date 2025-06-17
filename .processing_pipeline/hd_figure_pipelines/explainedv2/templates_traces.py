@@ -97,326 +97,285 @@ a = plot_multi_channel_data(
 
 # %%
 
-# %%
-# HD Multi-Channel Recording with Template Overlays
-# Note: Assumes data is already loaded and preprocessed:
-# - whitened_data: final processed data array
-# - sorter_data: loaded kilosort data
-# - FS: sampling frequency
-
-import matplotlib.pyplot as plt
-import mp_plotting_utils as mpu
-import numpy as np
-
-# Set publication style
-mpu.set_publication_style()
-
-# Configuration
 CHANNELS = [0, 1, 2, 4, 6, 18, 22, 25]  # 8 channels to plot
-RECORDING_START_TIME = 1.0  # Start time in seconds (adjusted for 5min data)
+RECORDING_START_TIME = 9.9  # Start time in seconds
 WINDOW_DURATION = 0.35  # Window duration in seconds
+waveform_window_ms = 2  # Window around each spike in milliseconds
+
+# Layout configuration
 ROW_SPACING = 35.0  # Vertical spacing between channels
 FIGURE_SIZE = (15, 12)
 AMPLIFICATION = 2.0  # Trace amplitude scaling factor
 
-# Template parameters
-NUM_SPIKES_TO_TEMPLATE = 100
-PRE_SAMPLES_MS = 1.0  # ms before spike
-POST_SAMPLES_MS = 2.0  # ms after spike
-MIN_SPIKES_THRESHOLD = 50
-TEMPLATE_ALPHA = 0.8
-TEMPLATE_LINEWIDTH = 2.5
-
-# Colors
-DARK_NAVY = mpu.PRIMARY_COLOR  # Raw traces
-TEMPLATE_COLORS = [
-    "#E0A500",  # Gold
-    "#4512FA",  # Purple
-    "#A43E2C",  # Red
-    "#0B7A57",  # Green
-    "#FF6B6B",  # Light Red
-    "#4ECDC4",  # Teal
-    "#45B7D1",  # Blue
-    "#96CEB4",  # Light Green
-]
+# Use the new variable names
+channels_to_plot = CHANNELS
+time_start = RECORDING_START_TIME
+time_duration = WINDOW_DURATION
+TRANSPARENT_BACKGROUND = True
 
 # Font sizes
 FONT_SIZE = 35
-TITLE_SIZE = int(FONT_SIZE * 1.0)
-SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
-AXIS_LABEL_SIZE = int(FONT_SIZE * 0.8)
-TICK_SIZE = int(FONT_SIZE * 0.8)
-LABEL_SIZE = int(FONT_SIZE * 0.8)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 1.0)
+TICK_SIZE = int(FONT_SIZE * 0.9)
+LABEL_SIZE = int(FONT_SIZE * 0.9)
 
-print("Starting 8-channel template overlay visualization...")
-print(f"Using data shape: {whitened_data.shape}")
-print(f"Sampling frequency: {FS} Hz")
+# MANUAL UNIT ASSIGNMENT - Modify this dictionary to assign units to channels
+# Format: {channel_number: [list_of_unit_ids]}
+manual_units_per_channel = {
+    0: [12],  #
+    1: [13],  #
+    2: [15],  #
+    4: [10],  #
+    6: [21],  #
+    18: [18],  #
+    22: [16],  #
+    25: [19],  #
+}
 
+# Alternative: Use automatic assignment if you want to see what the algorithm would choose
+use_manual_assignment = True  # Set to False to use automatic assignment
 
-# %%
-# STEP 1: Select best unit for each channel
-def get_best_unit_for_channel(channel_id, sorter_data):
-    """Select the best unit for a given channel based on quality and spike count"""
+# Convert time to samples
+start_sample = int(time_start * FS)
+end_sample = int((time_start + time_duration) * FS)
+waveform_samples = int(waveform_window_ms * FS / 1000)  # Convert ms to samples
 
-    # Get all unique units
-    unique_units = np.unique(sorter_data.spike_clusters)
-    channel_units = []
+# Extract the data for the specified channels and time window
+channel_data = whitened_data[start_sample:end_sample, channels_to_plot].compute()
+time_axis = np.arange(channel_data.shape[0]) / FS + time_start
 
-    for unit_id in unique_units:
-        # Check if templates are available to find unit's primary channel
-        if (
-            hasattr(sorter_data, "templates_data")
-            and sorter_data.templates_data is not None
-        ):
-            templates = sorter_data.templates_data["templates"]
-            if unit_id < len(templates):
-                unit_template = templates[unit_id]
-                max_channel = np.argmax(np.max(np.abs(unit_template), axis=0))
-                unit_channel = max_channel - 1  # Convert to 0-indexed
+# Determine unit assignment method
+if use_manual_assignment:
+    print("Using MANUAL unit assignment")
+    units_per_channel = {}
 
-                if unit_channel == channel_id:
-                    # Get spike count
-                    unit_mask = sorter_data.spike_clusters == unit_id
-                    n_spikes = np.sum(unit_mask)
+    # Initialize with empty lists for all channels
+    for ch in channels_to_plot:
+        units_per_channel[ch] = []
 
-                    if n_spikes >= MIN_SPIKES_THRESHOLD:
-                        # Get quality and amplitude
-                        quality = "unknown"
-                        amplitude = 0
-                        if hasattr(sorter_data, "unit_properties"):
-                            quality = sorter_data.unit_properties.get(
-                                "KSLabel", {}
-                            ).get(unit_id, "unknown")
-                            amplitude = sorter_data.unit_properties.get(
-                                "Amplitude", {}
-                            ).get(unit_id, 0)
+    # Apply manual assignments only for channels that exist in both lists
+    for ch in channels_to_plot:
+        if ch in manual_units_per_channel:
+            # Filter to only include units that actually exist in the data
+            available_units = set(sorter_data.unit_ids)
+            valid_units = [
+                u for u in manual_units_per_channel[ch] if u in available_units
+            ]
+            units_per_channel[ch] = valid_units
 
-                        channel_units.append(
-                            {
-                                "unit_id": unit_id,
-                                "n_spikes": n_spikes,
-                                "quality": quality,
-                                "amplitude": amplitude,
-                            }
-                        )
-
-    if not channel_units:
-        return None
-
-    # Sort by quality (good > mua) then by spike count
-    def unit_score(unit):
-        quality_score = (
-            2 if unit["quality"] == "good" else 1 if unit["quality"] == "mua" else 0
-        )
-        return (quality_score, unit["n_spikes"], unit["amplitude"])
-
-    best_unit = max(channel_units, key=unit_score)
-    print(
-        f"Channel {channel_id}: Selected Unit {best_unit['unit_id']} ({best_unit['quality']}, {best_unit['n_spikes']} spikes)"
-    )
-    return best_unit["unit_id"]
-
-
-# %%
-# STEP 2: Extract template for a unit
-def extract_unit_template(unit_id, channel_id, whitened_data, sorter_data, fs):
-    """Extract normalized template for a unit"""
-
-    # Get spike times for this unit
-    unit_mask = sorter_data.spike_clusters == unit_id
-    all_spike_times = sorter_data.spike_times[unit_mask]
-
-    if len(all_spike_times) == 0:
-        return None
-
-    # Subsample spikes if necessary
-    if len(all_spike_times) > NUM_SPIKES_TO_TEMPLATE:
-        np.random.seed(42 + unit_id)
-        sampled_indices = np.random.choice(
-            len(all_spike_times), NUM_SPIKES_TO_TEMPLATE, replace=False
-        )
-        sampled_spikes = all_spike_times[sampled_indices]
-    else:
-        sampled_spikes = all_spike_times
-
-    # Extract waveforms
-    pre_samples = int(PRE_SAMPLES_MS * fs / 1000)
-    post_samples = int(POST_SAMPLES_MS * fs / 1000)
-
-    waveforms = []
-    for spike_time in sampled_spikes:
-        start_idx = spike_time - pre_samples
-        end_idx = spike_time + post_samples + 1
-
-        if start_idx >= 0 and end_idx < whitened_data.shape[0]:
-            try:
-                waveform = whitened_data[start_idx:end_idx, channel_id].compute()
-                waveforms.append(waveform)
-            except:
-                continue
-
-    if len(waveforms) < 10:
-        return None
-
-    # Compute template
-    waveforms_array = np.array(waveforms)
-    template_mean = np.mean(waveforms_array, axis=0)
-
-    # Z-score normalization
-    if np.std(template_mean) > 0:
-        template_normalized = (template_mean - np.mean(template_mean)) / np.std(
-            template_mean
-        )
-    else:
-        template_normalized = template_mean - np.mean(template_mean)
-
-    # Create time array
-    template_time = np.arange(len(template_normalized)) / fs
-
-    return {
-        "template": template_normalized,
-        "template_time": template_time,
-        "spike_times": sampled_spikes,
-        "n_waveforms": len(waveforms),
-    }
-
-
-# %%
-# STEP 3: Find best units for each channel
-print("Finding best units for each channel...")
-channel_units = {}
-channel_templates = {}
-
-for ch_idx, channel in enumerate(CHANNELS):
-    # Find best unit for this channel
-    best_unit = get_best_unit_for_channel(channel, sorter_data)
-
-    if best_unit is not None:
-        # Extract template
-        template_info = extract_unit_template(
-            best_unit, channel, whitened_data, sorter_data, FS
-        )
-
-        if template_info is not None:
-            channel_units[channel] = best_unit
-            channel_templates[channel] = template_info
-            print(
-                f"✓ Channel {channel}: Unit {best_unit}, {template_info['n_waveforms']} waveforms"
-            )
-        else:
-            print(f"✗ Channel {channel}: Unit {best_unit} template extraction failed")
-    else:
-        print(f"✗ Channel {channel}: No suitable units found")
-
-print(f"\nSuccessfully extracted templates for {len(channel_templates)} channels")
-
-# %%
-# STEP 4: Create the plot with template overlays
-# Extract HD data for the specified time window
-start_sample = int(RECORDING_START_TIME * FS)
-end_sample = int((RECORDING_START_TIME + WINDOW_DURATION) * FS)
-
-# Get HD data for selected channels
-hd_data = whitened_data[start_sample:end_sample, CHANNELS].compute()
-hd_time = np.arange(hd_data.shape[0]) / FS
-
-# Normalize each channel
-hd_normalized = np.zeros_like(hd_data, dtype=float)
-for i in range(len(CHANNELS)):
-    channel_data = hd_data[:, i]
-    # Z-score normalization
-    channel_mean = np.mean(channel_data)
-    channel_std = np.std(channel_data)
-    if channel_std > 0:
-        hd_normalized[:, i] = (channel_data - channel_mean) / channel_std
-    else:
-        hd_normalized[:, i] = channel_data - channel_mean
-
-# Create plot
-fig, ax = plt.subplots(figsize=FIGURE_SIZE)
-total_channels = len(CHANNELS)
-
-# Plot each HD channel with template overlays
-for ch_idx, channel in enumerate(CHANNELS):
-    # Calculate y position (top to bottom)
-    y_position = (total_channels - 1 - ch_idx) * ROW_SPACING
-
-    # Plot raw channel data in dark navy
-    ax.plot(
-        hd_time,
-        (hd_normalized[:, ch_idx] * AMPLIFICATION) + y_position,
-        color=DARK_NAVY,
-        linewidth=1.5,
-        alpha=0.6,  # Slightly more transparent to show templates
-        label=f"Ch {channel}" if ch_idx == 0 else None,
-    )
-
-    # Overlay template if available
-    if channel in channel_templates:
-        template_info = channel_templates[channel]
-        unit_id = channel_units[channel]
-        template_color = TEMPLATE_COLORS[ch_idx % len(TEMPLATE_COLORS)]
-
-        # Find spikes in the current time window
-        window_start_sample = start_sample
-        window_end_sample = end_sample
-
-        # Get spikes in time window
-        spike_mask = (template_info["spike_times"] >= window_start_sample) & (
-            template_info["spike_times"] <= window_end_sample
-        )
-        window_spikes = template_info["spike_times"][spike_mask]
-
-        # Overlay templates at spike locations
-        template_duration = len(template_info["template"]) / FS
-
-        for spike_idx, spike_time in enumerate(
-            window_spikes[:10]
-        ):  # Limit to first 10 spikes for clarity
-            # Convert spike time to relative time in the window
-            spike_time_rel = (spike_time - start_sample) / FS
-
-            # Check if template fits in window
-            if (
-                spike_time_rel >= 0
-                and spike_time_rel + template_duration <= WINDOW_DURATION
-            ):
-                template_time_shifted = template_info["template_time"] + spike_time_rel
-                template_scaled = (
-                    template_info["template"] * AMPLIFICATION
-                ) + y_position
-
-                # Plot template overlay
-                ax.plot(
-                    template_time_shifted,
-                    template_scaled,
-                    color=template_color,
-                    linewidth=TEMPLATE_LINEWIDTH,
-                    alpha=TEMPLATE_ALPHA,
-                    label=f"Unit {unit_id}" if spike_idx == 0 else None,
+            # Warn about units that don't exist
+            invalid_units = [
+                u for u in manual_units_per_channel[ch] if u not in available_units
+            ]
+            if invalid_units:
+                print(
+                    f"Warning: Channel {ch} - Units {invalid_units} not found in data"
                 )
+else:
+    print("Using AUTOMATIC unit assignment based on template amplitude")
+    # Find which units have their primary channel on each channel we're plotting
+    templates = sorter_data.templates_data[
+        "templates"
+    ]  # Shape: (n_units, n_timepoints, n_channels)
+    channel_map = sorter_data.templates_data.get(
+        "channel_map", np.arange(templates.shape[2])
+    )
+
+    # For each unit, find the channel with maximum template amplitude
+    units_per_channel = {ch: [] for ch in channels_to_plot}
+    unit_primary_channels = {}
+
+    for unit_idx, unit_id in enumerate(sorter_data.unit_ids):
+        if unit_idx < templates.shape[0]:  # Make sure template exists
+            # Get template for this unit across all channels
+            unit_template = templates[unit_idx]  # Shape: (n_timepoints, n_channels)
+
+            # Find channel with maximum absolute amplitude
+            max_amp_per_channel = np.max(np.abs(unit_template), axis=0)
+            primary_channel_idx = np.argmax(max_amp_per_channel)
+
+            # Map to actual channel number
+            primary_channel = (
+                channel_map[primary_channel_idx]
+                if len(channel_map) > primary_channel_idx
+                else primary_channel_idx
+            )
+            unit_primary_channels[unit_id] = int(primary_channel)
+
+            # Check if this unit belongs to any of the channels we're plotting
+            if int(primary_channel) in channels_to_plot:
+                units_per_channel[int(primary_channel)].append(unit_id)
+
+# Print summary
+print("Units per channel:")
+for ch in channels_to_plot:
+    print(f"  Channel {ch}: {units_per_channel[ch]}")
+
+# Get spike times in the time window
+all_spike_times_s = sorter_data.spike_times / FS
+spike_mask = (all_spike_times_s >= time_start) & (
+    all_spike_times_s < time_start + time_duration
+)
+spikes_in_window = sorter_data.spike_times[spike_mask]
+spike_clusters_in_window = sorter_data.spike_clusters[spike_mask]
+
+# Create color palette for units (consistent across channels)
+all_assigned_units = []
+for ch_units in units_per_channel.values():
+    all_assigned_units.extend(ch_units)
+all_assigned_units = sorted(set(all_assigned_units))
+
+color_palette = [
+    "#e41a1c",
+    "#ff7f00",
+    "#377eb8",
+    "#4daf4a",
+    "#984ea3",
+    "#ffff33",
+    "#a65628",
+    "#f781bf",
+    "#00ced1",
+    "#ff1493",
+    "#32cd32",
+    "#8b0000",
+    "#00008b",
+    "#ff8c00",
+    "#9400d3",
+    "#ff69b4",
+    "#00ff7f",
+    "#dc143c",
+    "#00bfff",
+    "#ffd700",
+]
+unit_colors = {
+    unit_id: color_palette[i % len(color_palette)]
+    for i, unit_id in enumerate(all_assigned_units)
+}
+
+# Normalize each channel for consistent visualization
+channel_data_normalized = np.zeros_like(channel_data, dtype=float)
+for i in range(len(channels_to_plot)):
+    ch_data = channel_data[:, i]
+    # Z-score normalization
+    ch_mean = np.mean(ch_data)
+    ch_std = np.std(ch_data)
+    if ch_std > 0:
+        channel_data_normalized[:, i] = (ch_data - ch_mean) / ch_std
+    else:
+        channel_data_normalized[:, i] = ch_data - ch_mean
+
+# Create the compact multi-channel plot
+fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+
+total_channels = len(channels_to_plot)
+
+# Plot each channel
+for plot_idx, channel_idx in enumerate(channels_to_plot):
+    # Calculate y position (top to bottom)
+    y_position = (total_channels - 1 - plot_idx) * ROW_SPACING
+
+    # Get normalized channel signal
+    channel_signal = channel_data_normalized[:, plot_idx]
+
+    # Plot the continuous data as baseline in dark color
+    baseline_trace = (channel_signal * AMPLIFICATION) + y_position
+    ax.plot(
+        time_axis,
+        baseline_trace,
+        color="#2C3E50",  # Dark blue-grey
+        linewidth=1.0,
+        alpha=0.7,
+        zorder=1,
+    )
 
     # Add channel label
     ax.text(
         -0.02,
         y_position,
-        f"Ch {channel}",
+        f"Ch {channel_idx}",
         ha="right",
         va="center",
         fontsize=LABEL_SIZE,
         fontweight="bold",
-        color=DARK_NAVY,
+        color="#2C3E50",
         transform=ax.get_yaxis_transform(),
     )
 
-# Set axis limits
-y_bottom = -ROW_SPACING * 0.8
-y_top = (total_channels - 1) * ROW_SPACING + ROW_SPACING * 0.5
+    # Filter spikes to only include units that belong to this channel
+    units_on_channel = units_per_channel[channel_idx]
+    if len(units_on_channel) > 0:
+        channel_spike_mask = np.isin(spike_clusters_in_window, units_on_channel)
+        spikes_on_channel = spikes_in_window[channel_spike_mask]
+        spike_clusters_on_channel = spike_clusters_in_window[channel_spike_mask]
+
+        # Track which units have been labeled for legend
+        waveforms_plotted = {}
+
+        # Extract and plot waveforms around each spike
+        for spike_idx, (spike_time_samples, unit_id) in enumerate(
+            zip(spikes_on_channel, spike_clusters_on_channel)
+        ):
+            # Calculate waveform extraction window
+            spike_sample_in_chunk = spike_time_samples - start_sample
+            waveform_start = max(0, spike_sample_in_chunk - waveform_samples // 2)
+            waveform_end = min(
+                len(channel_signal), spike_sample_in_chunk + waveform_samples // 2
+            )
+
+            # Skip if spike is too close to edges
+            if waveform_end - waveform_start < waveform_samples // 2:
+                continue
+
+            # Extract waveform
+            waveform = channel_signal[waveform_start:waveform_end]
+            waveform_time = time_axis[waveform_start:waveform_end]
+
+            # Apply y position offset
+            waveform_positioned = (waveform * AMPLIFICATION) + y_position
+
+            # Plot waveform
+            color = unit_colors.get(
+                unit_id, "#808080"
+            )  # Default to gray if unit not in color map
+            alpha = 0.8 if unit_id in waveforms_plotted else 0.9
+            label = f"Unit {unit_id}" if unit_id not in waveforms_plotted else None
+
+            ax.plot(
+                waveform_time,
+                waveform_positioned,
+                color=color,
+                linewidth=2.0,
+                alpha=alpha,
+                label=label,
+                zorder=2,
+            )
+
+            # Mark this unit as having been labeled
+            waveforms_plotted[unit_id] = True
+
+    # Add statistics text box for each channel
+    n_spikes = (
+        len(
+            [
+                s
+                for s, c in zip(spikes_on_channel, spike_clusters_on_channel)
+                if c in units_on_channel
+            ]
+        )
+        if len(units_on_channel) > 0
+        else 0
+    )
+
+# Set compact axis limits
+y_bottom = -ROW_SPACING * 0.8  # Small margin below last channel
+y_top = (
+    total_channels - 1
+) * ROW_SPACING + ROW_SPACING * 0.5  # Minimal margin above first channel
 
 # Format axis
-ax.set_xlim(0, WINDOW_DURATION)
+ax.set_xlim(time_start, time_start + time_duration)
 ax.set_ylim(y_bottom, y_top)
-ax.set_xlabel("Time (s)", fontsize=AXIS_LABEL_SIZE)
+ax.set_xlabel("Time (s)", fontsize=TICK_SIZE)
 ax.tick_params(labelsize=TICK_SIZE)
 
 # Remove y-axis ticks and spines
@@ -425,66 +384,601 @@ ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 ax.spines["left"].set_visible(False)
 
-# Add title
-ax.set_title("HD Channels with Spike Template Overlays", fontsize=TITLE_SIZE, pad=20)
-
-# Add legend for templates
-template_handles = []
-template_labels = []
-for ch_idx, channel in enumerate(CHANNELS):
-    if channel in channel_templates:
-        unit_id = channel_units[channel]
-        template_color = TEMPLATE_COLORS[ch_idx % len(TEMPLATE_COLORS)]
-        template_handles.append(
-            plt.Line2D(
-                [0],
-                [0],
-                color=template_color,
-                linewidth=TEMPLATE_LINEWIDTH,
-                alpha=TEMPLATE_ALPHA,
-            )
-        )
-        template_labels.append(f"Ch {channel} - Unit {unit_id}")
-
-if template_handles:
-    ax.legend(
-        template_handles,
-        template_labels,
-        loc="upper right",
-        fontsize=TICK_SIZE * 0.8,
-        framealpha=0.9,
-    )
 
 plt.tight_layout()
-
-# Save figure
-# FIGURE_DIR = Path(os.getenv("FIGURE_DIR_HD", "."))
-# FIGURE_PATH = FIGURE_DIR.joinpath("hd_channels_with_templates.png")
-# mpu.save_figure(fig, FIGURE_PATH, dpi=600)
+plt.subplots_adjust(top=0.88)
 
 plt.show()
 
 # %%
-# Print summary
-print(f"\n=== HD Recording with Template Overlays Summary ===")
-print(f"Channels plotted: {CHANNELS}")
-print(
-    f"Time window: {RECORDING_START_TIME}s - {RECORDING_START_TIME + WINDOW_DURATION}s"
+# Simple Interactive Channel and Unit Spike Visualization
+import ipywidgets as widgets
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Configuration
+RECORDING_START_TIME = 9.9  # Start time in seconds
+WINDOW_DURATION = 0.35  # Window duration in seconds
+waveform_window_ms = 2  # Window around each spike in milliseconds
+AMPLIFICATION = 2.0  # Trace amplitude scaling factor
+
+# Available channels and units
+AVAILABLE_CHANNELS = [0, 1, 2, 4, 6, 18, 22, 25]
+available_units = sorted(list(sorter_data.unit_ids))
+
+# Time setup
+time_start = RECORDING_START_TIME
+time_duration = WINDOW_DURATION
+start_sample = int(time_start * FS)
+end_sample = int((time_start + time_duration) * FS)
+waveform_samples = int(waveform_window_ms * FS / 1000)
+
+# Get spike data for the time window
+all_spike_times_s = sorter_data.spike_times / FS
+spike_mask = (all_spike_times_s >= time_start) & (
+    all_spike_times_s < time_start + time_duration
 )
-print(f"Templates extracted for {len(channel_templates)} channels:")
+spikes_in_window = sorter_data.spike_times[spike_mask]
+spike_clusters_in_window = sorter_data.spike_clusters[spike_mask]
 
-for channel in CHANNELS:
-    if channel in channel_templates:
-        unit_id = channel_units[channel]
-        n_waveforms = channel_templates[channel]["n_waveforms"]
-        print(f"  Channel {channel}: Unit {unit_id} ({n_waveforms} waveforms)")
+# Color palette
+color_palette = [
+    "#e41a1c",
+    "#ff7f00",
+    "#377eb8",
+    "#4daf4a",
+    "#984ea3",
+    "#ffff33",
+    "#a65628",
+    "#f781bf",
+    "#00ced1",
+    "#ff1493",
+    "#32cd32",
+    "#8b0000",
+    "#00008b",
+    "#ff8c00",
+    "#9400d3",
+    "#ff69b4",
+    "#00ff7f",
+    "#dc143c",
+    "#00bfff",
+    "#ffd700",
+]
+
+
+def plot_channel_unit(channel_idx=6, unit_id=0):
+    """Plot function that gets called when sliders change"""
+
+    # Clear any existing plots
+    plt.clf()
+
+    # Load and normalize channel data
+    channel_data = whitened_data[start_sample:end_sample, channel_idx].compute()
+    time_axis = np.arange(channel_data.shape[0]) / FS + time_start
+
+    # Normalize
+    ch_mean = np.mean(channel_data)
+    ch_std = np.std(channel_data)
+    if ch_std > 0:
+        channel_data_normalized = (channel_data - ch_mean) / ch_std
     else:
-        print(f"  Channel {channel}: No template available")
+        channel_data_normalized = channel_data - ch_mean
 
-print(f"\nTemplate parameters:")
-print(f"  Window: {PRE_SAMPLES_MS}ms pre + {POST_SAMPLES_MS}ms post")
-print(f"  Max spikes per template: {NUM_SPIKES_TO_TEMPLATE}")
-print(f"  Min spikes threshold: {MIN_SPIKES_THRESHOLD}")
-print(f"  Template alpha: {TEMPLATE_ALPHA}")
+    # Create the plot
+    plt.figure(figsize=(15, 8))
+
+    # Plot baseline continuous data
+    plt.plot(
+        time_axis,
+        channel_data_normalized * AMPLIFICATION,
+        color="#2C3E50",
+        linewidth=1.2,
+        alpha=0.8,
+        label="Continuous data",
+        zorder=1,
+    )
+
+    # Filter spikes for the selected unit
+    unit_spike_mask = spike_clusters_in_window == unit_id
+    unit_spikes = spikes_in_window[unit_spike_mask]
+    n_spikes = len(unit_spikes)
+
+    # Plot spike waveforms if any exist
+    if n_spikes > 0:
+        unit_color = color_palette[unit_id % len(color_palette)]
+
+        # Track if we've added the unit to legend yet
+        unit_labeled = False
+
+        for spike_time_samples in unit_spikes:
+            # Calculate waveform extraction window
+            spike_sample_in_chunk = spike_time_samples - start_sample
+            waveform_start = max(0, spike_sample_in_chunk - waveform_samples // 2)
+            waveform_end = min(
+                len(channel_data_normalized),
+                spike_sample_in_chunk + waveform_samples // 2,
+            )
+
+            # Skip if spike is too close to edges
+            if waveform_end - waveform_start < waveform_samples // 2:
+                continue
+
+            # Extract waveform
+            waveform = channel_data_normalized[waveform_start:waveform_end]
+            waveform_time = time_axis[waveform_start:waveform_end]
+
+            # Plot waveform
+            plt.plot(
+                waveform_time,
+                waveform * AMPLIFICATION,
+                color=unit_color,
+                linewidth=2.5,
+                alpha=0.8,
+                label=f"Unit {unit_id}" if not unit_labeled else "",
+                zorder=2,
+            )
+            unit_labeled = True
+
+    # Formatting
+    plt.xlim(time_start, time_start + time_duration)
+    plt.xlabel("Time (s)", fontsize=TICK_SIZE)
+    plt.ylabel("Normalized Amplitude", fontsize=12)
+    plt.title(
+        f"Channel {channel_idx} - Unit {unit_id} ({n_spikes} spikes)\n"
+        f"Time: {time_start:.2f}-{time_start + time_duration:.2f}s",
+        fontsize=14,
+        pad=20,
+    )
+    plt.grid(True, alpha=0.3)
+    plt.legend(loc="upper right")
+
+    # Add statistics text
+    plt.text(
+        0.02,
+        0.98,
+        f"Ch {channel_idx}, Unit {unit_id}: {n_spikes} spikes\nWaveform window: ±{waveform_window_ms}ms",
+        transform=plt.gca().transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9),
+    )
+
+    plt.tight_layout()
+    plt.show()
+
+
+# Create sliders
+channel_slider = widgets.Dropdown(
+    options=AVAILABLE_CHANNELS,
+    value=6,  # Default channel
+    description="Channel:",
+)
+
+unit_slider = widgets.IntSlider(
+    value=available_units[0] if available_units else 0,
+    min=min(available_units) if available_units else 0,
+    max=max(available_units) if available_units else 0,
+    step=1,
+    description="Unit ID:",
+)
+
+# Create the interactive widget - this is the key simple part!
+interactive_plot = widgets.interactive(
+    plot_channel_unit, channel_idx=channel_slider, unit_id=unit_slider
+)
+
+# Display it
+interactive_plot
+
+# %%
+CHANNELS = [0, 1, 2, 4, 6, 18, 22, 25]  # 8 channels to plot
+RECORDING_START_TIME = 9.9  # Start time in seconds
+WINDOW_DURATION = 0.35  # Window duration in seconds
+waveform_window_ms = 2  # Window around each spike in milliseconds
+
+# Layout configuration
+ROW_SPACING = 35.0  # Vertical spacing between channels
+FIGURE_SIZE = (20, 12)  # Wider to accommodate templates
+AMPLIFICATION = 2.0  # Trace amplitude scaling factor
+
+# Template extraction parameters
+N_WAVEFORMS_EXTRACT = 500  # Number of waveforms to extract for templates
+TEMPLATE_WINDOW_MS = 4.0  # Template window in milliseconds (wider than spike window)
+
+# Use the new variable names
+channels_to_plot = CHANNELS
+time_start = RECORDING_START_TIME
+time_duration = WINDOW_DURATION
+
+# Font sizes
+FONT_SIZE = 35  # Reduced from 35 to fit better
+AXIS_LABEL_SIZE = int(FONT_SIZE * 1.0)
+TICK_SIZE = int(FONT_SIZE * 0.6)
+LABEL_SIZE = int(FONT_SIZE * 0.9)
+
+# MANUAL UNIT ASSIGNMENT - Modify this dictionary to assign units to channels
+# Format: {channel_number: [list_of_unit_ids]}
+manual_units_per_channel = {
+    0: [12],  #
+    1: [13],  #
+    2: [15],  #
+    4: [10],  #
+    6: [21],  #
+    18: [16],  #
+    22: [18],  #
+    25: [19],  #
+}
+
+# Alternative: Use automatic assignment if you want to see what the algorithm would choose
+use_manual_assignment = True  # Set to False to use automatic assignment
+
+# Convert time to samples
+start_sample = int(time_start * FS)
+end_sample = int((time_start + time_duration) * FS)
+waveform_samples = int(waveform_window_ms * FS / 1000)  # Convert ms to samples
+template_samples = int(TEMPLATE_WINDOW_MS * FS / 1000)  # Template window samples
+
+# Extract the data for the specified channels and time window
+channel_data = whitened_data[start_sample:end_sample, channels_to_plot].compute()
+time_axis = np.arange(channel_data.shape[0]) / FS + time_start
+
+# Determine unit assignment method
+if use_manual_assignment:
+    print("Using MANUAL unit assignment")
+    units_per_channel = {}
+
+    # Initialize with empty lists for all channels
+    for ch in channels_to_plot:
+        units_per_channel[ch] = []
+
+    # Apply manual assignments only for channels that exist in both lists
+    for ch in channels_to_plot:
+        if ch in manual_units_per_channel:
+            # Filter to only include units that actually exist in the data
+            available_units = set(sorter_data.unit_ids)
+            valid_units = [
+                u for u in manual_units_per_channel[ch] if u in available_units
+            ]
+            units_per_channel[ch] = valid_units
+
+            # Warn about units that don't exist
+            invalid_units = [
+                u for u in manual_units_per_channel[ch] if u not in available_units
+            ]
+            if invalid_units:
+                print(
+                    f"Warning: Channel {ch} - Units {invalid_units} not found in data"
+                )
+else:
+    print("Using AUTOMATIC unit assignment based on template amplitude")
+    # Find which units have their primary channel on each channel we're plotting
+    templates = sorter_data.templates_data[
+        "templates"
+    ]  # Shape: (n_units, n_timepoints, n_channels)
+    channel_map = sorter_data.templates_data.get(
+        "channel_map", np.arange(templates.shape[2])
+    )
+
+    # For each unit, find the channel with maximum template amplitude
+    units_per_channel = {ch: [] for ch in channels_to_plot}
+    unit_primary_channels = {}
+
+    for unit_idx, unit_id in enumerate(sorter_data.unit_ids):
+        if unit_idx < templates.shape[0]:  # Make sure template exists
+            # Get template for this unit across all channels
+            unit_template = templates[unit_idx]  # Shape: (n_timepoints, n_channels)
+
+            # Find channel with maximum absolute amplitude
+            max_amp_per_channel = np.max(np.abs(unit_template), axis=0)
+            primary_channel_idx = np.argmax(max_amp_per_channel)
+
+            # Map to actual channel number
+            primary_channel = (
+                channel_map[primary_channel_idx]
+                if len(channel_map) > primary_channel_idx
+                else primary_channel_idx
+            )
+            unit_primary_channels[unit_id] = int(primary_channel)
+
+            # Check if this unit belongs to any of the channels we're plotting
+            if int(primary_channel) in channels_to_plot:
+                units_per_channel[int(primary_channel)].append(unit_id)
+
+# Print summary
+print("Units per channel:")
+for ch in channels_to_plot:
+    print(f"  Channel {ch}: {units_per_channel[ch]}")
+
+# Get spike times in the time window
+all_spike_times_s = sorter_data.spike_times / FS
+spike_mask = (all_spike_times_s >= time_start) & (
+    all_spike_times_s < time_start + time_duration
+)
+spikes_in_window = sorter_data.spike_times[spike_mask]
+spike_clusters_in_window = sorter_data.spike_clusters[spike_mask]
+
+# Create color palette for units (consistent across channels)
+all_assigned_units = []
+for ch_units in units_per_channel.values():
+    all_assigned_units.extend(ch_units)
+all_assigned_units = sorted(set(all_assigned_units))
+
+color_palette = [
+    "#e41a1c",
+    "#ff7f00",
+    "#377eb8",
+    "#4daf4a",
+    "#670077",
+    "#001ba1",
+    "#a65628",
+    "#9b4600",
+    "#00ced1",
+    "#ff1493",
+    "#32cd32",
+    "#8b0000",
+    "#00008b",
+    "#ff8c00",
+    "#6A0097",
+    "#ff69b4",
+    "#00ff7f",
+    "#dc143c",
+    "#00bfff",
+    "#ffd700",
+]
+unit_colors = {
+    unit_id: color_palette[i % len(color_palette)]
+    for i, unit_id in enumerate(all_assigned_units)
+}
+
+# Normalize each channel for consistent visualization
+channel_data_normalized = np.zeros_like(channel_data, dtype=float)
+for i in range(len(channels_to_plot)):
+    ch_data = channel_data[:, i]
+    # Z-score normalization
+    ch_mean = np.mean(ch_data)
+    ch_std = np.std(ch_data)
+    if ch_std > 0:
+        channel_data_normalized[:, i] = (ch_data - ch_mean) / ch_std
+    else:
+        channel_data_normalized[:, i] = ch_data - ch_mean
+
+
+# Function to extract waveforms for template analysis
+def extract_unit_waveforms(unit_id, channel_idx, n_waveforms=N_WAVEFORMS_EXTRACT):
+    """Extract waveforms for a specific unit from the entire recording"""
+
+    # Get all spikes for this unit (not just in time window)
+    unit_spike_mask = sorter_data.spike_clusters == unit_id
+    unit_spike_times = sorter_data.spike_times[unit_spike_mask]
+
+    # Limit to requested number of waveforms
+    if len(unit_spike_times) > n_waveforms:
+        # Take evenly distributed samples
+        indices = np.linspace(0, len(unit_spike_times) - 1, n_waveforms, dtype=int)
+        unit_spike_times = unit_spike_times[indices]
+
+    # Pre-allocate array for consistent dimensions
+    pre_samples = template_samples // 2
+    post_samples = template_samples - pre_samples
+
+    waveforms = []
+
+    for spike_time in unit_spike_times:
+        # Calculate extraction window with exact pre/post samples
+        waveform_start = spike_time - pre_samples
+        waveform_end = spike_time + post_samples
+
+        # Check bounds
+        if waveform_start >= 0 and waveform_end < whitened_data.shape[0]:
+            # Extract waveform for this channel
+            waveform = whitened_data[waveform_start:waveform_end, channel_idx].compute()
+
+            # Ensure exact length
+            if len(waveform) == template_samples:
+                waveforms.append(waveform)
+
+    if len(waveforms) > 0:
+        # Convert to 3D array: (n_waveforms, n_timepoints, 1)
+        waveforms_array = np.array(waveforms)
+
+        # Normalize each waveform individually
+        normalized_waveforms = np.zeros_like(waveforms_array)
+        for i, wf in enumerate(waveforms_array):
+            wf_mean = np.mean(wf)
+            wf_std = np.std(wf)
+            if wf_std > 0:
+                normalized_waveforms[i] = (wf - wf_mean) / wf_std
+            else:
+                normalized_waveforms[i] = wf - wf_mean
+
+        return normalized_waveforms
+    else:
+        return np.array([])
+
+
+mpu.set_publication_style()
+# Create the 2-column grid
+fig = plt.figure(figsize=FIGURE_SIZE)
+gs = fig.add_gridspec(8, 2, width_ratios=[4, 0.8], hspace=0.1, wspace=0.1)
+
+# LEFT COLUMN: Multi-channel plot
+ax_main = fig.add_subplot(gs[:, 0])
+
+total_channels = len(channels_to_plot)
+
+# Plot each channel in the left column
+for plot_idx, channel_idx in enumerate(channels_to_plot):
+    # Calculate y position (top to bottom)
+    y_position = (total_channels - 1 - plot_idx) * ROW_SPACING
+
+    # Get normalized channel signal
+    channel_signal = channel_data_normalized[:, plot_idx]
+
+    # Plot the continuous data as baseline in dark color
+    baseline_trace = (channel_signal * AMPLIFICATION) + y_position
+    ax_main.plot(
+        time_axis,
+        baseline_trace,
+        color="#2C3E50",  # Dark blue-grey
+        linewidth=1.0,
+        alpha=0.7,
+        zorder=1,
+    )
+
+    # Add channel label
+    ax_main.text(
+        -0.02,
+        y_position,
+        f"Ch {plot_idx + 1}",
+        ha="right",
+        va="center",
+        fontsize=LABEL_SIZE,
+        fontweight="bold",
+        color="#2C3E50",
+        transform=ax_main.get_yaxis_transform(),
+    )
+
+    # Filter spikes to only include units that belong to this channel
+    units_on_channel = units_per_channel[channel_idx]
+    if len(units_on_channel) > 0:
+        channel_spike_mask = np.isin(spike_clusters_in_window, units_on_channel)
+        spikes_on_channel = spikes_in_window[channel_spike_mask]
+        spike_clusters_on_channel = spike_clusters_in_window[channel_spike_mask]
+
+        # Track which units have been labeled for legend
+        waveforms_plotted = {}
+
+        # Extract and plot waveforms around each spike
+        for spike_idx, (spike_time_samples, unit_id) in enumerate(
+            zip(spikes_on_channel, spike_clusters_on_channel)
+        ):
+            # Calculate waveform extraction window
+            spike_sample_in_chunk = spike_time_samples - start_sample
+            waveform_start = max(0, spike_sample_in_chunk - waveform_samples // 2)
+            waveform_end = min(
+                len(channel_signal), spike_sample_in_chunk + waveform_samples // 2
+            )
+
+            # Skip if spike is too close to edges
+            if waveform_end - waveform_start < waveform_samples // 2:
+                continue
+
+            # Extract waveform
+            waveform = channel_signal[waveform_start:waveform_end]
+            waveform_time = time_axis[waveform_start:waveform_end]
+
+            # Apply y position offset
+            waveform_positioned = (waveform * AMPLIFICATION) + y_position
+
+            # Plot waveform
+            color = unit_colors.get(
+                unit_id, "#808080"
+            )  # Default to gray if unit not in color map
+            alpha = 0.8 if unit_id in waveforms_plotted else 0.9
+            label = f"Unit {unit_id}" if unit_id not in waveforms_plotted else None
+
+            ax_main.plot(
+                waveform_time,
+                waveform_positioned,
+                color=color,
+                linewidth=2.0,
+                alpha=alpha,
+                label=label,
+                zorder=2,
+            )
+
+            # Mark this unit as having been labeled
+            waveforms_plotted[unit_id] = True
+
+# Set compact axis limits for main plot
+y_bottom = -ROW_SPACING * 0.8
+y_top = (total_channels - 1) * ROW_SPACING + ROW_SPACING * 0.5
+
+# Format main axis
+ax_main.set_xlim(time_start, time_start + time_duration)
+ax_main.set_ylim(y_bottom, y_top)
+ax_main.set_xlabel("Time (s)", fontsize=TICK_SIZE)
+ax_main.tick_params(labelsize=TICK_SIZE)
+ax_main.set_yticks([])
+ax_main.spines["top"].set_visible(False)
+ax_main.spines["right"].set_visible(False)
+ax_main.spines["left"].set_visible(False)
+
+# RIGHT COLUMN: Template waveforms for each channel
+pre_samples = template_samples // 2
+post_samples = template_samples - pre_samples
+template_time_axis = (
+    (np.arange(template_samples) - pre_samples) / FS * 1000
+)  # in ms, centered at 0
+
+for plot_idx, channel_idx in enumerate(channels_to_plot):
+    ax_template = fig.add_subplot(gs[plot_idx, 1])
+
+    # Get units for this channel
+    units_on_channel = units_per_channel[channel_idx]
+
+    if len(units_on_channel) > 0:
+        for unit_id in units_on_channel:
+            # Extract waveforms for this unit on this channel
+            waveforms = extract_unit_waveforms(unit_id, channel_idx)
+
+            if len(waveforms) > 0:
+                # Get unit color
+                color = unit_colors.get(unit_id, "#808080")
+
+                # Plot individual waveforms (lighter)
+                for i, wf in enumerate(waveforms):
+                    ax_template.plot(
+                        template_time_axis,
+                        wf,
+                        color=color,
+                        alpha=0.05,
+                        linewidth=0.3,
+                        zorder=1,
+                    )
+
+                # Calculate mean and SEM from the 3D array
+                mean_waveform = np.mean(waveforms, axis=0)
+                sem_waveform = np.std(waveforms, axis=0) / np.sqrt(waveforms.shape[0])
+
+                # Plot mean waveform (thick)
+                ax_template.plot(
+                    template_time_axis,
+                    mean_waveform,
+                    color=color,
+                    linewidth=3,
+                    alpha=0.9,
+                    label=f"Unit {unit_id} (n={len(waveforms)})",
+                    zorder=3,
+                )
+
+                # Plot SEM as shaded area
+                ax_template.fill_between(
+                    template_time_axis,
+                    mean_waveform - sem_waveform,
+                    mean_waveform + sem_waveform,
+                    color=color,
+                    alpha=0.2,
+                    zorder=2,
+                )
+                ax_template.yaxis.set_visible(False)
+
+    ax_template.tick_params(labelsize=TICK_SIZE)
+    ax_template.grid(True, alpha=0.3)
+    ax_template.axvline(0, color="red", linestyle="--", alpha=0.5, linewidth=1)
+
+    # Only show x-label on bottom plot
+    if plot_idx == len(channels_to_plot) - 1:
+        ax_template.set_xlabel("Time (ms)", fontsize=TICK_SIZE)
+    else:
+        ax_template.set_xticklabels([])
+
+
+plt.tight_layout()
+plt.show()
+
+# %%
+
+mpu.save_figure(fig, "traces+tempalte.png", dpi=600)
 
 # %%
