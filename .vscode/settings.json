@@ -13,23 +13,31 @@
     "W",
     "C"
   ],
-  "ruff.organizeImports": true, // Add this
+  "ruff.organizeImports": true,
   "[python]": {
     "editor.codeActionsOnSave": {
-      // "source.fixAll.ruff": "explicit", // More specific
-      "source.organizeImports.ruff": "explicit" // More specific
+      "source.organizeImports.ruff": "explicit"
     },
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "charliermarsh.ruff"
   },
   // Python interpreter path
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
-  // Rust with PyO3
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  
+  // Rust with PyO3 - explicit environment variables
   "rust-analyzer.cargo.extraEnv": {
-    "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "PYO3_PYTHON": "${workspaceFolder}/.venv/bin/python",
+    "PYTHON_SYS_EXECUTABLE": "${workspaceFolder}/.venv/bin/python"
   },
-  // Environment variables for integrated terminal
+  
+  // Environment variables for integrated terminal - platform-specific
   "terminal.integrated.env.windows": {
     "PYO3_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"
+  },
+  "terminal.integrated.env.linux": {
+    "PYO3_PYTHON": "${workspaceFolder}/.venv/bin/python"
+  },
+  "terminal.integrated.env.osx": {
+    "PYO3_PYTHON": "${workspaceFolder}/.venv/bin/python"
   }
 }

@@ -20,7 +20,7 @@ dependencies = [
     "matplotlib>=3.10.0",
     "mkl-service>=2.4.2; sys_platform != 'darwin'",
     "neo>=0.14.1",
-    "numpy>=2.0.0",
+    "numpy>=2.0.0"
     "numba>=0.61.0",
     "pendulum>=3.0.0",
     "plotly-resampler>=0.10.0",
@@ -145,3 +145,4 @@ members = [
     "./dspant_app",
     "./dspant_viz",
 ]
+

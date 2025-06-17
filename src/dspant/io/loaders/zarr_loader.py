@@ -34,7 +34,6 @@ def super_zarr_open(
     Open a zarr folder with fallback strategies.
     Based on SpikeInterface's super_zarr_open function.
     """
-    import zarr
 
     if mode in ("a", "r+"):
         open_funcs = (zarr.open,)
