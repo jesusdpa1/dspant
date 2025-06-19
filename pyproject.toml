@@ -39,6 +39,7 @@ dependencies = [
     "zarrs>=0.1.4",
     "numcodecs>=0.15.1,<0.16",
     "ipywidgets>=8.1.7",
+    "rastermap>=1.0",
 ]
 
 [project.scripts]
