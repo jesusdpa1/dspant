@@ -28,11 +28,11 @@ SAMPLING_FREQ = 8000  # Hz - sampling frequency
 NYQUIST = SAMPLING_FREQ / 2
 
 # Define font sizes with appropriate scaling
-FONT_SIZE = 25
+FONT_SIZE = 14
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
-AXIS_LABEL_SIZE = int(FONT_SIZE * 0.6)
-TICK_SIZE = int(FONT_SIZE * 0.5)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
+TICK_SIZE = int(FONT_SIZE * 0.7)
 
 # Define consistent colors for our signal types - using colorblind-friendly palette
 ORIGINAL_SIGNAL_COLOR = mpu.PRIMARY_COLOR  # Dark navy blue for original signal
@@ -151,7 +151,7 @@ def plot_filter_response(
     )
 
     # Add legend
-    mpu.add_legend(ax, loc="lower left", fontsize=TICK_SIZE)
+    mpu.add_legend(ax, loc="upper right", fontsize=TICK_SIZE)
 
 
 # Function to plot time domain signals
@@ -165,6 +165,7 @@ def plot_time_domain(
     xlim=None,
     add_zoom_box=False,
     zoom_xlim=None,
+    loc="best",
 ):
     ax.plot(
         t,
@@ -186,7 +187,7 @@ def plot_time_domain(
         iir_filtered,
         color=IIR_SIGNAL_COLOR,
         linewidth=2,
-        label="IIR Filtered (Butterworth)",
+        label="IIR Filtered (Butter)",
     )
 
     # Set default xlim if not provided
@@ -210,7 +211,7 @@ def plot_time_domain(
         add_zoom_highlight(ax, zoom_xlim[0], zoom_xlim[1])
 
     # Add legend
-    mpu.add_legend(ax, loc="lower left", fontsize=TICK_SIZE)
+    mpu.add_legend(ax, loc=loc, fontsize=TICK_SIZE)
 
 
 # Function to plot phase response
@@ -239,7 +240,7 @@ def plot_phase_response(ax, b, a, fs=8000, title=None):
         phase_iir,
         color=IIR_SIGNAL_COLOR,
         linewidth=2,
-        label="IIR (Butterworth)",
+        label="IIR (Butter)",
     )
 
     # Format the axis with our utility function
@@ -283,8 +284,8 @@ NOISY_ZOOM_END = 0.05
 fig, gs = mpu.create_figure_grid(
     rows=3,
     cols=2,
-    height_ratios=[1, 1, 1],
-    figsize=(14, 12),
+    height_ratios=[1.1, 1.1, 1.1],
+    figsize=(7, 9),
 )
 
 # Generate test signals
@@ -312,9 +313,9 @@ plot_filter_response(
     butter_b,
     butter_a,
     SAMPLING_FREQ,
-    "IIR Filter: Butterworth Frequency Response",
+    "IIR Filter: Butter Frequency Response",
     IIR_SIGNAL_COLOR,
-    f"Butterworth {BUTTERWORTH_ORDER}th Order",
+    f"Butter {BUTTERWORTH_ORDER}th Order",
 )
 
 ax1_2 = plt.subplot(gs[0, 1])
@@ -323,7 +324,7 @@ plot_filter_response(
     ma_b,
     ma_a,
     SAMPLING_FREQ,
-    "FIR Filter: Moving Average Frequency Response",
+    "FIR Filter: MA Frequency Response",
     FIR_SIGNAL_COLOR,
     f"MA (Length {MA_LENGTH})",
 )
@@ -340,7 +341,8 @@ plot_time_domain(
     ma_filtered_step,
     butter_filtered_step,
     "Step Response Comparison",
-    (STEP_ZOOM_START, STEP_ZOOM_END),  # Focus on the step transition part
+    (STEP_ZOOM_START, STEP_ZOOM_END),
+    loc="lower right",  # Focus on the step transition part
 )
 
 # 3. Row: Time domain comparison - noisy signal filtering and zoomed view
@@ -355,6 +357,7 @@ plot_time_domain(
     (0, 0.1),  # Show only first 0.1 seconds
     add_zoom_box=True,  # Add yellow highlight box
     zoom_xlim=(NOISY_ZOOM_START, NOISY_ZOOM_END),  # Highlight the zoomed region
+    loc="lower right",  # Focus on the filtered signal part
 )
 
 ax3_2 = plt.subplot(gs[2, 1])
@@ -366,6 +369,7 @@ plot_time_domain(
     butter_filtered_noisy,
     "Zoomed View of Filtered Signals",
     (NOISY_ZOOM_START, NOISY_ZOOM_END),  # Zoomed to show details
+    loc="lower right",  # Focus on the filtered signal part
 )
 
 # Finalize the figure with our utility function
@@ -375,63 +379,69 @@ mpu.finalize_figure(
     title_y=0.96,
     left_margin=0.01,
     hspace=0.4,
-    top_margin=0.12,
+    wspace=0.3,
+    top_margin=0.1,
     title_fontsize=TITLE_SIZE,
 )
 
 # Format all axes to show 1 decimal place
 all_axes = [ax1_1, ax1_2, ax2_1, ax2_2, ax3_1, ax3_2]
 for ax in all_axes:
-    ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
-    ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+    ax.xaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+    ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
 
 # Now add panel labels after layout adjustments
 mpu.add_panel_label(
     ax1_1,
     "A",
-    x_offset_factor=0.05,
-    y_offset_factor=0.02,
+    x_offset_factor=0.18,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax1_2,
     "B",
-    x_offset_factor=0.05,
-    y_offset_factor=0.02,
+    x_offset_factor=0.12,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax2_1,
     "C",
-    x_offset_factor=0.05,
-    y_offset_factor=0.02,
+    x_offset_factor=0.18,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax2_2,
     "D",
-    x_offset_factor=0.05,
-    y_offset_factor=0.02,
+    x_offset_factor=0.12,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax3_1,
     "E",
-    x_offset_factor=0.05,
-    y_offset_factor=0.02,
+    x_offset_factor=0.18,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax3_2,
     "F",
-    x_offset_factor=0.05,
-    y_offset_factor=0.02,
+    x_offset_factor=0.12,
+    y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 
 # Save the figure using our utility function
-mpu.save_figure(fig, FIGURE_PATH, dpi=600)
 
+
+label_x = -0.22  # Adjust this value to move labels left/right
+for ax in all_axes:
+    ax.yaxis.set_label_coords(label_x, 0.5)
+
+# mpu.save_figure(fig, FIGURE_PATH, dpi=600)
 # Show the plot
 plt.show()
 # %%

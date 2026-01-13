@@ -16,7 +16,7 @@ from matplotlib.ticker import FormatStrFormatter
 from scipy import signal
 
 load_dotenv()
-
+# %%
 # Define colors - maintaining original dark navy and blue scheme
 ORIGINAL_SIGNAL_COLOR = "#2d3142"  # Dark navy for original signal
 FILTERED_SIGNAL_COLOR = "#0173b2"  # Blue for filtered signal
@@ -39,11 +39,11 @@ PHASE_CUTOFF_FREQ = 50  # Hz
 PHASE_SAMPLING_FREQ = 1000  # Hz
 
 # Define font sizes with appropriate scaling
-FONT_SIZE = 25
+FONT_SIZE = 16
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
-AXIS_LABEL_SIZE = int(FONT_SIZE * 0.6)
-TICK_SIZE = int(FONT_SIZE * 0.5)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
+TICK_SIZE = int(FONT_SIZE * 0.7)
 
 
 # Function to design filters
@@ -74,7 +74,9 @@ def design_butterworth_lowpass(cutoff, order=4, fs=1000):
 
 
 # Function to plot filter frequency response
-def plot_filter_response(ax, filter_type, cutoff, order=4, fs=8000, title=None):
+def plot_filter_response(
+    ax, filter_type, cutoff, order=4, fs=8000, title=None, x_pos=0.5
+):
     # Design filter
     if filter_type == "bandpass":
         b, a = design_butterworth_filter("bandpass", cutoff, order, fs)
@@ -94,13 +96,12 @@ def plot_filter_response(ax, filter_type, cutoff, order=4, fs=8000, title=None):
     freq = w * fs / (2 * np.pi)
 
     # Plot frequency response
-    ax.semilogx(freq, 20 * np.log10(abs(h)), color=FILTERED_SIGNAL_COLOR, linewidth=2)
+    ax.semilogx(freq, 20 * np.log10(abs(h)), color=FILTERED_SIGNAL_COLOR, linewidth=1.2)
 
     # Format the axis with our utility function
     mpu.format_axis(
         ax,
         title=title,
-        xlabel="Frequency [Hz]",
         ylabel="Magnitude [dB]",
         xlim=(1, 10000),
         ylim=(-80, 5),
@@ -117,6 +118,7 @@ def plot_filter_response(ax, filter_type, cutoff, order=4, fs=8000, title=None):
             x=cf,
             label=f"{cf} Hz",
             y_pos=-75,
+            x_pos=cf - x_pos * cf,
             color=CUTOFF_COLOR,
             linestyle="--",
             alpha=0.7,
@@ -179,14 +181,14 @@ def plot_time_domain(ax, t, original_signal, filtered_signal, title=None):
         original_signal,
         color=ORIGINAL_SIGNAL_COLOR,
         alpha=0.3,
-        linewidth=1.5,
+        linewidth=1.2,
         label="Original Signal",
     )
     ax.plot(
         t,
         filtered_signal,
         color=FILTERED_SIGNAL_COLOR,
-        linewidth=2,
+        linewidth=1.2,
         label="Filtered Signal",
     )
 
@@ -194,7 +196,6 @@ def plot_time_domain(ax, t, original_signal, filtered_signal, title=None):
     mpu.format_axis(
         ax,
         title=title,
-        xlabel="Time [s]",
         ylabel="Amplitude",
         xlim=(0, 0.2),  # Show only first 0.2 seconds for better visibility
         title_fontsize=SUBTITLE_SIZE,
@@ -203,7 +204,7 @@ def plot_time_domain(ax, t, original_signal, filtered_signal, title=None):
     )
 
     # Add legend
-    mpu.add_legend(ax, loc="upper right")
+    mpu.add_legend(ax, loc="upper right", fontsize=TICK_SIZE)
 
 
 # Set publication style
@@ -213,8 +214,9 @@ mpu.set_publication_style()
 fig, gs = mpu.create_figure_grid(
     rows=5,
     cols=2,
-    height_ratios=[1, 1, 1, 1, 1],
-    figsize=(14, 18),
+    height_ratios=[1.1, 1.1, 1.1, 1.1, 1.1],
+    width_ratios=[0.7, 1.3],
+    figsize=(7, 9),
 )
 
 # Generate test signals for filter demonstrations
@@ -256,130 +258,121 @@ phase_filtfilt = signal.filtfilt(phase_b, phase_a, phase_test_signal)
 
 # Row 1: Lowpass and Highpass time domain
 ax1_1 = plt.subplot(gs[0, 0])
-plot_time_domain(
+plot_filter_response(
     ax1_1,
-    t,
-    lowpass_test,
-    lowpass_filtered,
-    "Signal Before and After Lowpass Filtering",
+    "lowpass",
+    LOWPASS_CUTOFF,
+    FILTER_ORDER,
+    SAMPLING_FREQ,
+    f"Lowpass ({LOWPASS_CUTOFF} Hz)",
+    x_pos=0.7,
 )
 
 ax1_2 = plt.subplot(gs[0, 1])
 plot_time_domain(
     ax1_2,
     t,
-    highpass_test,
-    highpass_filtered,
-    "Signal Before and After Highpass Filtering",
+    lowpass_test,
+    lowpass_filtered,
+    "Butterworth Lowpass Filtering",
 )
 
 # Row 2: Lowpass and Highpass frequency response
 ax2_1 = plt.subplot(gs[1, 0])
 plot_filter_response(
     ax2_1,
-    "lowpass",
-    LOWPASS_CUTOFF,
-    FILTER_ORDER,
-    SAMPLING_FREQ,
-    f"Butterworth Lowpass ({LOWPASS_CUTOFF} Hz) Order {FILTER_ORDER}",
-)
-
-ax2_2 = plt.subplot(gs[1, 1])
-plot_filter_response(
-    ax2_2,
     "highpass",
     HIGHPASS_CUTOFF,
     FILTER_ORDER,
     SAMPLING_FREQ,
-    f"Butterworth Highpass ({HIGHPASS_CUTOFF} Hz) Order {FILTER_ORDER}",
+    f"Highpass ({HIGHPASS_CUTOFF} Hz)",
+    x_pos=0.65,
+)
+
+ax2_2 = plt.subplot(gs[1, 1])
+plot_time_domain(
+    ax2_2,
+    t,
+    highpass_test,
+    highpass_filtered,
+    "Butterworth Highpass Filtering",
 )
 
 # Row 3: Bandpass and Notch time domain
+
 ax3_1 = plt.subplot(gs[2, 0])
-plot_time_domain(
-    ax3_1,
-    t,
-    bandpass_test,
-    bandpass_filtered,
-    "Signal Before and After Bandpass Filtering",
-)
-
-ax3_2 = plt.subplot(gs[2, 1])
-plot_time_domain(
-    ax3_2, t, notch_test, notch_filtered, "Signal Before and After Notch Filtering"
-)
-
-# Row 4: Bandpass and Notch frequency response
-ax4_1 = plt.subplot(gs[3, 0])
 plot_filter_response(
-    ax4_1,
+    ax3_1,
     "bandpass",
     [BANDPASS_LOW, BANDPASS_HIGH],
     FILTER_ORDER,
     SAMPLING_FREQ,
-    f"Butterworth Bandpass ({BANDPASS_LOW}-{BANDPASS_HIGH} Hz) Order {FILTER_ORDER}",
+    f"Bandpass ({BANDPASS_LOW}-{BANDPASS_HIGH} Hz)",
+    x_pos=0.68,
 )
 
-ax4_2 = plt.subplot(gs[3, 1])
+ax3_2 = plt.subplot(gs[2, 1])
+plot_time_domain(
+    ax3_2,
+    t,
+    bandpass_test,
+    bandpass_filtered,
+    "Butterworth Bandpass Filtering",
+)
+
+# Row 4: Bandpass and Notch frequency response
+
+
+ax4_1 = plt.subplot(gs[3, 0])
 plot_filter_response(
-    ax4_2,
+    ax4_1,
     "notch",
     NOTCH_FREQ,
     FILTER_ORDER,
     SAMPLING_FREQ,
     f"{NOTCH_FREQ} Hz Notch Filter",
+    x_pos=0.7,
 )
+
+ax4_2 = plt.subplot(gs[3, 1])
+plot_time_domain(ax4_2, t, notch_test, notch_filtered, "Butterworth Notch Filtering")
 
 # Row 5: Phase comparison plots (NEW - panels I and J)
-ax5_1 = plt.subplot(gs[4, 0])
-ax5_1.plot(
+# Row 5: Combined phase comparison plot (spans both columns)
+ax5 = plt.subplot(gs[4, :])  # The ':' makes it span both columns
+
+# Plot original signal
+ax5.plot(
     t_phase,
     phase_test_signal,
     label="Original Signal",
     color=ORIGINAL_SIGNAL_COLOR,
-    linewidth=1.5,
+    linewidth=1.2,
 )
-ax5_1.plot(
+
+# Plot lfilter result
+ax5.plot(
     t_phase,
     phase_lfilter,
-    label="lfilter (with phase delay)",
+    label="Phase Delay",
     color=LFILTER_COLOR,
     alpha=ALPHA_VALUE,
-    linewidth=2,
+    linewidth=1.2,
 )
 
-mpu.format_axis(
-    ax5_1,
-    title="Single-Pass Filtering (Phase Delay)",
-    xlabel="Time [s]",
-    ylabel="Amplitude",
-    xlim=(0, 1),
-    title_fontsize=SUBTITLE_SIZE,
-    label_fontsize=AXIS_LABEL_SIZE,
-    tick_fontsize=TICK_SIZE,
-)
-mpu.add_legend(ax5_1, fontsize=TICK_SIZE)
-
-ax5_2 = plt.subplot(gs[4, 1])
-ax5_2.plot(
-    t_phase,
-    phase_test_signal,
-    label="Original Signal",
-    color=ORIGINAL_SIGNAL_COLOR,
-    linewidth=1.5,
-)
-ax5_2.plot(
+# Plot filtfilt result
+ax5.plot(
     t_phase,
     phase_filtfilt,
-    label="filtfilt (zero phase)",
+    label="Zero-Phase",
     color=FILTFILT_COLOR,
     alpha=ALPHA_VALUE,
-    linewidth=2,
+    linewidth=1.2,
 )
 
 mpu.format_axis(
-    ax5_2,
-    title="Zero-Phase Filtering (No Delay)",
+    ax5,
+    title="Phase Comparison: Single-Pass vs Zero-Phase Filtering",
     xlabel="Time [s]",
     ylabel="Amplitude",
     xlim=(0, 1),
@@ -387,102 +380,117 @@ mpu.format_axis(
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
 )
-mpu.add_legend(ax5_2, fontsize=TICK_SIZE)
+mpu.add_legend(ax5, fontsize=TICK_SIZE, loc="upper right")
 
 # Finalize the figure
+# Finalize the figure with our utility function
 mpu.finalize_figure(
     fig,
-    # title="Comprehensive Filter Analysis: Types and Phase Behavior",
-    title_y=0.98,
-    hspace=0.4,
+    # title="FIR vs. IIR Filters: Moving Average vs. Butterworth Comparison",
+    title_y=0.96,
+    left_margin=0.01,
+    hspace=0.65,
+    wspace=0.28,
+    top_margin=0.1,
     title_fontsize=TITLE_SIZE,
 )
 
-# Use tight_layout to finalize positions before adding panel labels
-plt.tight_layout(rect=[0, 0, 1, 0.96])
-
 # Format all axes to show 1 decimal place
-all_axes = [ax1_1, ax1_2, ax2_1, ax2_2, ax3_1, ax3_2, ax4_1, ax4_2, ax5_1, ax5_2]
+all_axes = [ax1_1, ax1_2, ax2_1, ax2_2, ax3_1, ax3_2, ax4_1, ax4_2, ax5]
 for ax in all_axes:
-    ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+    ax.xaxis.set_major_formatter(FormatStrFormatter("%.2f"))
     ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+
+for ax in all_axes[:-1][::2]:
+    ax.xaxis.set_major_formatter(FormatStrFormatter("%.0f"))
 
 # Add panel labels (now including I and J)
 mpu.add_panel_label(
     ax1_1,
     "A",
-    x_offset_factor=0.03,
-    y_offset_factor=0.02,
+    x_offset_factor=0.09,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax1_2,
     "B",
     x_offset_factor=0.03,
-    y_offset_factor=0.02,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax2_1,
     "C",
-    x_offset_factor=0.03,
-    y_offset_factor=0.02,
+    x_offset_factor=0.09,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax2_2,
     "D",
     x_offset_factor=0.03,
-    y_offset_factor=0.02,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax3_1,
     "E",
-    x_offset_factor=0.03,
-    y_offset_factor=0.02,
+    x_offset_factor=0.09,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax3_2,
     "F",
     x_offset_factor=0.03,
-    y_offset_factor=0.02,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax4_1,
     "G",
-    x_offset_factor=0.03,
-    y_offset_factor=0.02,
+    x_offset_factor=0.09,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax4_2,
     "H",
     x_offset_factor=0.03,
-    y_offset_factor=0.02,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
-    ax5_1,
+    ax5,
     "I",
     x_offset_factor=0.03,
-    y_offset_factor=0.02,
-    fontsize=SUBTITLE_SIZE,
-)
-mpu.add_panel_label(
-    ax5_2,
-    "J",
-    x_offset_factor=0.03,
-    y_offset_factor=0.02,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 
 # Save the figure
-FIGURE_TITLE = "comprehensive_filter_analysis"
+FIGURE_TITLE = "fig02_comprehensive_filter_analysis"
 FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
 FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
+
+label_x = -0.12  # Adjust this value to move labels left/right
+for ax in all_axes[1::2]:
+    ax.yaxis.set_label_coords(label_x, 0.5)
+
+
+label_x = -0.25  # Adjust this value to move labels left/right
+for ax in all_axes[:-1][::2]:
+    ax.yaxis.set_label_coords(label_x, 0.5)
+    ax.set_yticks(np.linspace(0, -80.0, 3))
+
+all_axes[-1].yaxis.set_label_coords(-0.075, 0.5)
+
+for ax in all_axes:
+    ax.tick_params(axis="both", pad=-3)
+
+ax4_1.set_xlabel("Frequency [Hz]")
+ax4_2.set_xlabel("Time [s]")
 
 mpu.save_figure(fig, FIGURE_PATH, dpi=600)
 

@@ -46,7 +46,7 @@ COLORMAP = "inferno"
 # Load data - This would come from your actual data loading code
 DATA_DIR = Path(os.getenv("DATA_DIR"))
 BASE_PATH = DATA_DIR.joinpath(
-    r"topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+    r"25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
 )
 EMG_STREAM_PATH = BASE_PATH.joinpath("RawG.ant")
 
@@ -130,20 +130,22 @@ CWT_MIN = np.percentile(np.abs(CWT_CHANNEL_LONG_FILTERED), 5)
 CWT_MAX = np.percentile(np.abs(CWT_CHANNEL_LONG_FILTERED), 99)
 
 # Define font sizes with appropriate scaling
-FONT_SIZE = 35
-TITLE_SIZE = int(FONT_SIZE * 1)
-SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
-AXIS_LABEL_SIZE = int(FONT_SIZE * 0.6)
-TICK_SIZE = int(FONT_SIZE * 0.5)
 
 # %%
-# Create figure with simplified 3-row layout
-FIG = plt.figure(figsize=(20, 12))
-GS = GridSpec(3, 1, height_ratios=[1, 1, 1])
+# Define font sizes with appropriate scaling (FROM IIR VS FIR PLOT)
+FONT_SIZE = 14
+TITLE_SIZE = int(FONT_SIZE * 1)
+SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
+TICK_SIZE = int(FONT_SIZE * 0.7)
 
-# Plot 1: Raw Data (first row)
+# Create figure with 3-row, 2-column layout (main plots + colorbar column)
+FIG = plt.figure(figsize=(7, 5))
+GS = GridSpec(3, 2, height_ratios=[1, 1, 1], width_ratios=[20, 1])
+
+# Plot 1: Raw Data (first row, first column)
 AX_RAW = FIG.add_subplot(GS[0, 0])
-AX_RAW.plot(TIME_LONG, X_LONG, color=SIGNAL_COLOR, linewidth=1.5)
+AX_RAW.plot(TIME_LONG, X_LONG, color=SIGNAL_COLOR, linewidth=1.2)
 mpu.format_axis(
     AX_RAW,
     title="Filtered Signal",
@@ -165,8 +167,8 @@ AX_RAW.ticklabel_format(
 )
 AX_RAW.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 
-# Plot 2: STFT (second row)
-AX_STFT = FIG.add_subplot(GS[1, 0])
+# Plot 2: STFT (second row, first column)
+AX_STFT = FIG.add_subplot(GS[1, 0], sharex=AX_RAW)
 STFT_MESH = AX_STFT.pcolormesh(
     TIME_LONG,
     STFT_FREQS_FILTERED,
@@ -197,9 +199,8 @@ AX_STFT.ticklabel_format(
 )
 AX_STFT.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 
-# Add STFT colorbar
-DIVIDER_STFT = make_axes_locatable(AX_STFT)
-CAX_STFT = DIVIDER_STFT.append_axes("right", size="3%", pad=0.05)
+# Add STFT colorbar in second column
+CAX_STFT = FIG.add_subplot(GS[1, 1])
 CBAR_STFT = plt.colorbar(STFT_MESH, cax=CAX_STFT)
 CAX_STFT.tick_params(labelsize=TICK_SIZE)
 
@@ -213,8 +214,8 @@ CAX_STFT.ticklabel_format(
 )
 CAX_STFT.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 
-# Plot 3: CWT (third row)
-AX_CWT = FIG.add_subplot(GS[2, 0])
+# Plot 3: CWT (third row, first column)
+AX_CWT = FIG.add_subplot(GS[2, 0], sharex=AX_RAW)
 CWT_MESH = AX_CWT.pcolormesh(
     TIME_LONG,
     CWT_FREQS_FILTERED,
@@ -245,9 +246,8 @@ AX_CWT.ticklabel_format(
 )
 AX_CWT.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 
-# Add CWT colorbar
-DIVIDER_CWT = make_axes_locatable(AX_CWT)
-CAX_CWT = DIVIDER_CWT.append_axes("right", size="3%", pad=0.05)
+# Add CWT colorbar in second column
+CAX_CWT = FIG.add_subplot(GS[2, 1])
 CBAR_CWT = plt.colorbar(CWT_MESH, cax=CAX_CWT)
 CAX_CWT.tick_params(labelsize=TICK_SIZE)
 
@@ -261,38 +261,49 @@ CAX_CWT.ticklabel_format(
 )
 CAX_CWT.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 
-# Finalize the figure
-mpu.finalize_figure(
-    FIG,
-    # title="Time-Frequency Analysis Comparison",
-    title_y=0.98,
-    title_fontsize=TITLE_SIZE,
-)
+# Create axes list for consistent formatting
+all_axes = [AX_RAW, AX_STFT, AX_CWT]
 
-# Apply tight layout before adding panel labels
-plt.tight_layout(rect=[0, 0, 1, 0.96])
+# Align all y-axis labels (FROM IIR VS FIR PLOT)
+label_x = -0.05  # Adjusted for this layout
+for ax in all_axes:
+    ax.yaxis.set_label_coords(label_x, 0.5)
+
+for ax in all_axes[:-1]:
+    ax.xaxis.set_visible(False)
 
 # Add panel labels using mpu.add_panel_label
 mpu.add_panel_label(
     AX_RAW,
     "A",
-    x_offset_factor=0.03,
-    y_offset_factor=0.04,
+    x_offset_factor=0.25,
+    y_offset_factor=0.09,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX_STFT,
     "B",
-    x_offset_factor=0.03,
-    y_offset_factor=0.04,
+    x_offset_factor=0.25,
+    y_offset_factor=0.09,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX_CWT,
     "C",
-    x_offset_factor=0.03,
-    y_offset_factor=0.04,
+    x_offset_factor=0.25,
+    y_offset_factor=0.09,
     fontsize=SUBTITLE_SIZE,
+)
+
+# Finalize the figure
+mpu.finalize_figure(
+    FIG,
+    title_y=0.96,
+    left_margin=0.01,
+    hspace=0.25,
+    wspace=0.01,
+    top_margin=0.1,
+    title_fontsize=TITLE_SIZE,
 )
 
 # Figure output path

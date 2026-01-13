@@ -27,7 +27,7 @@ def ls(directory: Path):
     return path_list
 
 
-tank_path = home.joinpath(r"testSubject/24-11-01_3869-2_testSubject_DST+Contusion")
+tank_path = home.joinpath(r"2025_mp_emg diaphragm acquisition and processing")
 # output_path = tank_path.joinpath("drv")
 a = ls(tank_path)
 filtered_paths = [entry for entry in a if entry.name != "drv"]
@@ -40,7 +40,10 @@ for block_path in filtered_paths:
 print("done")
 
 # %%
+block_path = filtered_paths[1]
+# %%
+tdt_block = tdt.read_block(str(block_path), t1=0, t2=-1)
 
-# tdt_block = tdt.read_block(str(block_path), t1=0, t2=1)
-
+# %%
+convert_tdt_to_ant(block_path, output_path=tank_path, start=0, end=-1)
 # %%

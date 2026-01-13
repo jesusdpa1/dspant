@@ -15,6 +15,9 @@ import mp_plotting_utils as mpu
 import numpy as np
 import polars as pl
 import seaborn as sns
+from dspant_emgproc.processors.activity_detection.single_threshold import (
+    create_single_threshold_detector,
+)
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
@@ -31,9 +34,6 @@ from dspant.processors.filters.iir_filters import (
     create_notch_filter,
 )
 from dspant.visualization.general_plots import plot_multi_channel_data
-from dspant_emgproc.processors.activity_detection.single_threshold import (
-    create_single_threshold_detector,
-)
 
 mpu.set_publication_style()
 sns.set_theme(style="darkgrid")
@@ -41,7 +41,7 @@ dotenv.load_dotenv()
 # %%
 BASE_PATH = Path(os.getenv("DATA_DIR"))
 DATA_PATH = BASE_PATH.joinpath(
-    r"E:\jpenalozaa\papers\2025_mp_emg diaphragm acquisition and processing\drv_15-40-17_stim"
+    r"2025_mp_emg diaphragm acquisition and processing/drv_15-40-17_stim"
 )
 #     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
 
@@ -104,7 +104,7 @@ MULTICHANNEL_FIG = plot_multi_channel_data(FILTERED_DATA, fs=FS, time_window=[40
 # %%
 
 TKEO_PROCESSOR = create_tkeo_envelope_rs(method="modified", cutoff_freq=4)
-TKEO_DATA = TKEO_PROCESSOR.process(FILTERED_EMG, fs=FS).persist()
+TKEO_DATA = TKEO_PROCESSOR.process(da.array(np.array(FILTERED_EMG)), fs=FS).persist()
 
 # %%
 TKEO_FIG = plot_multi_channel_data(TKEO_DATA, fs=FS, time_window=[100, 110])
@@ -128,18 +128,31 @@ import numpy as np
 import seaborn as sns
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import ScalarFormatter
+
+
+# Custom formatter class to control decimal places in scientific notation
+class ScalarFormatterClass(ScalarFormatter):
+    def _set_format(self):
+        self.format = "%1.1f"  # 1 decimal place
 
 
 # Function to apply scientific notation to y-axis with larger font size
 def apply_scientific_notation(ax, fontsize=24):
     """Apply scientific notation formatting to the y-axis with custom font size"""
-    formatter = ticker.ScalarFormatter(useMathText=True)
+    # Get the current y-axis limits
+    y_min, y_max = ax.get_ylim()
+    # Create exactly 3 ticks: min, middle, max
+    ticks = [y_min, (y_min + y_max) / 2, y_max]
+    ax.set_yticks(ticks)
+
+    # Create custom formatter with controlled decimal places
+    formatter = ScalarFormatterClass(useMathText=True)
     formatter.set_scientific(True)
-    formatter.set_powerlimits(
-        (-2, 2)
-    )  # Use scientific notation for numbers outside 0.01 to 100
+    formatter.set_powerlimits((-2, 2))
+
+    # Apply the formatter
     ax.yaxis.set_major_formatter(formatter)
-    ax.ticklabel_format(style="scientific", axis="y", scilimits=(-2, 2))
 
     # Set the font size for the tick labels (including scientific notation)
     ax.tick_params(axis="y", labelsize=fontsize)
@@ -153,12 +166,12 @@ sns.set_palette("colorblind")
 PALETTE = sns.color_palette("colorblind")
 
 # Define font sizes with appropriate scaling
-FONT_SIZE = 30
+FONT_SIZE = 14
 TITLE_SIZE = int(FONT_SIZE * 1)
-SUBTITLE_SIZE = int(FONT_SIZE * 0.9)
+SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
 AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
-TICK_SIZE = int(FONT_SIZE * 0.6)
-LEGEND_SIZE = int(FONT_SIZE * 0.6)
+TICK_SIZE = int(FONT_SIZE * 0.7)
+LEGEND_SIZE = int(FONT_SIZE * 0.7)
 
 # Larger font size for scientific notation
 SCIENTIFIC_NOTATION_SIZE = int(FONT_SIZE * 0.5)
@@ -197,8 +210,8 @@ EMG_DATA_ZOOM = FILTERED_EMG[ZOOM_START_SAMPLE:ZOOM_END_SAMPLE, 1]
 
 # Create figure with GridSpec for custom layout
 # 6 rows, 2 columns with equal width
-fig = plt.figure(figsize=(25, 12))
-gs = GridSpec(6, 2, width_ratios=[1, 1])
+fig = plt.figure(figsize=(7, 4))
+gs = GridSpec(6, 2, width_ratios=[0.7, 1.2])
 
 # Dark grey with navy tint for main lines
 DARK_GREY_NAVY = "#2D3142"
@@ -210,11 +223,11 @@ HIGHLIGHT_COLOR = PALETTE[3]  # Using a distinct color from the palette
 
 # Plot 1: Stimulation Data (top)
 ax_stim = fig.add_subplot(gs[0:2, 0])
-ax_stim.plot(TIME_ARRAY, STIM_DATA_FULL, color=DARK_GREY_NAVY, linewidth=2)
+ax_stim.plot(TIME_ARRAY, STIM_DATA_FULL, color=DARK_GREY_NAVY, linewidth=1.2)
 
 mpu.format_axis(
     ax_stim,
-    title="Stimulation Signal",
+    title="Stimulation Pulse",
     xlabel="",
     ylabel="Amplitude",
     xlim=(0, FULL_DURATION),
@@ -222,6 +235,7 @@ mpu.format_axis(
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
 )
+
 apply_scientific_notation(ax_stim, SCIENTIFIC_NOTATION_SIZE)
 
 # Add highlight box for zoomed region - now using correct time positioning
@@ -231,7 +245,7 @@ stim_rect = Rectangle(
     (ZOOM_START_TIME, y_min),
     ZOOM_WIDTH,
     height,
-    linewidth=2,
+    linewidth=1.2,
     edgecolor=HIGHLIGHT_COLOR,
     facecolor=HIGHLIGHT_COLOR,
     alpha=0.2,
@@ -240,14 +254,15 @@ ax_stim.add_patch(stim_rect)
 
 # Plot 2: TKEO Data (middle)
 ax_tkeo = fig.add_subplot(gs[2:4, 0])
-ax_tkeo.plot(TIME_ARRAY, TKEO_DATA_FULL, color=PALETTE[1], linewidth=2)
+ax_tkeo.plot(TIME_ARRAY, TKEO_DATA_FULL, color=PALETTE[1], linewidth=1.2)
 
 mpu.format_axis(
     ax_tkeo,
-    title="TKEO Envelope",
-    xlabel="",
+    title="EMGenv (TKEO)",
+    # xlabel="",
     ylabel="Amplitude",
     xlim=(0, FULL_DURATION),
+    # ylim=(0.0, 7.0),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
@@ -261,7 +276,7 @@ tkeo_rect = Rectangle(
     (ZOOM_START_TIME, y_min),
     ZOOM_WIDTH,
     height,
-    linewidth=2,
+    linewidth=1.2,
     edgecolor=HIGHLIGHT_COLOR,
     facecolor=HIGHLIGHT_COLOR,
     alpha=0.2,
@@ -270,11 +285,11 @@ ax_tkeo.add_patch(tkeo_rect)
 
 # Plot 3: EMG Channel (bottom)
 ax_emg = fig.add_subplot(gs[4:6, 0])
-ax_emg.plot(TIME_ARRAY, EMG_DATA_FULL, color=PALETTE[2], linewidth=2)
+ax_emg.plot(TIME_ARRAY, EMG_DATA_FULL, color=PALETTE[2], linewidth=1.2)
 
 mpu.format_axis(
     ax_emg,
-    title="Filtered EMG Signal",
+    title="EMGdia (Filtered)",
     xlabel="Time [s]",
     ylabel="Amplitude",
     xlim=(0, FULL_DURATION),
@@ -291,7 +306,7 @@ emg_rect = Rectangle(
     (ZOOM_START_TIME, y_min),
     ZOOM_WIDTH,
     height,
-    linewidth=2,
+    linewidth=1.2,
     edgecolor=HIGHLIGHT_COLOR,
     facecolor=HIGHLIGHT_COLOR,
     alpha=0.2,
@@ -302,13 +317,13 @@ ax_emg.add_patch(emg_rect)
 
 # Plot 4: Stimulation Zoomed (top)
 ax_stim_zoom = fig.add_subplot(gs[0:2, 1])
-ax_stim_zoom.plot(ZOOM_TIME_ARRAY, STIM_DATA_ZOOM, color=DARK_GREY_NAVY, linewidth=2)
+ax_stim_zoom.plot(ZOOM_TIME_ARRAY, STIM_DATA_ZOOM, color=DARK_GREY_NAVY, linewidth=1.2)
 
 mpu.format_axis(
     ax_stim_zoom,
-    title="Stimulation Signal (Zoomed)",
-    xlabel="",
-    ylabel="Amplitude",
+    title="Zoomed",
+    # xlabel="",
+    # ylabel="Amplitude",
     xlim=(0, ZOOM_DURATION),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
@@ -318,13 +333,13 @@ apply_scientific_notation(ax_stim_zoom, SCIENTIFIC_NOTATION_SIZE)
 
 # Plot 5: TKEO Zoomed (middle)
 ax_tkeo_zoom = fig.add_subplot(gs[2:4, 1])
-ax_tkeo_zoom.plot(ZOOM_TIME_ARRAY, TKEO_DATA_ZOOM, color=PALETTE[1], linewidth=2)
+ax_tkeo_zoom.plot(ZOOM_TIME_ARRAY, TKEO_DATA_ZOOM, color=PALETTE[1], linewidth=1.2)
 
 mpu.format_axis(
     ax_tkeo_zoom,
-    title="TKEO Envelope (Zoomed)",
-    xlabel="",
-    ylabel="Amplitude",
+    # title="TKEO Envelope (Zoomed)",
+    # xlabel="",
+    # ylabel="Amplitude",
     xlim=(0, ZOOM_DURATION),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
@@ -334,13 +349,13 @@ apply_scientific_notation(ax_tkeo_zoom, SCIENTIFIC_NOTATION_SIZE)
 
 # Plot 6: EMG Zoomed (bottom)
 ax_emg_zoom = fig.add_subplot(gs[4:6, 1])
-ax_emg_zoom.plot(ZOOM_TIME_ARRAY, EMG_DATA_ZOOM, color=PALETTE[2], linewidth=2)
+ax_emg_zoom.plot(ZOOM_TIME_ARRAY, EMG_DATA_ZOOM, color=PALETTE[2], linewidth=1.2)
 
 mpu.format_axis(
     ax_emg_zoom,
-    title="Filtered EMG Signal (Zoomed)",
+    # title="Filtered EMG Signal (Zoomed)",
     xlabel="Time [s]",
-    ylabel="Amplitude",
+    # ylabel="Amplitude",
     xlim=(0, ZOOM_DURATION),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
@@ -348,24 +363,13 @@ mpu.format_axis(
 )
 apply_scientific_notation(ax_emg_zoom, SCIENTIFIC_NOTATION_SIZE)
 
-# Finalize the figure with mpu
-mpu.finalize_figure(
-    fig,
-    # title="EMG Signal Processing with Stimulation",
-    title_y=0.98,
-    title_fontsize=TITLE_SIZE,
-)
-
-# Apply tight layout
-plt.tight_layout(rect=[0, 0, 1, 0.95])
-
 
 # Add panel labels
 mpu.add_panel_label(
     ax_stim,
     "A",
-    x_offset_factor=0.02,
-    y_offset_factor=0.01,
+    x_offset_factor=0.7,
+    y_offset_factor=0.07,
     fontsize=SUBTITLE_SIZE,
 )
 
@@ -373,21 +377,21 @@ mpu.add_panel_label(
 mpu.add_panel_label(
     ax_stim_zoom,
     "B",
-    x_offset_factor=0.05,
-    y_offset_factor=0.01,
+    x_offset_factor=0.2,
+    y_offset_factor=0.05,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax_tkeo,
     "C",
-    x_offset_factor=0.05,
+    x_offset_factor=0.7,
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax_tkeo_zoom,
     "D",
-    x_offset_factor=0.05,
+    x_offset_factor=0.2,
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
@@ -396,18 +400,65 @@ mpu.add_panel_label(
 mpu.add_panel_label(
     ax_emg,
     "E",
-    x_offset_factor=0.05,
-    y_offset_factor=0.01,
+    x_offset_factor=0.7,
+    y_offset_factor=-0.1,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax_emg_zoom,
     "F",
-    x_offset_factor=0.05,
-    y_offset_factor=0.01,
+    x_offset_factor=0.2,
+    y_offset_factor=-0.1,
     fontsize=SUBTITLE_SIZE,
 )
 
+mpu.finalize_figure(
+    fig,
+    # title="FIR vs. IIR Filters: Moving Average vs. Butterworth Comparison",
+    title_y=0.96,
+    left_margin=0.01,
+    hspace=0.8,
+    wspace=0.08,
+    top_margin=0.1,
+    title_fontsize=TITLE_SIZE,
+)
+
+all_axes = [ax_stim, ax_stim_zoom, ax_tkeo, ax_tkeo_zoom, ax_emg, ax_emg_zoom]
+all_axes_pairs = [
+    [ax_stim, ax_stim_zoom],
+    [ax_tkeo, ax_tkeo_zoom],
+    [ax_emg, ax_emg_zoom],
+]
+label_x = -0.15  # Adjust this value to move labels left/right
+for ax in all_axes:
+    ax.yaxis.set_label_coords(label_x, 0.5)
+
+for ax in all_axes[:-2]:
+    ax.set_xticklabels([])
+
+for ax in [ax_emg, ax_emg_zoom]:
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter("%.2f"))
+    ax.tick_params(axis="x", labelrotation=45)
+
+ax_emg.set_xticks(ax_emg.get_xticks() - 10)
+
+
+left_ticks = ax_stim.get_yticks()
+ax_stim_zoom.set_yticks(left_ticks)
+apply_scientific_notation(ax_stim_zoom, SCIENTIFIC_NOTATION_SIZE)
+
+# For TKEO plots
+left_ticks = ax_tkeo.get_yticks()
+ax_tkeo_zoom.set_yticks(left_ticks)
+apply_scientific_notation(ax_tkeo_zoom, SCIENTIFIC_NOTATION_SIZE)
+
+# For EMG plots
+left_ticks = ax_emg.get_yticks()
+ax_emg_zoom.set_yticks(left_ticks)
+apply_scientific_notation(ax_emg_zoom, SCIENTIFIC_NOTATION_SIZE)
+
+for ax in [ax_stim_zoom, ax_tkeo_zoom, ax_emg_zoom]:
+    ax.set_yticklabels([])
 
 # Figure output path
 FIGURE_TITLE = "stim_explained"

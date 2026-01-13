@@ -14,6 +14,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import seaborn as sns
+from dspant_emgproc.processors.activity_detection.double_threshold import (
+    create_double_threshold_detector,
+)
+from dspant_emgproc.processors.activity_detection.single_threshold import (
+    create_single_threshold_detector,
+)
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
@@ -32,12 +38,6 @@ from dspant.processors.filters.iir_filters import (
     create_notch_filter,
 )
 from dspant.visualization.general_plots import plot_multi_channel_data
-from dspant_emgproc.processors.activity_detection.double_threshold import (
-    create_double_threshold_detector,
-)
-from dspant_emgproc.processors.activity_detection.single_threshold import (
-    create_single_threshold_detector,
-)
 
 sns.set_theme(style="darkgrid")
 dotenv.load_dotenv()
@@ -206,7 +206,7 @@ def plot_onset_detection_results(
 # %%
 base_path = Path(os.getenv("DATA_DIR"))
 data_path = base_path.joinpath(
-    r"papers\2025_mp_emg diaphragm acquisition and processing\Sample Ventilator Trace"
+    r"2025_mp_emg diaphragm acquisition and processing/Sample Ventilator Trace"
 )
 #     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
 
@@ -661,7 +661,6 @@ plt.rcParams["font.sans-serif"] = ["Montserrat"]
 sns.set_theme(style="darkgrid")
 
 # Define font sizes with appropriate scaling
-TITLE_SIZE = 18
 SUBTITLE_SIZE = 16
 AXIS_LABEL_SIZE = 14
 TICK_SIZE = 12
@@ -933,6 +932,7 @@ for i in range(len(angles) - 1):
     )
 ax.set_title("Smoothed Breathing Frequency")
 plt.show()
+
 # %%
 
 

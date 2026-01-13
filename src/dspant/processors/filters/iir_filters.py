@@ -34,6 +34,8 @@ except ImportError:
     # Import the Python implementations
     from .butter_filters import parallel_filter_channels
 
+print(f"Debug: _HAS_RUST={_HAS_RUST}")
+
 
 class IIRFilter:
     """
@@ -52,6 +54,7 @@ class IIRFilter:
         rs: float = 40,  # Minimum attenuation in the stop band (dB) for Chebyshev II and elliptic
         rp: float = 1,  # Maximum ripple in the passband (dB) for Chebyshev I and elliptic
         fs: Optional[float] = None,
+        use_rust: bool = True,
     ):
         """
         Initialize an IIR filter.
@@ -512,7 +515,7 @@ class IIRFilterProcessor(BaseProcessor):
         rs: float = 40,
         rp: float = 1,
         filtfilt: bool = True,
-        overlap_scale: float = 3.0,
+        overlap_scale: float = 4.0,
         use_rust: bool = True,
     ):
         """

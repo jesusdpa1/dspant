@@ -21,7 +21,7 @@ load_dotenv()
 # Data loading configuration
 data_dir = Path(os.getenv("DATA_DIR"))
 tdt_block_path = data_dir.joinpath(
-    r"topoMapping/25-03-26_4902-1_testSubject_topoMapping/00_baseline"
+    r"25-02-26_9881-2_testSubject_topoMapping/00_baseline"
 )
 
 # Create output directory
@@ -30,7 +30,7 @@ output_path.mkdir(parents=True, exist_ok=True)
 # %%
 # 1. Load TDT data
 print(f"Loading TDT block from {tdt_block_path}...")
-tdt_block = tdt.read_block(str(tdt_block_path), t1=0, t2=100)
+tdt_block = tdt.read_block(str(tdt_block_path))
 # %%
 # Select a stream to convert
 stream_name = "RawG"
@@ -60,7 +60,8 @@ print(f"Loaded with dask: shape={dask_array.shape}, dtype={dask_array.dtype}")
 print("Successfully saved and loaded TDT data as Zarr.")
 
 # %%
-import matplotlib.pyplot as plt 
-#%%
-plt.plot(dask_array)
+import matplotlib.pyplot as plt
+
+# %%
+plt.plot(dask_array[0:100000, 0].compute())
 # %%

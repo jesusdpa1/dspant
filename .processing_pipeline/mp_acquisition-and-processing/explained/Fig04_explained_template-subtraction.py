@@ -13,7 +13,7 @@ import numpy as np
 from dotenv import load_dotenv
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Rectangle
-from matplotlib.ticker import ScalarFormatter
+from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
 
 from dspant.engine import create_processing_node
 from dspant.nodes import StreamNode
@@ -37,7 +37,7 @@ mpu.set_publication_style()
 load_dotenv()
 
 # Define font sizes with appropriate scaling (consistent with first script)
-FONT_SIZE = 25
+FONT_SIZE = 12
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
 AXIS_LABEL_SIZE = int(FONT_SIZE * 0.6)
@@ -45,7 +45,7 @@ TICK_SIZE = int(FONT_SIZE * 0.5)
 
 # %%
 
-FIGURE_TITLE = "ecg_template_subtraction"
+FIGURE_TITLE = "fig04_ecg_template_subtraction"
 FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
 FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 
@@ -53,7 +53,7 @@ FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 # Define paths
 DATA_DIR = Path(os.getenv("DATA_DIR"))
 BASE_PATH = DATA_DIR.joinpath(
-    r"topoMapping/25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
+    r"25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
 )
 EMG_STREAM_PATH = BASE_PATH.joinpath("RawG.ant")
 
@@ -152,7 +152,7 @@ ecg_template = extract_template(ecg_waveforms[0], axis=0)
 template = ecg_template[:, 0]  # Use first channel
 
 # Plot the extracted template
-plt.figure(figsize=(12, 4))
+plt.figure(figsize=(7, 4))
 plt.plot(template)
 plt.title("ECG Template (Using Extractors)")
 plt.xlabel("Samples")
@@ -184,13 +184,20 @@ cleaned_emg_alt = subtractor.process(
 Enhanced Visualization for ECG removal using template subtraction
 Using a 2x5 grid layout with highlight boxes and improved organization
 """
+# Define font sizes with appropriate scaling (FROM IIR VS FIR PLOT)
+FONT_SIZE = 14
+TITLE_SIZE = int(FONT_SIZE * 1)
+SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 0.8)
+TICK_SIZE = int(FONT_SIZE * 0.7)
 
 # Define constants
 HIGHLIGHT_COLOR = "#FFCC00"  # Bright yellow for highlight box
 
 # Time ranges
 FULL_START = 0
-FULL_END = int(FS * 10)  # Show 10 seconds of data
+END = 7
+FULL_END = int(FS * END)  # Show 10 seconds of data
 ZOOM_START = int(FS * 2)  # Start zooming at 2 seconds
 ZOOM_END = int(FS * 3)  # End zooming at 3 seconds
 
@@ -206,20 +213,23 @@ ZOOM_WIDTH = ZOOM_END_TIME - ZOOM_START_TIME
 
 # Create the figure with a custom grid layout
 # 2 rows, 5 columns layout
-FIG = plt.figure(figsize=(15, 8))
-GS = GridSpec(2, 5, width_ratios=[1.1, 1.1, 1.1, 1.1, 1.1])
+FIG = plt.figure(figsize=(7, 4))
+GS = GridSpec(2, 5, width_ratios=[1.1, 1.1, 0.5, 1.1, 1.1])
 
 # Row 1: Unfiltered signal with ECG (spans columns 0-2, 3 columns total)
 AX1 = FIG.add_subplot(GS[0, 0:3])
 AX1.plot(
-    full_time, filter_emg[FULL_START:FULL_END, 0], color=mpu.PRIMARY_COLOR, linewidth=2
+    full_time,
+    filter_emg[FULL_START:FULL_END, 0],
+    color=mpu.PRIMARY_COLOR,
+    linewidth=1.2,
 )
 mpu.format_axis(
     AX1,
-    title="EMG Signal with ECG Artifacts",
+    title="EMGdia with ECG Artifacts",
     xlabel=None,  # No xlabel for the top plot
-    ylabel="Amplitude",
-    xlim=(0, 10),
+    # ylabel="Amplitude",
+    xlim=(0, END),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
@@ -232,7 +242,7 @@ rect1 = Rectangle(
     (ZOOM_START_TIME, y_min),
     ZOOM_WIDTH,
     height,
-    linewidth=2,
+    linewidth=1.2,
     edgecolor=HIGHLIGHT_COLOR,
     facecolor=HIGHLIGHT_COLOR,
     alpha=0.3,
@@ -252,14 +262,14 @@ AX2.plot(
     full_time,
     cleaned_emg_alt[FULL_START:FULL_END, 0],
     color=mpu.COLORS["blue"],
-    linewidth=2,
+    linewidth=1.2,
 )
 mpu.format_axis(
     AX2,
-    title="EMG Signal with ECG Artifacts Removed",
+    title="EMGdia with ECG Artifacts Removed",
     xlabel="Time (s)",
-    ylabel="Amplitude",
-    xlim=(0, 10),
+    # ylabel="Amplitude",
+    xlim=(0, END),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
@@ -272,7 +282,7 @@ rect2 = Rectangle(
     (ZOOM_START_TIME, y_min),
     ZOOM_WIDTH,
     height,
-    linewidth=2,
+    linewidth=1.2,
     edgecolor=HIGHLIGHT_COLOR,
     facecolor=HIGHLIGHT_COLOR,
     alpha=0.3,
@@ -282,14 +292,17 @@ AX2.add_patch(rect2)
 # Row 1, Column 3: Zoomed ECG signal (1 column)
 AX_ZOOM_ECG = FIG.add_subplot(GS[0, 3])
 AX_ZOOM_ECG.plot(
-    zoom_time, filter_emg[ZOOM_START:ZOOM_END, 0], color=mpu.PRIMARY_COLOR, linewidth=2
+    zoom_time,
+    filter_emg[ZOOM_START:ZOOM_END, 0],
+    color=mpu.PRIMARY_COLOR,
+    linewidth=1.2,
 )
 mpu.format_axis(
     AX_ZOOM_ECG,
     title="Zoomed Signal",
     xlabel=None,
-    ylabel="Amplitude",
-    xlim=(0, zoom_duration),
+    # ylabel="Amplitude",
+    xlim=(0, zoom_duration + 0.01),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
@@ -310,18 +323,17 @@ zoom_ylim = AX_ZOOM_ECG.get_ylim()
 # Row 1, Column 4: ECG Template (1 column)
 AX_TEMPLATE = FIG.add_subplot(GS[0, 4])
 template_time = np.arange(len(template)) / FS
-AX_TEMPLATE.plot(template_time, template, color=mpu.COLORS["orange"], linewidth=2)
+AX_TEMPLATE.plot(template_time, template, color=mpu.COLORS["orange"], linewidth=1.2)
 mpu.format_axis(
     AX_TEMPLATE,
     title="ECG Template",
     xlabel=None,
-    ylabel="Amplitude",
-    xlim=(0, len(template) / FS),
+    # ylabel="Amplitude",
+    xlim=(0, 0.03),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
 )
-
 
 # Row 2, Columns 3-4: Zoomed Cleaned signal (spans 2 columns)
 AX_ZOOM_CLEAN = FIG.add_subplot(GS[1, 3:5])
@@ -329,14 +341,14 @@ AX_ZOOM_CLEAN.plot(
     zoom_time,
     cleaned_emg_alt[ZOOM_START:ZOOM_END, 0],
     color=mpu.COLORS["blue"],
-    linewidth=2,
+    linewidth=1.2,
 )
 mpu.format_axis(
     AX_ZOOM_CLEAN,
-    title="Zoomed Cleaned Signal",
+    title="Zoomed and Filtered Signal",
     xlabel="Time (s)",
-    ylabel="Amplitude",
-    xlim=(0, zoom_duration),
+    # ylabel="Amplitude",
+    xlim=(0, zoom_duration + 0.01),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
@@ -350,47 +362,65 @@ formatter = ScalarFormatter(useMathText=True)
 formatter.set_scientific(True)
 formatter.set_powerlimits((-2, 2))  # Forces scientific notation
 
-for ax in [AX1, AX2, AX_ZOOM_ECG, AX_ZOOM_CLEAN, AX_TEMPLATE]:
+all_axes = [AX1, AX2, AX_ZOOM_ECG, AX_ZOOM_CLEAN, AX_TEMPLATE]
+
+for ax in all_axes:
     ax.yaxis.set_major_formatter(formatter)
     ax.ticklabel_format(
         style="scientific", axis="y", scilimits=(0, 0), useMathText=True
     )
     ax.yaxis.get_offset_text().set_fontsize(TICK_SIZE)
 
+# Format all axes to show 2 decimal places (FROM IIR VS FIR PLOT)
+for ax in all_axes[2:]:
+    ax.xaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+
+    # Note: y-axis already formatted with scientific notation above
+
+for ax in all_axes[:2]:
+    ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+
+# Align all y-axis labels (FROM IIR VS FIR PLOT)
+label_x = -0.22
+for ax in all_axes:
+    ax.yaxis.set_label_coords(label_x, 0.5)
+    ax.yaxis.set_visible(False)
+    ax.tick_params(axis="x", rotation=45, pad=0.01)
+
 # Add panel labels with the specified formatting
 mpu.add_panel_label(
     AX1,
     "A",
-    x_offset_factor=0.2,
-    y_offset_factor=0.04,
+    x_offset_factor=0.3,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX_ZOOM_ECG,
     "B",
-    x_offset_factor=-0.1,
-    y_offset_factor=0.04,
+    x_offset_factor=0.15,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX_TEMPLATE,
     "C",
-    x_offset_factor=-0.4,
-    y_offset_factor=0.04,
+    x_offset_factor=-0.1,
+    y_offset_factor=0.03,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX2,
     "D",
-    x_offset_factor=0.2,
-    y_offset_factor=-0.01,
+    x_offset_factor=0.3,
+    y_offset_factor=0.005,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX_ZOOM_CLEAN,
     "E",
-    x_offset_factor=-0.03,
-    y_offset_factor=-0.01,
+    x_offset_factor=0.07,
+    y_offset_factor=0.005,
     fontsize=SUBTITLE_SIZE,
 )
 
@@ -403,10 +433,27 @@ mpu.finalize_figure(
 )
 
 # Apply tight layout before saving
-plt.tight_layout(rect=[0, 0, 1, 0.96])
+# plt.tight_layout(rect=[0, 0, 1, 0.96])
+mpu.finalize_figure(
+    FIG,
+    # title="FIR vs. IIR Filters: Moving Average vs. Butterworth Comparison",
+    title_y=0.96,
+    left_margin=0.01,
+    hspace=0.7,
+    wspace=0.2,
+    top_margin=0.1,
+    title_fontsize=TITLE_SIZE,
+)
 
+for ax in all_axes:
+    # ax.yaxis.set_label_coords(label_x, 0.5)
+    ax.tick_params(axis="both", pad=-3)
+
+AX_ZOOM_CLEAN.set_xticklabels(np.linspace(2, 3, 6))
+AX_ZOOM_ECG.set_xticklabels(np.linspace(2, 3, 3))
 # Save the figure
 mpu.save_figure(FIG, FIGURE_PATH, dpi=600)
+
 
 plt.show()
 

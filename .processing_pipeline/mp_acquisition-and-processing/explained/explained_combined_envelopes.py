@@ -38,22 +38,10 @@ mpu.set_publication_style()
 # %%
 # Define font sizes with appropriate scaling - increased for better visibility
 
-# Define custom color scheme
-NAVY_BLUE = "#2D3142"
-ABS = "#DE8F05"
-ABS_ENV = "#DE8F05"
-ABS_ENV_FILL = "#FFC800"
-SQUARE = "#00A410"
-SQUARE_ENV = "#00A410"
-SQUARE_ENV_FILL = "#90FF4B"
-TKEO = "#1066DE"
-TKEO_ENV = "#1066DE"
-TKEO_ENV_FILL = "#31B7FA"
-
 # Define paths using environment variables
 DATA_DIR = Path(os.getenv("DATA_DIR"))
 BASE_PATH = DATA_DIR.joinpath(
-    r"topoMapping\25-02-26_9881-2_testSubject_topoMapping\drv\drv_00_baseline"
+    r"25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
 )
 EMG_STREAM_PATH = BASE_PATH.joinpath("RawG.ant")
 
@@ -142,19 +130,32 @@ def apply_scientific_notation(ax, fontsize=24):
     ax.yaxis.offsetText.set_fontsize(fontsize)
 
 
-FONT_SIZE = 35
+# %%
+
+# Define custom color scheme
+NAVY_BLUE = "#2D3142"
+ABS = "#DE8F05"
+ABS_ENV = "#DE8F05"
+ABS_ENV_FILL = "#FFC800"
+SQUARE = "#00A410"
+SQUARE_ENV = "#00A410"
+SQUARE_ENV_FILL = "#90FF4B"
+TKEO = "#1066DE"
+TKEO_ENV = "#1066DE"
+TKEO_ENV_FILL = "#31B7FA"
+
+FONT_SIZE = 14
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
-AXIS_LABEL_SIZE = int(FONT_SIZE * 0.6)
-TICK_SIZE = int(FONT_SIZE * 0.5)
-LEGEND_SIZE = int(FONT_SIZE * 0.5)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
+TICK_SIZE = int(FONT_SIZE * 0.7)
 
 # Larger font size for scientific notation
 SCIENTIFIC_NOTATION_SIZE = int(FONT_SIZE * 0.5)
 
 # Create figure with 3-row grid: top row spanning all columns, middle and bottom rows with 3 columns each
-fig = plt.figure(figsize=(24, 18))
-gs = GridSpec(3, 3, height_ratios=[1, 1.2, 1.2])
+fig = plt.figure(figsize=(7, 9))
+gs = GridSpec(3, 3, height_ratios=[1, 1, 1])
 
 # ===== Row 1: Filtered Signal (spanning all columns) =====
 ax_filtered = fig.add_subplot(gs[0, :])
@@ -162,7 +163,7 @@ ax_filtered.plot(
     time_array,
     base_data[:len_to_plot, CHANNEL_TO_PLOT],
     color=NAVY_BLUE,
-    linewidth=2,
+    linewidth=1.2,
 )
 
 mpu.format_axis(
@@ -186,7 +187,7 @@ ax_abs.plot(
     time_array,
     abs_data[:len_to_plot, CHANNEL_TO_PLOT],
     color=ABS,
-    linewidth=2,
+    linewidth=1.2,
 )
 ax_abs.fill_between(
     time_array,
@@ -199,7 +200,7 @@ ax_abs.fill_between(
 mpu.format_axis(
     ax_abs,
     title="Abs",
-    xlabel="Time [s]",
+    # xlabel="Time [s]",
     ylabel="Amplitude",
     xlim=(0, max_time),
     ylim=(0, None),  # Auto-scale for this plot
@@ -215,7 +216,7 @@ ax_square.plot(
     time_array,
     square_data[:len_to_plot, CHANNEL_TO_PLOT],
     color=SQUARE,
-    linewidth=2,
+    linewidth=1.2,
 )
 ax_square.fill_between(
     time_array,
@@ -228,8 +229,8 @@ ax_square.fill_between(
 mpu.format_axis(
     ax_square,
     title="Square",
-    xlabel="Time [s]",
-    ylabel="Amplitude",
+    # xlabel="Time [s]",
+    # ylabel="Amplitude",
     xlim=(0, max_time),
     ylim=(0, None),  # Auto-scale for this plot
     title_fontsize=SUBTITLE_SIZE,
@@ -244,7 +245,7 @@ ax_square_tkeo.plot(
     time_array,
     tkeo_data[:len_to_plot, CHANNEL_TO_PLOT],
     color=TKEO,
-    linewidth=2,
+    linewidth=1.2,
 )
 ax_square_tkeo.fill_between(
     time_array,
@@ -257,8 +258,8 @@ ax_square_tkeo.fill_between(
 mpu.format_axis(
     ax_square_tkeo,
     title="TKEO",
-    xlabel="Time [s]",
-    ylabel="Amplitude",
+    # xlabel="Time [s]",
+    # ylabel="Amplitude",
     xlim=(0, max_time),
     ylim=(0, None),  # Auto-scale for this plot
     title_fontsize=SUBTITLE_SIZE,
@@ -282,7 +283,7 @@ ax_abs_ma.plot(
     time_array,
     abs_moving_avg[:len_to_plot, CHANNEL_TO_PLOT],
     color=ABS_ENV,
-    linewidth=2,
+    linewidth=1.2,
 )
 ax_abs_ma.fill_between(
     time_array,
@@ -294,7 +295,7 @@ ax_abs_ma.fill_between(
 
 mpu.format_axis(
     ax_abs_ma,
-    title="Abs + Moving Average",
+    title="Moving Average",
     xlabel="Time [s]",
     ylabel="Amplitude",
     xlim=(0, max_time),
@@ -311,7 +312,7 @@ ax_rms.plot(
     time_array,
     moving_rms_envelope[:len_to_plot, CHANNEL_TO_PLOT],
     color=SQUARE_ENV,
-    linewidth=2,
+    linewidth=1.2,
 )
 ax_rms.fill_between(
     time_array,
@@ -325,7 +326,7 @@ mpu.format_axis(
     ax_rms,
     title="Moving RMS",
     xlabel="Time [s]",
-    ylabel="Amplitude",
+    # ylabel="Amplitude",
     xlim=(0, max_time),
     ylim=abs_rms_ylim,  # Shared scaling with Abs
     title_fontsize=SUBTITLE_SIZE,
@@ -340,7 +341,7 @@ ax_square_tkeo_lp.plot(
     time_array,
     tkeo_lowpass[:len_to_plot, CHANNEL_TO_PLOT],
     color=TKEO_ENV,
-    linewidth=2,
+    linewidth=1.2,
 )
 ax_square_tkeo_lp.fill_between(
     time_array,
@@ -352,9 +353,9 @@ ax_square_tkeo_lp.fill_between(
 
 mpu.format_axis(
     ax_square_tkeo_lp,
-    title="TKEO + Lowpass",
+    title="Lowpass",
     xlabel="Time [s]",
-    ylabel="Amplitude",
+    # ylabel="Amplitude",
     xlim=(0, max_time),
     ylim=(0, None),  # Auto-scale for this plot
     title_fontsize=SUBTITLE_SIZE,
@@ -366,13 +367,14 @@ apply_scientific_notation(ax_square_tkeo_lp, SCIENTIFIC_NOTATION_SIZE)
 # Finalize the figure with mpu
 mpu.finalize_figure(
     fig,
-    # title="EMG Signal Processing: Rectification and Envelope Methods",
-    title_y=0.98,
+    # title="FIR vs. IIR Filters: Moving Average vs. Butterworth Comparison",
+    title_y=0.96,
+    left_margin=0.01,
+    hspace=0.35,
+    wspace=0.15,
+    top_margin=0.1,
     title_fontsize=TITLE_SIZE,
 )
-
-# Apply tight layout before adding panel labels
-plt.tight_layout(rect=[0, 0, 1, 0.95])
 
 # Add panel labels
 mpu.add_panel_label(
