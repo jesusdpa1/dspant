@@ -194,7 +194,7 @@ OFFSET_COLOR = "purple"  # Original color for offset line
 AUC_COLOR = ORANGE_ENVELOPE  # Color for AUC area
 
 # Font sizes - increased for better visibility
-FONT_SIZE = 14
+FONT_SIZE = 16
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
 AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
@@ -287,7 +287,7 @@ ax1.add_patch(highlight2)
 # Format axis using mpu with larger font sizes
 mpu.format_axis(
     ax1,
-    title="EMG Signal with TKEO Envelope",
+    title="EMGdia with TKEO Envelope",
     xlabel="Time [s]",
     # ylabel="Signals",
     title_fontsize=SUBTITLE_SIZE,
@@ -338,7 +338,7 @@ ax2.fill_between(
 # Format axis using mpu with larger font sizes
 mpu.format_axis(
     ax2,
-    title="EMG Contractile Metrics",
+    title="EMGdia Contractile Metrics",
     # xlabel="Time [s]",
     # ylabel="Signals",
     title_fontsize=SUBTITLE_SIZE,
@@ -378,7 +378,7 @@ ax3.axvline(x=peak_time, color=PEAK_COLOR, linestyle="--", linewidth=3, label="P
 # Format axis using mpu with larger font sizes
 mpu.format_axis(
     ax3,
-    title="EMG Amplitude Metrics (AUC)",
+    title="EMGdia AUC and Peak Amplitude",
     # xlabel="Time [s]",
     # ylabel="Signals",
     title_fontsize=SUBTITLE_SIZE,
@@ -415,7 +415,7 @@ ti_block = patches.Rectangle(
     ax4.get_ylim()[1] - ax4.get_ylim()[0],
     color=TI_COLOR,
     alpha=0.5,
-    label="Ti",
+    label="TI",
 )
 ax4.add_patch(ti_block)
 
@@ -428,7 +428,7 @@ te_block = patches.Rectangle(
     ax4.get_ylim()[1] - ax4.get_ylim()[0],
     color=TE0_COLOR,
     alpha=0.5,
-    label="Te1",
+    label="TE1",
 )
 ax4.add_patch(te_block)
 
@@ -441,14 +441,14 @@ te1_block = patches.Rectangle(
     ax4.get_ylim()[1] - ax4.get_ylim()[0],
     color=TE1_COLOR,
     alpha=0.5,
-    label="Te2",
+    label="TE2",
 )
 ax4.add_patch(te1_block)
 
 # Format axis using mpu with larger font sizes
 mpu.format_axis(
     ax4,
-    title="Single Breath: Ti and Putative Te",
+    title="TI and Putative TE",
     xlabel="Time [s]",
     # ylabel="Signals",
     title_fontsize=SUBTITLE_SIZE,
@@ -490,7 +490,7 @@ ax5.add_patch(ttot_block)
 # Format axis using mpu with larger font sizes
 mpu.format_axis(
     ax5,
-    title="Two Breaths: Total Cycle Time (Ttot)",
+    title="Total Cycle Time (Ttot)",
     xlabel="Time [s]",
     # ylabel="Signals",
     title_fontsize=SUBTITLE_SIZE,
@@ -563,10 +563,12 @@ mpu.add_panel_label(
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
+for ax in all_axes:
+    ax.tick_params(axis="both", pad=-3, labelsize=TICK_SIZE)
 
 # Save figure if needed
 # mpu.save_figure(fig, "emg_contractile_breathing_metrics.png", dpi=600)
-FIGURE_TITLE = "emg_metrics-breathing"
+FIGURE_TITLE = "fig08_emg_metrics-breathing"
 FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
 FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 mpu.save_figure(fig, FIGURE_PATH, dpi=600)

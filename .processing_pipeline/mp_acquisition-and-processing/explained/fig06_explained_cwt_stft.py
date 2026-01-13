@@ -133,7 +133,7 @@ CWT_MAX = np.percentile(np.abs(CWT_CHANNEL_LONG_FILTERED), 99)
 
 # %%
 # Define font sizes with appropriate scaling (FROM IIR VS FIR PLOT)
-FONT_SIZE = 14
+FONT_SIZE = 16
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
 AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
@@ -148,7 +148,7 @@ AX_RAW = FIG.add_subplot(GS[0, 0])
 AX_RAW.plot(TIME_LONG, X_LONG, color=SIGNAL_COLOR, linewidth=1.2)
 mpu.format_axis(
     AX_RAW,
-    title="Filtered Signal",
+    title="Filtered EMGdia Signal",
     xlabel=None,
     ylabel="Amplitude",
     xlim=(0, 5),
@@ -179,7 +179,7 @@ STFT_MESH = AX_STFT.pcolormesh(
 )
 mpu.format_axis(
     AX_STFT,
-    title="STFT Scalogram",
+    title="Short-Time Fourier Transform (STFT) Scalogram",
     xlabel=None,
     ylabel="Frequency (Hz)",
     xlim=(0, 5),
@@ -226,7 +226,7 @@ CWT_MESH = AX_CWT.pcolormesh(
 )
 mpu.format_axis(
     AX_CWT,
-    title="CWT Scalogram",
+    title="Continuous Wavelet Transform (CWT) Scalogram",
     xlabel="Time (s)",
     ylabel="Frequency (Hz)",
     xlim=(0, 5),
@@ -306,8 +306,13 @@ mpu.finalize_figure(
     title_fontsize=TITLE_SIZE,
 )
 
+
+for ax in all_axes:
+    ax.tick_params(axis="both", pad=-3, labelsize=TICK_SIZE)
+
+# %%
 # Figure output path
-FIGURE_TITLE = "time_frequency_analysis_comparison"
+FIGURE_TITLE = "fig06_time_frequency_analysis_comparison"
 FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
 FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 

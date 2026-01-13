@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import matplotlib.ticker as ticker
 import mp_plotting_utils as mpu
 import numpy as np
@@ -113,21 +114,31 @@ max_time = len_to_plot / FS
 
 
 # Function to apply scientific notation to y-axis with larger font size
-def apply_scientific_notation(ax, fontsize=24):
-    """Apply scientific notation formatting to the y-axis with custom font size"""
-    formatter = ticker.ScalarFormatter(useMathText=True)
-    formatter.set_scientific(True)
-    formatter.set_powerlimits(
-        (-2, 2)
-    )  # Use scientific notation for numbers outside 0.01 to 100
-    ax.yaxis.set_major_formatter(formatter)
-    ax.ticklabel_format(style="scientific", axis="y", scilimits=(-2, 2))
+from matplotlib import ticker
 
-    # Set the font size for the tick labels (including scientific notation)
+
+def apply_scientific_notation(ax, fontsize=24):
+    """Apply scientific notation formatting with forced 1-decimal precision."""
+
+    # 1. Create a custom subclass of ScalarFormatter to force the decimal
+    class ForceDecimalScalarFormatter(ticker.ScalarFormatter):
+        def _set_format(self):
+            # This is the internal method that determines label strings
+            # %1.1f forces exactly one decimal place
+            self.format = "%1.1f"
+
+    # 2. Use our new custom formatter
+    formatter = ForceDecimalScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-2, 2))
+
+    ax.yaxis.set_major_formatter(formatter)
+
+    # 3. Set the font size for the tick labels
     ax.tick_params(axis="y", labelsize=fontsize)
 
-    # Also set the offset text (the exponent part) font size
-    ax.yaxis.offsetText.set_fontsize(fontsize)
+    # 4. Set the offset text (the 10^n part) font size
+    ax.yaxis.get_offset_text().set_fontsize(fontsize)
 
 
 # %%
@@ -144,14 +155,14 @@ TKEO = "#1066DE"
 TKEO_ENV = "#1066DE"
 TKEO_ENV_FILL = "#31B7FA"
 
-FONT_SIZE = 14
+FONT_SIZE = 16
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
 AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
 TICK_SIZE = int(FONT_SIZE * 0.7)
 
 # Larger font size for scientific notation
-SCIENTIFIC_NOTATION_SIZE = int(FONT_SIZE * 0.5)
+SCIENTIFIC_NOTATION_SIZE = int(FONT_SIZE * 0.7)
 
 # Create figure with 3-row grid: top row spanning all columns, middle and bottom rows with 3 columns each
 fig = plt.figure(figsize=(7, 9))
@@ -168,7 +179,7 @@ ax_filtered.plot(
 
 mpu.format_axis(
     ax_filtered,
-    title="Filtered Signal",
+    title="Filtered EMGdia Signal",
     xlabel="Time [s]",
     ylabel="Amplitude",
     xlim=(0, max_time),
@@ -199,7 +210,7 @@ ax_abs.fill_between(
 
 mpu.format_axis(
     ax_abs,
-    title="Abs",
+    title="Absolute (Abs)",
     # xlabel="Time [s]",
     ylabel="Amplitude",
     xlim=(0, max_time),
@@ -295,7 +306,7 @@ ax_abs_ma.fill_between(
 
 mpu.format_axis(
     ax_abs_ma,
-    title="Moving Average",
+    title="Absolute + Moving Average",
     xlabel="Time [s]",
     ylabel="Amplitude",
     xlim=(0, max_time),
@@ -353,7 +364,7 @@ ax_square_tkeo_lp.fill_between(
 
 mpu.format_axis(
     ax_square_tkeo_lp,
-    title="Lowpass",
+    title="TKEO + Lowpass",
     xlabel="Time [s]",
     # ylabel="Amplitude",
     xlim=(0, max_time),
@@ -430,9 +441,27 @@ mpu.add_panel_label(
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
+
+all_axes = [
+    ax_filtered,
+    ax_abs,
+    ax_square,
+    ax_square_tkeo,
+    ax_abs_ma,
+    ax_rms,
+    ax_square_tkeo_lp,
+]
+
+
+for ax in all_axes:
+    ax.tick_params(axis="both", pad=-3, labelsize=TICK_SIZE)
+    ax.yaxis.set_label_coords(-0.2, 0.5)
+ax_filtered.yaxis.set_label_coords(-0.06, 0.5)
+ax_abs.set_title("Absolute (Abs)", fontsize=SUBTITLE_SIZE, x=0.6)
+
 # %%
 # Figure output path
-FIGURE_TITLE = "merged_emg_rectification_envelope_analysis"
+FIGURE_TITLE = "fig07_merged_emg_rectification_envelope_analysis"
 FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
 FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 # Save the figure

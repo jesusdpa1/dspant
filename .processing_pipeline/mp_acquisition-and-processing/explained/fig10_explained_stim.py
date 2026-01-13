@@ -169,12 +169,12 @@ PALETTE = sns.color_palette("colorblind")
 FONT_SIZE = 14
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
-AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
+AXIS_LABEL_SIZE = int(FONT_SIZE * 0.8)
 TICK_SIZE = int(FONT_SIZE * 0.7)
 LEGEND_SIZE = int(FONT_SIZE * 0.7)
 
 # Larger font size for scientific notation
-SCIENTIFIC_NOTATION_SIZE = int(FONT_SIZE * 0.5)
+SCIENTIFIC_NOTATION_SIZE = int(FONT_SIZE * 0.7)
 
 # Assuming we have these variables from the original code:
 # STREAM_STIM.data, TKEO_DATA, FILTERED_EMG, FS
@@ -227,7 +227,7 @@ ax_stim.plot(TIME_ARRAY, STIM_DATA_FULL, color=DARK_GREY_NAVY, linewidth=1.2)
 
 mpu.format_axis(
     ax_stim,
-    title="Stimulation Pulse",
+    title="Stimulation Pulses",
     xlabel="",
     ylabel="Amplitude",
     xlim=(0, FULL_DURATION),
@@ -258,7 +258,7 @@ ax_tkeo.plot(TIME_ARRAY, TKEO_DATA_FULL, color=PALETTE[1], linewidth=1.2)
 
 mpu.format_axis(
     ax_tkeo,
-    title="EMGenv (TKEO)",
+    title="EMGdia Env (TKEO)",
     # xlabel="",
     ylabel="Amplitude",
     xlim=(0, FULL_DURATION),
@@ -440,7 +440,7 @@ for ax in [ax_emg, ax_emg_zoom]:
     ax.xaxis.set_major_formatter(ticker.FormatStrFormatter("%.2f"))
     ax.tick_params(axis="x", labelrotation=45)
 
-ax_emg.set_xticks(ax_emg.get_xticks() - 10)
+# ax_emg.set_xticks(ax_emg.get_xticks() - 10)
 
 
 left_ticks = ax_stim.get_yticks()
@@ -460,8 +460,16 @@ apply_scientific_notation(ax_emg_zoom, SCIENTIFIC_NOTATION_SIZE)
 for ax in [ax_stim_zoom, ax_tkeo_zoom, ax_emg_zoom]:
     ax.set_yticklabels([])
 
+for ax in [ax_stim, ax_tkeo, ax_emg]:
+    ax.set_title(ax.get_title(), x=0.62)
+
+for ax in all_axes:
+    ax.tick_params(axis="both", pad=-3, labelsize=TICK_SIZE)
+
+ax_emg_zoom.set_xticklabels(np.linspace(25, 55, 7))
+# ax_emg.set_xticks(ax_emg.get_xticks() + 10)
 # Figure output path
-FIGURE_TITLE = "stim_explained"
+FIGURE_TITLE = "fig10_stim_explained"
 FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
 FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 # Save the figure

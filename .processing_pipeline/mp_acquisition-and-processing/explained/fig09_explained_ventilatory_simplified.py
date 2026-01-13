@@ -442,30 +442,6 @@ class ScalarFormatterClass(ScalarFormatter):
         self.format = "%1.1f"  # 1 decimal place
 
 
-# Function to apply scientific notation to y-axis with larger font size
-def apply_scientific_notation(ax, fontsize=24):
-    """Apply scientific notation formatting to the y-axis with custom font size"""
-    # Get the current y-axis limits
-    y_min, y_max = ax.get_ylim()
-    # Create exactly 3 ticks: min, middle, max
-    ticks = [y_min, (y_min + y_max) / 2, y_max]
-    ax.set_yticks(ticks)
-
-    # Create custom formatter with controlled decimal places
-    formatter = ScalarFormatterClass(useMathText=True)
-    formatter.set_scientific(True)
-    formatter.set_powerlimits((-2, 2))
-
-    # Apply the formatter
-    ax.yaxis.set_major_formatter(formatter)
-
-    # Set the font size for the tick labels (including scientific notation)
-    ax.tick_params(axis="y", labelsize=fontsize)
-
-    # Also set the offset text (the exponent part) font size
-    ax.yaxis.offsetText.set_fontsize(fontsize)
-
-
 # Min-max normalize signals for better visualization
 def min_max_normalize(signal):
     min_val = np.min(signal)
@@ -739,13 +715,14 @@ mpu.format_axis(
     ax_emg_off,
     xlabel="",
     ylabel="Amplitude",
+    ylim=(-0.30, 0.30),
     xlim=(0, OFF_END - OFF_START),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
 )
 
-apply_scientific_notation(ax_emg_off, SCIENTIFIC_NOTATION_SIZE)
+# apply_scientific_notation(ax_emg_off, SCIENTIFIC_NOTATION_SIZE)
 
 y_min, y_max = ax_emg_off.get_ylim()
 rect_off_emg = Rectangle(
@@ -769,15 +746,14 @@ mpu.format_axis(
     ax_emg_off_zoom,
     xlabel="",
     ylabel="",
+    ylim=(-0.30, 0.30),
     xlim=(0, ZOOM_DURATION),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
 )
 
-left_ticks = ax_emg_off.get_yticks()
-ax_emg_off_zoom.set_yticks(left_ticks)
-apply_scientific_notation(ax_emg_off_zoom, SCIENTIFIC_NOTATION_SIZE)
+# apply_scientific_notation(ax_emg_off_zoom, SCIENTIFIC_NOTATION_SIZE)
 
 # Add entrained highlight box on EMG zoom
 y_min_zoom, y_max_zoom = ax_emg_off_zoom.get_ylim()
@@ -887,13 +863,14 @@ mpu.format_axis(
     ax_emg_on,
     xlabel="Time [s]",
     ylabel="Amplitude",
+    ylim=(-0.30, 0.30),
     xlim=(0, ON_END - ON_START),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
 )
 
-apply_scientific_notation(ax_emg_on, SCIENTIFIC_NOTATION_SIZE)
+# apply_scientific_notation(ax_emg_on, SCIENTIFIC_NOTATION_SIZE)
 
 y_min, y_max = ax_emg_on.get_ylim()
 rect_on_emg = Rectangle(
@@ -915,15 +892,14 @@ mpu.format_axis(
     ax_emg_on_zoom,
     xlabel="Time [s]",
     ylabel="",
+    ylim=(-0.30, 0.30),
     xlim=(0, ZOOM_DURATION),
     title_fontsize=SUBTITLE_SIZE,
     label_fontsize=AXIS_LABEL_SIZE,
     tick_fontsize=TICK_SIZE,
 )
 
-left_ticks = ax_emg_on.get_yticks()
-ax_emg_on_zoom.set_yticks(left_ticks)
-apply_scientific_notation(ax_emg_on_zoom, SCIENTIFIC_NOTATION_SIZE)
+# apply_scientific_notation(ax_emg_on_zoom, SCIENTIFIC_NOTATION_SIZE)
 
 # Hide tick labels
 all_axes = [
@@ -961,7 +937,7 @@ for ax in all_axes:
 legend_elements = [
     Line2D([0], [0], color=INSP_COLOR, lw=2, label="Insp Pressure"),
     Line2D([0], [0], color=TKEO_COLOR, lw=2, label="EMGenv"),
-    Line2D([0], [0], color=EMG_COLOR, lw=2, label="EMG"),
+    Line2D([0], [0], color=EMG_COLOR, lw=2, label="EMGdia"),
 ]
 
 fig.legend(
@@ -1014,8 +990,23 @@ mpu.finalize_figure(
     top_margin=0.10,
     title_fontsize=TITLE_SIZE,
 )
+
+
+for ax in all_axes:
+    ax.tick_params(axis="both", pad=-3, labelsize=TICK_SIZE)
+
+ax_overlay_off.set_yticks([0, 0.5, 1.0])
+ax_overlay_off_zoom.set_yticks([0, 0.5, 1.0])
+ax_emg_off.set_yticks([-0.20, 0.0, 0.20])
+ax_emg_off_zoom.set_yticks([-0.20, 0.0, 0.20])
+ax_emg_on.set_yticks([-0.20, 0.0, 0.20])
+ax_emg_on_zoom.set_yticks([-0.20, 0.0, 0.20])
+
+ax_emg_on_zoom.set_xticklabels(np.linspace(8, 12, 5))
+ax_emg_on_zoom.tick_params(axis="x", rotation=45)
+ax_emg_on.tick_params(axis="x", rotation=45)
 # Figure output path
-FIGURE_TITLE = "vent_explained"
+FIGURE_TITLE = "fig09_vent_explained"
 FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
 FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 # Save the figure
