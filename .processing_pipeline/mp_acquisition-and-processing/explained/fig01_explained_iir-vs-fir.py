@@ -23,12 +23,12 @@ from scipy import signal
 # Define filter parameters
 CUTOFF_FREQ = 50  # Hz - cutoff frequency for both filters
 BUTTERWORTH_ORDER = 4  # Filter order for Butterworth
-MA_LENGTH = 51  # Length of moving average filter (make odd for symmetry)
+MA_LENGTH = 161  # Length of moving average filter (make odd for symmetry)
 SAMPLING_FREQ = 8000  # Hz - sampling frequency
 NYQUIST = SAMPLING_FREQ / 2
 
 # Define font sizes with appropriate scaling
-FONT_SIZE = 14
+FONT_SIZE = 16
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
 AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
@@ -41,7 +41,7 @@ IIR_SIGNAL_COLOR = mpu.COLORS["orange"]  # Orange for IIR filter
 CUTOFF_COLOR = mpu.COLORS["green"]  # Green for cutoff markers
 
 # Set figure path
-FIGURE_TITLE = "iir_vs_fir"
+FIGURE_TITLE = "fig01_iir_vs_fir"
 FIGURE_DIR = Path(os.getenv("FIGURE_DIR"))
 FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 
@@ -259,6 +259,8 @@ def plot_phase_response(ax, b, a, fs=8000, title=None):
     # Add cutoff frequency marker
     mpu.add_cutoff_marker(
         ax,
+        label=f"{CUTOFF_FREQ} Hz",
+        y_pos=80,
         x=CUTOFF_FREQ,
         color=CUTOFF_COLOR,
         linestyle="--",
@@ -394,54 +396,55 @@ for ax in all_axes:
 mpu.add_panel_label(
     ax1_1,
     "A",
-    x_offset_factor=0.18,
+    x_offset_factor=0.15,
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax1_2,
     "B",
-    x_offset_factor=0.12,
+    x_offset_factor=0.09,
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax2_1,
     "C",
-    x_offset_factor=0.18,
+    x_offset_factor=0.15,
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax2_2,
     "D",
-    x_offset_factor=0.12,
+    x_offset_factor=0.09,
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax3_1,
     "E",
-    x_offset_factor=0.18,
+    x_offset_factor=0.15,
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax3_2,
     "F",
-    x_offset_factor=0.12,
+    x_offset_factor=0.09,
     y_offset_factor=0.01,
     fontsize=SUBTITLE_SIZE,
 )
 
 # Save the figure using our utility function
-
+for ax in all_axes:
+    ax.tick_params(axis="both", pad=-1.8, labelsize=TICK_SIZE)
 
 label_x = -0.22  # Adjust this value to move labels left/right
 for ax in all_axes:
     ax.yaxis.set_label_coords(label_x, 0.5)
 
-# mpu.save_figure(fig, FIGURE_PATH, dpi=600)
+mpu.save_figure(fig, FIGURE_PATH, dpi=600)
 # Show the plot
 plt.show()
 # %%
