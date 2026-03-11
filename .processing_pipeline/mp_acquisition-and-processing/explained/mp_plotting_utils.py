@@ -22,9 +22,9 @@ COLORS = {
     "orange": "#DE8F05",  # Orange (colorblind-friendly)
     "green": "#029E73",  # Green (colorblind-friendly)
     "red": "#D55E00",  # Red (colorblind-friendly)
-    "purple": "#CC78BC",  # Purple (colorblind-friendly)
-    "brown": "#CA9161",  # Brown (colorblind-friendly)
-    "pink": "#FBAFE4",  # Pink (colorblind-friendly)
+    "purple": "#7B00C2",  # Purple (colorblind-friendly)
+    "brown": "#C76E25",  # Brown (colorblind-friendly)
+    "pink": "#FA67A2",  # Pink (colorblind-friendly)
     "gray": "#949494",  # Gray (colorblind-friendly)
     "yellow": "#ECE133",  # Yellow (colorblind-friendly)
     "light_blue": "#56B4E9",  # Light blue (colorblind-friendly)
@@ -423,6 +423,7 @@ def add_cutoff_marker(
     x: float,
     label: Optional[str] = None,
     y_pos: Optional[float] = None,
+    x_pos: Optional[float] = None,  # NEW: Independent x-position for label
     color: str = "red",
     linestyle: str = "--",
     alpha: float = 0.7,
@@ -442,6 +443,8 @@ def add_cutoff_marker(
         Label for the marker
     y_pos : float, optional
         y-coordinate for the label. If None, uses a default position near the bottom
+    x_pos : float, optional
+        x-coordinate for the label. If None, uses the same x as the line
     color : str
         Color for the line and label
     linestyle : str
@@ -469,8 +472,12 @@ def add_cutoff_marker(
             y_range = y_lim[1] - y_lim[0]
             y_pos = y_lim[0] + 0.05 * y_range
 
+        # Use the line's x position if x_pos not specified
+        if x_pos is None:
+            x_pos = x
+
         ax.text(
-            x,
+            x_pos,  # Use independent x position
             y_pos,
             label,
             color=color,

@@ -23,6 +23,7 @@ pyo3 = {version = "^0.24.1", features = ["extension-module", "abi3-py39"] }
 rayon = "1.10.0"
 realfft = "3.4.0"
 rustfft = "6.2.0"
+zerofrom = "0.1.5"
 
 [profile.release]
 lto = true

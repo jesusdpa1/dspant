@@ -1,5 +1,5 @@
 """
-waveform extractor
+Fixed waveform extractor - handles single channel selection properly
 """
 
 from typing import Dict, List, Literal, Optional, Tuple, Union
@@ -89,13 +89,26 @@ class WaveformExtractor(BaseExtractor):
             self._validate_time_input(spike_times), self.fs, time_unit
         )
 
-        # Channel selection
+        # Channel selection with proper shape handling
         if channel_selection is not None:
             if isinstance(channel_selection, int):
                 channel_selection = [channel_selection]
             data = self.data[:, channel_selection]
+
+            # CRITICAL FIX: Ensure data stays 2D even for single channel
+            if data.ndim == 1:
+                data = data[:, np.newaxis]  # Convert [samples,] to [samples, 1]
+            elif data.shape[1] == 1 and data.ndim == 2:
+                # Already correct shape [samples, 1]
+                pass
         else:
             data = self.data
+
+        # Validate final data shape
+        if data.ndim != 2:
+            raise ValueError(
+                f"Data must be 2D after channel selection, got shape {data.shape}"
+            )
 
         # Prepare storage for waveforms
         waveform_chunks = []
@@ -271,7 +284,7 @@ class WaveformExtractor(BaseExtractor):
         align_window_nb = np.int64(align_window)
         max_jitter_nb = np.int64(max_jitter)
 
-        # Align each waveform
+        # Align each waveforms
         for i in range(n_waveforms):
             # Get waveform and polarity
             waveform = waveforms_np[i]
