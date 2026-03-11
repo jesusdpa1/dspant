@@ -299,21 +299,21 @@ ax_cmr.set_yticklabels([])
 mpu.add_panel_label(
     ax_filtered,
     "A",
-    x_offset_factor=0.15,
+    x_offset_factor=0.2,
     y_offset_factor=0.15,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax_cmr,
     "B",
-    x_offset_factor=0.1,
+    x_offset_factor=0.08,
     y_offset_factor=0.15,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     ax_ref,
     "C",
-    x_offset_factor=0.15,
+    x_offset_factor=0.1,
     y_offset_factor=0.1,
     fontsize=SUBTITLE_SIZE,
 )
@@ -322,7 +322,7 @@ mpu.add_panel_label(
 mpu.finalize_figure(
     fig,
     title_y=0.98,
-    left_margin=0.08,
+    left_margin=0.06,
     top_margin=0.05,
     title_fontsize=TITLE_SIZE,
 )

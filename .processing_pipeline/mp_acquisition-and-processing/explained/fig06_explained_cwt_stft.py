@@ -137,7 +137,7 @@ FONT_SIZE = 16
 TITLE_SIZE = int(FONT_SIZE * 1)
 SUBTITLE_SIZE = int(FONT_SIZE * 0.8)
 AXIS_LABEL_SIZE = int(FONT_SIZE * 0.7)
-TICK_SIZE = int(FONT_SIZE * 0.7)
+TICK_SIZE = int(FONT_SIZE * 0.65)
 
 # Create figure with 3-row, 2-column layout (main plots + colorbar column)
 FIG = plt.figure(figsize=(7, 5))
@@ -276,21 +276,21 @@ for ax in all_axes[:-1]:
 mpu.add_panel_label(
     AX_RAW,
     "A",
-    x_offset_factor=0.25,
+    x_offset_factor=0.26,
     y_offset_factor=0.09,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX_STFT,
     "B",
-    x_offset_factor=0.25,
+    x_offset_factor=0.26,
     y_offset_factor=0.09,
     fontsize=SUBTITLE_SIZE,
 )
 mpu.add_panel_label(
     AX_CWT,
     "C",
-    x_offset_factor=0.25,
+    x_offset_factor=0.26,
     y_offset_factor=0.09,
     fontsize=SUBTITLE_SIZE,
 )
@@ -300,7 +300,7 @@ mpu.finalize_figure(
     FIG,
     title_y=0.96,
     left_margin=0.01,
-    hspace=0.25,
+    hspace=0.4,
     wspace=0.01,
     top_margin=0.1,
     title_fontsize=TITLE_SIZE,
@@ -308,8 +308,11 @@ mpu.finalize_figure(
 
 
 for ax in all_axes:
-    ax.tick_params(axis="both", pad=-3, labelsize=TICK_SIZE)
+    ax.tick_params(axis="both", pad=-5, labelsize=TICK_SIZE)
 
+AX_RAW.yaxis.set_label_coords(-0.03, 0.5)
+AX_STFT.yaxis.set_label_coords(-0.03, 0.5)
+AX_CWT.yaxis.set_label_coords(-0.03, 0.5)
 # %%
 # Figure output path
 FIGURE_TITLE = "fig06_time_frequency_analysis_comparison"
