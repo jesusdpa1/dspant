@@ -29,7 +29,7 @@ pub fn parallel_filter_channels(
     }
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Create output array
         let mut output = Array2::<f32>::zeros((n_samples, n_channels));
         

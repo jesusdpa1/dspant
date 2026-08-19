@@ -1,9 +1,8 @@
 // rust/src/processors/basics/normalization.rs
 
-use ndarray::{Array2, ArrayView2};
+use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2};
 use pyo3::prelude::*;
-use rayon::prelude::*;
 
 /// Apply z-score normalization to a numpy array
 ///
@@ -43,7 +42,7 @@ pub fn apply_zscore_parallel(
     let std_safe = if std == 0.0 { 1.0 } else { std };
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Apply normalization in parallel
         let mut result = data_array.clone();
         
@@ -104,7 +103,7 @@ pub fn apply_minmax_parallel(
     let range = max_val - min_val;
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Apply normalization in parallel
         let mut result = data_array.clone();
         
@@ -155,7 +154,7 @@ pub fn apply_robust_parallel(
     let iqr_safe = if iqr == 0.0 { 1.0 } else { iqr };
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Apply normalization in parallel
         let mut result = data_array.clone();
         
@@ -210,7 +209,7 @@ pub fn apply_mad_parallel(
     let mad_safe = if mad == 0.0 { 1.0 } else { mad };
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Apply normalization in parallel
         let mut result = data_array.clone();
         

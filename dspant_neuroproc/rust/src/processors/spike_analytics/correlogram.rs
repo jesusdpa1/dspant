@@ -5,7 +5,6 @@ use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use rayon::prelude::*;
-use rand::Rng;
 // Import Distribution trait and Uniform distribution
 use rand::distr::{Distribution, Uniform};
 
@@ -49,7 +48,7 @@ pub fn compute_correlogram(
     let time_bins = Array1::linspace(-half_window, half_window, n_bins);
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         // Compute correlogram with parallelization
         compute_correlogram_parallel(&spikes1, &spikes2, bin_size, window_size, &mut correlogram);
         
@@ -167,14 +166,14 @@ pub fn compute_autocorrelogram(
 
 /// Compute cross-correlograms for multiple spike trains efficiently
 #[pyfunction]
-pub fn compute_all_cross_correlograms(
-    py: Python<'_>,
+pub fn compute_all_cross_correlograms<'py>(
+    py: Python<'py>,
     spike_times_list: Vec<PyReadonlyArray1<f32>>,
     unit_ids: Option<Vec<i32>>,
     bin_size: f32,
     window_size: f32,
     normalize: Option<String>,
-) -> PyResult<PyObject> {
+) -> PyResult<Bound<'py, PyDict>> {
     // Create Python dictionaries and lists
     let result_dict = PyDict::new(py);
     // Create empty lists correctly
@@ -191,7 +190,7 @@ pub fn compute_all_cross_correlograms(
     if spike_times_list.is_empty() {
         result_dict.set_item("autocorrelograms", autocorrelograms)?;
         result_dict.set_item("crosscorrelograms", crosscorrelograms)?;
-        return Ok(result_dict.into());
+        return Ok(result_dict);
     }
     
     // Compute autocorrelograms
@@ -240,7 +239,7 @@ pub fn compute_all_cross_correlograms(
     result_dict.set_item("autocorrelograms", autocorrelograms)?;
     result_dict.set_item("crosscorrelograms", crosscorrelograms)?;
     
-    Ok(result_dict.into())
+    Ok(result_dict)
 }
 
 /// More efficient computation of jitter-corrected correlogram
@@ -274,7 +273,7 @@ pub fn compute_jitter_corrected_correlogram(
     let time_bins = Array1::linspace(-half_window, half_window, n_bins);
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         // Compute original correlogram
         compute_correlogram_parallel(&spikes1, &spikes2, bin_size, window_size, &mut correlogram);
         
@@ -359,7 +358,7 @@ pub fn compute_spike_time_tiling_coefficient(
     }
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         // Count spikes from train 1 that have at least one spike from train 2 within ±delta_t
         let mut count_1 = 0;
         for &t1 in spikes1.iter() {

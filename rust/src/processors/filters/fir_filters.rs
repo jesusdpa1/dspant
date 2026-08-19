@@ -1,6 +1,4 @@
-// rust/src/processors/filters/fir_filters.rs
-
-use ndarray::{Array1, Array2, Axis};
+use ndarray::{Array1, Array2};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -142,7 +140,7 @@ pub fn apply_moving_average(
     }
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // For moving average, create uniform weights
         let weights = Array1::from(vec![1.0 / window_size as f32; window_size]);
         
@@ -262,7 +260,7 @@ pub fn apply_weighted_moving_average(
     };
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Decide whether to use FFT or direct convolution
         if should_use_fft_convolution(window_size) {
             // Use FFT-based convolution
@@ -386,7 +384,7 @@ pub fn apply_moving_rms(
     }
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // For RMS, we need to square the signal first, then apply moving average, 
         // then take the square root, which isn't a linear operation.
         // Therefore, we'll use the direct implementation for this one.
@@ -501,7 +499,7 @@ pub fn generate_sinc_window(
     let normalized_cutoff = cutoff_freq / sample_rate;
     
     // Generate the window in Rust
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         let mut window = Vec::with_capacity(window_size);
         
         // Generate sinc filter
@@ -581,7 +579,7 @@ pub fn apply_sinc_filter(
     let data_array = data.as_array().to_owned();
     
     // Get dimensions
-    let (n_samples, n_channels) = (data_array.shape()[0], data_array.shape()[1]);
+    let (n_samples, _n_channels) = (data_array.shape()[0], data_array.shape()[1]);
     
     // Validate parameters
     if window_size < 3 {
@@ -643,7 +641,7 @@ pub fn apply_exponential_moving_average(
     }
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Create output array
         let mut output = Array2::<f32>::zeros((n_samples, n_channels));
         
@@ -715,7 +713,7 @@ pub fn apply_median_filter(
     let window_size = if window_size % 2 == 0 { window_size + 1 } else { window_size };
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Create output array
         let mut output = Array2::<f32>::zeros((n_samples, n_channels));
         
@@ -822,7 +820,7 @@ pub fn apply_savgol_filter(
     // This is a simplified implementation that only works well with small window sizes
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Create output array
         let mut output = Array2::<f32>::zeros((n_samples, n_channels));
         
@@ -882,9 +880,10 @@ pub fn apply_savgol_filter(
 }
 
 /// Function to determine the optimal processing method based on filter length
+#[allow(dead_code)]
 #[pyfunction]
 pub fn get_optimal_fir_method(
-    py: Python<'_>,
+    _py: Python<'_>,
     filter_length: usize,
 ) -> PyResult<String> {
     let method = if should_use_fft_convolution(filter_length) {

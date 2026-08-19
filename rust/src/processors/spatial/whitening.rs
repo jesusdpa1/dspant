@@ -1,6 +1,6 @@
 // whitening.rs
-use ndarray::{Array1, Array2, ArrayBase, ArrayView2, Axis, Dim, Ix2};
-use ndarray_linalg::{SVD, UPLO}; // Using SVD instead of Eigh
+use ndarray::{Array1, Array2, Axis};
+use ndarray_linalg::SVD; // Using SVD instead of Eigh
 use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2};
 use pyo3::prelude::*;
 
@@ -26,7 +26,7 @@ pub fn compute_whitening_matrix(
     let cov_array = cov.as_array().to_owned();
     
     // Allow Python threads to run during computation
-    let whitening = Python::allow_threads(py, || {
+    let whitening = py.detach(|| {
         // Get dimensions
         let n = cov_array.shape()[0];
         
@@ -37,7 +37,7 @@ pub fn compute_whitening_matrix(
         
         // Perform SVD decomposition using ndarray-linalg
         match cov_array.svd(true, true) {
-            Ok((Some(u), s, Some(vt))) => {
+            Ok((Some(u), s, Some(_vt))) => {
                 // Create diagonal matrix with 1/sqrt(S + eps)
                 let s_inv: Vec<f32> = s.iter()
                     .map(|&x| 1.0 / (x + eps).sqrt())
@@ -82,7 +82,7 @@ pub fn compute_covariance_parallel(
     }
     
     // Compute covariance matrix
-    let cov = Python::allow_threads(py, || {
+    let cov = py.detach(|| {
         // For better performance, transpose once and use dot product
         let data_t = data_array.t();
         data_t.dot(&data_array) / (n_samples as f32)
@@ -113,7 +113,7 @@ pub fn compute_mean_parallel(
     }
     
     // Compute mean in parallel
-    let mean = Python::allow_threads(py, || {
+    let mean = py.detach(|| {
         // Mean across samples (axis 0)
         match data_array.mean_axis(Axis(0)) {
             Some(mean_vec) => {
@@ -168,7 +168,7 @@ pub fn apply_whitening_parallel(
     }
     
     // Allow Python threads to run during computation
-    let whitened = Python::allow_threads(py, || {
+    let whitened = py.detach(|| {
         // Prepare centered data
         let centered_data = match &mean_array {
             Some(mean) => {
@@ -218,9 +218,9 @@ pub fn whiten_data(
         ));
     }
     
-    let whitened = Python::allow_threads(py, || {
+    let whitened = py.detach(|| {
         // Compute mean if required
-        let (centered_data, mean) = if apply_mean {
+        let (centered_data, _mean) = if apply_mean {
             match data_array.mean_axis(Axis(0)) {
                 Some(mean_vec) => {
                     // Center the data by subtracting the mean

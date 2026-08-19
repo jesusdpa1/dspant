@@ -137,7 +137,7 @@ pub fn compute_tkeo_parallel(
     }
     
     // Allow Python threads to run during computation
-    let output = Python::allow_threads(py, || {
+    let output = py.detach(|| {
         // Create the output array
         let mut output = Array2::zeros((n_samples - 2, n_channels));
         

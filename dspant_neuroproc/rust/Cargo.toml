@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [package.metadata.maturin]
-python-source = "python"  # Only needed if you have Python files
+python-source = "python"             # Only needed if you have Python files
 features = ["pyo3/extension-module"]
 
 [package.metadata.pyo3]
@@ -16,14 +16,14 @@ name = "dspant_neuroproc_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-ndarray = { version = "0.16.1", features = ["rayon"] }
-ndarray-linalg = "0.17.0"
+ndarray = { version = "0.17.2", features = ["rayon"] }
+ndarray-linalg = "0.18.1"
 num-complex = "0.4.6"
 num-traits = "0.2.19"
-numpy = "0.24.0"
+numpy = "0.29.0"
 # "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
 # "abi3-py39" tells pyo3 (and maturin) to build using the stable ABI with minimum Python version 3.9
-pyo3 = {version = "^0.24.1", features = ["extension-module", "abi3-py39"] }
+pyo3 = { version = "0.29.2", features = ["extension-module", "abi3-py39"] }
 rand = "0.9.1"
 rayon = "1.10.0"
 realfft = "3.4.0"

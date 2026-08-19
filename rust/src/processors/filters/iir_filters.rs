@@ -71,7 +71,7 @@ pub fn apply_cascaded_filters(
     let (n_samples, n_channels) = (current_data.shape()[0], current_data.shape()[1]);
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         // For each filter in the cascade
         for sos_array in &sos_arrays {
             // Process each channel in parallel

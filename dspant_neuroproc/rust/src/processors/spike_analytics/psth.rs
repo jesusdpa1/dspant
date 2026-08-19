@@ -1,6 +1,4 @@
-// rust/src/processors/spike_analytics/psth.rs
-
-use ndarray::{Array1, Array2, Axis};
+use ndarray::{Array1, Array2};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -43,7 +41,7 @@ pub fn bin_spikes_by_events(
     let n_bins = bin_edges_vec.len() - 1;
     
     // Allow Python threads to run during computation
-    let binned_spikes = Python::allow_threads(py, || {
+    let binned_spikes = py.detach(|| {
         // Create output array: bins × events
         let mut binned_spikes = Array2::<i32>::zeros((n_bins, n_events));
         
@@ -146,7 +144,7 @@ pub fn compute_psth(
     }
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         // Create output array: bins × events
         let mut binned_spikes = Array2::<f32>::zeros((n_bins, events.len()));
         
@@ -226,7 +224,7 @@ pub fn compute_psth_parallel(
     let time_bins = Array1::linspace(-pre_time, post_time, n_bins);
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         // Create output array: bins × events
         let mut binned_spikes = Array2::<f32>::zeros((n_bins, events.len()));
         
@@ -392,8 +390,8 @@ fn apply_gaussian_smoothing_parallel(data: &Array2<f32>, sigma: f32) -> Array2<f
 /// Returns:
 ///     Dictionary with PSTH results
 #[pyfunction]
-pub fn compute_psth_all(
-    py: Python<'_>,
+pub fn compute_psth_all<'py>(
+    py: Python<'py>,
     spike_times_list: Vec<PyReadonlyArray1<f32>>,
     event_times: PyReadonlyArray1<f32>,
     unit_ids: Vec<i32>,
@@ -401,7 +399,7 @@ pub fn compute_psth_all(
     post_time: f32,
     bin_size: f32,
     smoothing_sigma: Option<f32>,
-) -> PyResult<PyObject> {
+) -> PyResult<Bound<'py, PyDict>> {
     // Convert events to Vec for parallelization
     let events_array = event_times.as_array().to_owned();
     let events: Vec<f32> = events_array.iter().cloned().collect();
@@ -502,7 +500,7 @@ pub fn compute_psth_all(
     result_dict.set_item("time_bins", time_bins.into_pyarray(py))?;
     result_dict.set_item("event_count", events.len())?;
     
-    Ok(result_dict.into())
+    Ok(result_dict)
 }
 
 /// Compute spike raster data for visualization with parallel processing
@@ -516,13 +514,13 @@ pub fn compute_psth_all(
 /// Returns:
 ///     Dictionary with trial indices and relative spike times
 #[pyfunction]
-pub fn compute_raster_data(
-    py: Python<'_>,
+pub fn compute_raster_data<'py>(
+    py: Python<'py>,
     spike_times: PyReadonlyArray1<f32>,
     event_times: PyReadonlyArray1<f32>,
     pre_time: f32,
     post_time: f32,
-) -> PyResult<PyObject> {
+) -> PyResult<Bound<'py, PyDict>> {
     // Convert inputs to Rust arrays
     let spikes = spike_times.as_array().to_owned();
     let events_array = event_times.as_array().to_owned();
@@ -532,7 +530,7 @@ pub fn compute_raster_data(
     let spike_vec: Vec<f32> = spikes.iter().cloned().collect();
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         // Process each event in parallel
         let event_results: Vec<_> = events
             .par_iter()
@@ -578,5 +576,5 @@ pub fn compute_raster_data(
     dict.set_item("spike_times", rel_times_array.into_pyarray(py))?;
     dict.set_item("trials", trial_indices_array.into_pyarray(py))?;
     
-    Ok(dict.into())
+    Ok(dict)
 }

@@ -1,6 +1,6 @@
 // rust/src/processors/spatial/common_reference.rs
 
-use ndarray::{Array1, Array2, ArrayView2, Axis};
+use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2};
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -19,7 +19,7 @@ pub fn compute_channel_median(
     let n_channels = data_array.shape()[1];
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         let mut median_values = Array2::<f32>::zeros((n_samples, 1));
         
         // Compute median for each time point (row)
@@ -65,7 +65,7 @@ pub fn compute_channel_median_parallel(
     let n_channels = data_array.shape()[1];
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         let mut median_values = Array2::<f32>::zeros((n_samples, 1));
         
         // Process rows in parallel using rayon
@@ -119,7 +119,7 @@ pub fn compute_channel_mean(
     let n_channels = data_array.shape()[1];
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         let mut mean_values = Array2::<f32>::zeros((n_samples, 1));
         
         // Compute mean for each time point (row)
@@ -152,7 +152,7 @@ pub fn compute_channel_mean_parallel(
     let n_channels = data_array.shape()[1];
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         let mut mean_values = Array2::<f32>::zeros((n_samples, 1));
         
         // Process rows in parallel using rayon
@@ -195,7 +195,7 @@ pub fn apply_global_reference(
     let n_channels = data_array.shape()[1];
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         let mut result_array = Array2::<f32>::zeros((n_samples, n_channels));
         
         // Subtract reference from each channel
@@ -230,7 +230,7 @@ pub fn apply_global_reference_parallel(
     let n_channels = data_array.shape()[1];
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         // Instead of modifying a shared array directly in parallel,
         // we'll process each row in parallel and collect the results
         let rows: Vec<_> = (0..n_samples)
@@ -296,7 +296,7 @@ pub fn apply_channel_reference(
     }
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         let mut result_array = Array2::<f32>::zeros((n_samples, n_channels));
         let mut reference = Array2::<f32>::zeros((n_samples, 1));
         
@@ -365,7 +365,7 @@ pub fn apply_group_reference(
     let n_channels = data_array.shape()[1];
     
     // Allow Python threads to run during computation
-    let result = Python::allow_threads(py, || {
+    let result = py.detach(|| {
         // Create result array for return
         let mut result_array = data_array.clone();
         
