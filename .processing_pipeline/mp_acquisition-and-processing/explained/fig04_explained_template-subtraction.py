@@ -52,9 +52,7 @@ FIGURE_PATH = FIGURE_DIR.joinpath(f"{FIGURE_TITLE}.png")
 # %%
 # Define paths
 DATA_DIR = Path(os.getenv("DATA_DIR"))
-BASE_PATH = DATA_DIR.joinpath(
-    r"25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
-)
+BASE_PATH = DATA_DIR.joinpath(r"25-02-26_9881-2_baseline")
 EMG_STREAM_PATH = BASE_PATH.joinpath("RawG.ant")
 
 # %%
@@ -67,7 +65,7 @@ stream_emg.load_data()
 FS = stream_emg.fs
 # %%
 # Create filters
-bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
+bandpass_filter = create_bandpass_filter(20, 2000, fs=FS, order=5)
 notch_filter = create_notch_filter(60, q=30, fs=FS)
 lowpass_filter = create_lowpass_filter(200, fs=FS, order=5)
 
@@ -365,6 +363,9 @@ formatter.set_powerlimits((-2, 2))  # Forces scientific notation
 all_axes = [AX1, AX2, AX_ZOOM_ECG, AX_ZOOM_CLEAN, AX_TEMPLATE]
 
 for ax in all_axes:
+    formatter = ScalarFormatter(useMathText=True)  # one formatter per axis (a shared instance breaks the offset text)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-2, 2))
     ax.yaxis.set_major_formatter(formatter)
     ax.ticklabel_format(
         style="scientific", axis="y", scilimits=(0, 0), useMathText=True
@@ -383,9 +384,10 @@ for ax in all_axes[:2]:
 # Align all y-axis labels (FROM IIR VS FIR PLOT)
 label_x = -0.22
 for ax in all_axes:
-    ax.yaxis.set_label_coords(label_x, 0.5)
-    ax.yaxis.set_visible(False)
     ax.tick_params(axis="x", rotation=45, pad=0.01)
+# Amplitude axis on every trace; axis label on the left panels of each row
+for ax in (AX1, AX2):
+    ax.set_ylabel("Amplitude", fontsize=AXIS_LABEL_SIZE)
 
 # Add panel labels with the specified formatting
 mpu.add_panel_label(
@@ -440,7 +442,7 @@ mpu.finalize_figure(
     title_y=0.96,
     left_margin=0.01,
     hspace=0.7,
-    wspace=0.2,
+    wspace=0.45,
     top_margin=0.1,
     title_fontsize=TITLE_SIZE,
 )
@@ -448,9 +450,14 @@ mpu.finalize_figure(
 for ax in all_axes:
     # ax.yaxis.set_label_coords(label_x, 0.5)
     ax.tick_params(axis="both", pad=-3)
+    t = ax.title  # same title height on every panel (auto-positioning lifts some above the offset text)
+    ax.set_title(t.get_text(), fontsize=t.get_fontsize(), fontweight=t.get_fontweight(), y=1.1)
 
-AX_ZOOM_CLEAN.set_xticklabels(np.linspace(2, 3, 6))
-AX_ZOOM_ECG.set_xticklabels(np.linspace(2, 3, 3))
+# zoom panels are plotted on a relative time axis; label ticks with absolute time (2-3 s)
+AX_ZOOM_CLEAN.set_xticks(np.linspace(0, 1, 6))
+AX_ZOOM_CLEAN.set_xticklabels([f"{v:.1f}" for v in np.linspace(2, 3, 6)])
+AX_ZOOM_ECG.set_xticks(np.linspace(0, 1, 3))
+AX_ZOOM_ECG.set_xticklabels([f"{v:.1f}" for v in np.linspace(2, 3, 3)])
 # Save the figure
 mpu.save_figure(FIG, FIGURE_PATH, dpi=600)
 

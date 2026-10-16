@@ -35,11 +35,9 @@ mpu.set_publication_style()
 
 # %%
 # Data loading (keep your existing data loading code)
+dotenv.load_dotenv()
 DATA_DIR = Path(os.getenv("DATA_DIR"))
-DATA_DIR = Path(os.getenv("DATA_DIR"))
-BASE_PATH = DATA_DIR.joinpath(
-    r"25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
-)
+BASE_PATH = DATA_DIR.joinpath(r"25-02-26_9881-2_baseline")
 EMG_STREAM_PATH = BASE_PATH.joinpath(r"RawG.ant")
 
 # %%
@@ -54,8 +52,8 @@ FS = stream_emg.fs
 processor_emg = create_processing_node(stream_emg)
 
 # Create filters
-bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=FS)
+bandpass_filter = create_bandpass_filter(20, 2000, fs=FS, order=5)
+notch_filter = create_notch_filter(60, q=30, fs=FS)
 lowpass_filter = create_lowpass_filter(20, FS)
 
 # Create processors

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import mp_plotting_utils as mpu
+from mp_cache import cached
 import numpy as np
 import polars as pl
 import seaborn as sns
@@ -45,9 +46,7 @@ COLORMAP = "inferno"
 # %%
 # Load data - This would come from your actual data loading code
 DATA_DIR = Path(os.getenv("DATA_DIR"))
-BASE_PATH = DATA_DIR.joinpath(
-    r"25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
-)
+BASE_PATH = DATA_DIR.joinpath(r"25-02-26_9881-2_baseline")
 EMG_STREAM_PATH = BASE_PATH.joinpath("RawG.ant")
 
 # Load EMG data
@@ -57,8 +56,8 @@ stream_emg.load_data()
 FS = stream_emg.fs  # Get sampling rate from the stream node
 
 # Create filters
-bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=FS)
+bandpass_filter = create_bandpass_filter(20, 2000, fs=FS, order=5)
+notch_filter = create_notch_filter(60, q=30, fs=FS)
 
 # Create processing node with filters
 processor_emg = create_processing_node(stream_emg)
@@ -71,7 +70,7 @@ bandpass_processor = FilterProcessor(
 processor_emg.add_processor([notch_processor, bandpass_processor], group="filters")
 
 # Apply filters and get data
-filter_data = processor_emg.process(group=["filters"]).persist()
+filter_data = processor_emg.process(group=["filters"])  # lazy: only the analysed segment is computed
 
 # Extract data for time-frequency analysis
 START = int(FS * 0)
@@ -81,10 +80,30 @@ base_data = filter_data[START:END, :]
 # %%
 # Perform time-frequency analysis
 x = base_data.compute()[:, 0]
-wavelet = Wavelet()
-cwt_data, scales = cwt(x, wavelet)
-stft_data = stft(x)[::-1]
-cwt_data = np.flipud(cwt_data)
+wavelet = Wavelet("morlet")  # analytic (complex) Morlet
+# Transforms are computed on the full 30 s segment and cut to the displayed 0-5 s window;
+# results are cached as parquet in .data/cache (recomputed automatically if any parameter changes)
+TF_DISPLAY = slice(0, int(FS * 5))
+TF_PARAMS = {
+    "recording": str(EMG_STREAM_PATH), "channel": 0, "fs": FS, "segment": [START, END],
+    "bandpass": [20, 2000, 5], "notch": [60, 30], "wavelet": wavelet.name, "wavelet_config": wavelet.config,
+    "stft": "ssqueezepy defaults", "display": [TF_DISPLAY.start, TF_DISPLAY.stop],
+}
+
+
+def _compute_tf():
+    coeffs, sc = cwt(x, wavelet)
+    return {
+        "cwt": coeffs[:, TF_DISPLAY].copy(),
+        "scales": sc,
+        "stft": stft(x)[:, TF_DISPLAY],
+    }
+
+
+tf = cached("fig06_tf", TF_PARAMS, _compute_tf)
+scales = tf["scales"]
+cwt_data = np.flipud(tf["cwt"])  # display window only
+stft_data = tf["stft"][::-1]  # display window only
 cwt_frequencies = scale_to_freq(scales, wavelet, len(x), fs=FS)
 stft_frequencies = np.linspace(1, 0, len(stft_data)) * FS / 2
 
@@ -122,12 +141,15 @@ CWT_MASK = cwt_frequencies < MAX_FREQ
 CWT_FREQS_FILTERED = cwt_frequencies[CWT_MASK]
 CWT_CHANNEL_LONG_FILTERED = CWT_CHANNEL_LONG[CWT_MASK, :]
 
-# Calculate min/max values for each transform for normalization
-STFT_MIN = np.percentile(np.abs(STFT_CHANNEL_LONG_FILTERED), 5)
-STFT_MAX = np.percentile(np.abs(STFT_CHANNEL_LONG_FILTERED), 99)
+# Min-max normalized power (|X|^2), using the 5th and 99th percentiles as robust min and max
+def minmax_power(coeffs, low_pct=5, high_pct=99):
+    power = np.abs(coeffs) ** 2
+    p_min, p_max = np.percentile(power, [low_pct, high_pct])
+    return np.clip((power - p_min) / (p_max - p_min), 0, 1)
 
-CWT_MIN = np.percentile(np.abs(CWT_CHANNEL_LONG_FILTERED), 5)
-CWT_MAX = np.percentile(np.abs(CWT_CHANNEL_LONG_FILTERED), 99)
+
+STFT_POWER_NORM = minmax_power(STFT_CHANNEL_LONG_FILTERED)
+CWT_POWER_NORM = minmax_power(CWT_CHANNEL_LONG_FILTERED)
 
 # Define font sizes with appropriate scaling
 
@@ -172,16 +194,16 @@ AX_STFT = FIG.add_subplot(GS[1, 0], sharex=AX_RAW)
 STFT_MESH = AX_STFT.pcolormesh(
     TIME_LONG,
     STFT_FREQS_FILTERED,
-    np.abs(STFT_CHANNEL_LONG_FILTERED),
+    STFT_POWER_NORM,
     cmap=COLORMAP,
     shading="auto",
-    norm=PowerNorm(gamma=CONTRAST_STFT, vmin=STFT_MIN, vmax=STFT_MAX),
+    norm=PowerNorm(gamma=CONTRAST_STFT, vmin=0, vmax=1),
 )
 mpu.format_axis(
     AX_STFT,
     title="Short-Time Fourier Transform (STFT) Scalogram",
     xlabel=None,
-    ylabel="Frequency (Hz)",
+    ylabel="Hz",
     xlim=(0, 5),
     ylim=(MIN_FREQ, MAX_FREQ),
     title_fontsize=SUBTITLE_SIZE,
@@ -219,16 +241,16 @@ AX_CWT = FIG.add_subplot(GS[2, 0], sharex=AX_RAW)
 CWT_MESH = AX_CWT.pcolormesh(
     TIME_LONG,
     CWT_FREQS_FILTERED,
-    np.abs(CWT_CHANNEL_LONG_FILTERED),
+    CWT_POWER_NORM,
     cmap=COLORMAP,
     shading="auto",
-    norm=PowerNorm(gamma=CONTRAST_CWT, vmin=CWT_MIN, vmax=CWT_MAX),
+    norm=PowerNorm(gamma=CONTRAST_CWT, vmin=0, vmax=1),
 )
 mpu.format_axis(
     AX_CWT,
     title="Continuous Wavelet Transform (CWT) Scalogram",
     xlabel="Time (s)",
-    ylabel="Frequency (Hz)",
+    ylabel="Hz",
     xlim=(0, 5),
     ylim=(MIN_FREQ, MAX_FREQ),
     title_fontsize=SUBTITLE_SIZE,

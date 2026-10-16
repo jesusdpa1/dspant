@@ -47,10 +47,8 @@ mpu.set_publication_style()
 
 # %%
 # Constants in UPPER CASE
-BASE_PATH = (
-    r"/home/yezuss1/data/papers/2025_mp_emg diaphragm acquisition and processing"
-)
-EMG_STREAM_PATH = BASE_PATH + r"/noisy_recording.ant"
+DATA_DIR = Path(os.getenv("DATA_DIR"))
+EMG_STREAM_PATH = str(DATA_DIR.joinpath("noisy_recording", "noisy_recording.ant"))
 
 # %%
 # Load EMG data
@@ -64,8 +62,8 @@ FS = stream_emg.fs  # Get sampling rate from the stream node
 
 # %%
 # Create filters with improved visualization
-bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=FS)
+bandpass_filter = create_bandpass_filter(20, 2000, fs=FS, order=5)
+notch_filter = create_notch_filter(60, q=30, fs=FS)
 
 # %%
 # Create processing node with filters
@@ -96,15 +94,15 @@ whp_filter = create_wp_harmonic_removal(60)
 
 
 # %%
-# Define energy-based wavelet filtering function with aggressive thresholding
+# Define VisuShrink wavelet denoising function (Donoho & Johnstone, 1994)
 import numpy as np
 import pywt
 
 
 def wavelet_filter(signal_data, wavelet="db4", levels=6, sigma=None):
     """
-    Apply energy-based wavelet denoising to EMG signal using soft thresholding
-    with secondary cleanup pass for isolated coefficients
+    VisuShrink wavelet denoising: soft thresholding of all detail coefficients with the
+    universal threshold  lambda = sigma * sqrt(2 * ln(N)).
 
     Parameters:
     -----------
@@ -115,12 +113,12 @@ def wavelet_filter(signal_data, wavelet="db4", levels=6, sigma=None):
     levels : int
         Number of decomposition levels (default: 6)
     sigma : float
-        Noise standard deviation (if None, estimated from signal)
+        Noise standard deviation (if None, estimated as MAD(finest detail) / 0.6745)
 
     Returns:
     --------
     denoised_signal : array
-        Denoised signal using energy-based soft thresholding with cleanup
+        Denoised signal, same length as the input
     """
     # Ensure signal is 1D
     if signal_data.ndim > 1:
@@ -131,56 +129,17 @@ def wavelet_filter(signal_data, wavelet="db4", levels=6, sigma=None):
     # Perform wavelet decomposition
     coeffs = pywt.wavedec(signal_1d, wavelet, level=levels)
 
-    # Estimate noise standard deviation if not provided
+    # Estimate noise standard deviation from the finest detail coefficients (robust MAD estimator)
     if sigma is None:
-        # Use robust median absolute deviation estimator on finest detail coefficients
-        detail_coeffs = coeffs[-1]  # Finest detail coefficients
-        sigma = np.median(np.abs(detail_coeffs)) / 0.6745
+        sigma = np.median(np.abs(coeffs[-1])) / 0.6745
 
-    # Energy-based threshold: Remove 95% of coefficients (very aggressive)
-    # Calculate threshold from all detail coefficients combined
-    all_detail_coeffs = np.concatenate(
-        [coeffs[i].flatten() for i in range(1, len(coeffs))]
-    )
-    threshold = np.percentile(
-        np.abs(all_detail_coeffs), 95
-    )  # Remove 95% of coefficients
+    # Universal (VisuShrink) threshold
+    threshold = sigma * np.sqrt(2 * np.log(len(signal_1d)))
 
-    # Define soft thresholding function
-    def soft_threshold(x, thresh):
-        """
-        Soft thresholding function:
-        - If |x| <= thresh: return 0
-        - If x > thresh: return x - thresh
-        - If x < -thresh: return x + thresh
-        """
-        return np.sign(x) * np.maximum(np.abs(x) - thresh, 0)
-
-    # Apply soft thresholding to detail coefficients only
-    coeffs_thresh = list(coeffs)
-    for i in range(1, len(coeffs)):  # Skip approximation coefficients (index 0)
-        coeffs_thresh[i] = soft_threshold(coeffs[i], threshold)
-
-    # AGGRESSIVE STRATEGY 4: Secondary cleanup pass
-    # Remove isolated small coefficients that might be remaining noise
-    for i in range(1, len(coeffs_thresh)):
-        coeff_level = coeffs_thresh[i]
-
-        # Calculate local energy and remove isolated weak coefficients
-        local_energy_threshold = np.std(coeff_level) * 0.2
-        weak_mask = np.abs(coeff_level) < local_energy_threshold
-
-        # Check for isolated coefficients (surrounded by zeros or very small values)
-        if len(coeff_level) > 4:  # Only for sufficiently long coefficient arrays
-            for j in range(2, len(coeff_level) - 2):
-                if weak_mask[j]:
-                    # Check if surrounded by weak coefficients
-                    neighbors = coeff_level[j - 2 : j + 3]
-                    neighbor_energy = np.mean(np.abs(neighbors))
-                    if neighbor_energy < local_energy_threshold:
-                        coeff_level[j] = 0
-
-        coeffs_thresh[i] = coeff_level
+    # Soft thresholding of detail coefficients only (approximation coefficients kept)
+    coeffs_thresh = [coeffs[0]] + [
+        pywt.threshold(c, threshold, mode="soft") for c in coeffs[1:]
+    ]
 
     # Reconstruct signal from thresholded coefficients
     denoised_signal = pywt.waverec(coeffs_thresh, wavelet)
@@ -440,7 +399,7 @@ mpu.format_axis(
 ax_bp_zoom = fig.add_subplot(gs[1, 4])
 ax_bp_zoom.plot(
     zoom_time_array,
-    raw_data[ZOOM_START:ZOOM_END, 0],
+    filter_data[ZOOM_START:ZOOM_END, 0],
     color=FILTER_COLORS["bandpass"],
     linewidth=1.2,
 )

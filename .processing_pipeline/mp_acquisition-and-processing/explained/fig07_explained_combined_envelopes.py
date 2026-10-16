@@ -10,6 +10,8 @@ import os
 import time
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import matplotlib.ticker as ticker
@@ -40,10 +42,9 @@ mpu.set_publication_style()
 # Define font sizes with appropriate scaling - increased for better visibility
 
 # Define paths using environment variables
+load_dotenv()
 DATA_DIR = Path(os.getenv("DATA_DIR"))
-BASE_PATH = DATA_DIR.joinpath(
-    r"25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
-)
+BASE_PATH = DATA_DIR.joinpath(r"25-02-26_9881-2_baseline")
 EMG_STREAM_PATH = BASE_PATH.joinpath("RawG.ant")
 
 # Load EMG data
@@ -53,8 +54,8 @@ stream_emg.load_data()
 FS = stream_emg.fs
 
 # Create filters
-bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=FS)
+bandpass_filter = create_bandpass_filter(20, 2000, fs=FS, order=5)
+notch_filter = create_notch_filter(60, q=30, fs=FS)
 lowpass_filter = create_lowpass_filter(20, FS)
 
 # Create processing node with filters

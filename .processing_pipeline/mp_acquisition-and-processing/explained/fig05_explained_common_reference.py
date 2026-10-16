@@ -47,9 +47,7 @@ load_dotenv()
 
 # Define paths using environment variables
 DATA_DIR = Path(os.getenv("DATA_DIR"))
-BASE_PATH = DATA_DIR.joinpath(
-    r"25-02-26_9881-2_testSubject_topoMapping/drv/drv_00_baseline"
-)
+BASE_PATH = DATA_DIR.joinpath(r"25-02-26_9881-2_baseline")
 HD_STREAM_PATH = BASE_PATH.joinpath("HDEG.ant")
 
 # %%
@@ -68,7 +66,7 @@ raw_data = stream_hd.data.compute()[0 : int(FS * 120), :]
 # %%
 
 # Create filters with improved visualization
-bandpass_filter = create_bandpass_filter(10, 2000, fs=FS, order=5)
+bandpass_filter = create_bandpass_filter(20, 2000, fs=FS, order=5)
 notch_filter = create_notch_filter(60, q=30, fs=FS)
 
 # %%

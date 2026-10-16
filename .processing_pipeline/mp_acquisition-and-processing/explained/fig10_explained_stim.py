@@ -40,10 +40,7 @@ sns.set_theme(style="darkgrid")
 dotenv.load_dotenv()
 # %%
 BASE_PATH = Path(os.getenv("DATA_DIR"))
-DATA_PATH = BASE_PATH.joinpath(
-    r"2025_mp_emg diaphragm acquisition and processing/drv_15-40-17_stim"
-)
-#     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
+DATA_PATH = BASE_PATH.joinpath(r"25-02-21_15-40-17_stim")
 
 EMG_PATH = DATA_PATH.joinpath(r"RawG.ant")
 STIM_PATH = DATA_PATH.joinpath(r"MonA.ant")
@@ -69,8 +66,8 @@ STREAM_STIM.summarize()
 FS = STREAM_EMG.fs  # Get sampling rate from the stream node
 
 # Create filters with improved visualization
-BANDPASS_FILTER = create_bandpass_filter(10, 4000, fs=FS, order=5)
-NOTCH_FILTER = create_notch_filter(60, q=60, fs=FS)
+BANDPASS_FILTER = create_bandpass_filter(20, 2000, fs=FS, order=5)
+NOTCH_FILTER = create_notch_filter(60, q=30, fs=FS)
 LOWPASS_FILTER = create_lowpass_filter(50, FS)
 # %%
 # BANDPASS_PLOT = BANDPASS_FILTER.plot_frequency_response()

@@ -31,8 +31,10 @@ HIGHPASS_CUTOFF = 10
 BANDPASS_LOW = 20
 BANDPASS_HIGH = 2000
 NOTCH_FREQ = 60
+NOTCH_Q = 30  # matches the pipeline notch used in all real-data figures
 FILTER_ORDER = 4
-SAMPLING_FREQ = 8000
+SAMPLING_FREQ = 16000  # Nyquist 8 kHz, so the 5 kHz test tone is not aliased
+FILTFILT_PADLEN = 4000  # 0.25 s padding: covers the long ringing of the narrow (Q = 30) notch
 
 # Phase comparison filter parameters
 PHASE_CUTOFF_FREQ = 50  # Hz
@@ -55,8 +57,7 @@ def design_butterworth_filter(filter_type, cutoff, order=4, fs=8000):
         b, a = signal.butter(order, [low / nyquist, high / nyquist], btype="band")
     elif filter_type == "notch":
         # Quality factor for notch filter
-        Q = 1
-        b, a = signal.iirnotch(cutoff / nyquist, Q)
+        b, a = signal.iirnotch(cutoff / nyquist, NOTCH_Q)
     elif filter_type == "lowpass":
         b, a = signal.butter(order, cutoff / nyquist, btype="low")
     elif filter_type == "highpass":
@@ -92,7 +93,7 @@ def plot_filter_response(
         cutoff_marker = [cutoff]
 
     # Compute frequency response
-    w, h = signal.freqz(b, a, worN=2000)
+    w, h = signal.freqz(b, a, worN=2**16)  # fine resolution so the 2 Hz-wide notch is resolved
     freq = w * fs / (2 * np.pi)
 
     # Plot frequency response
@@ -247,10 +248,10 @@ phase_b, phase_a = design_butterworth_lowpass(
 )
 
 # Apply filters
-lowpass_filtered = signal.filtfilt(lowpass_b, lowpass_a, lowpass_test)
-highpass_filtered = signal.filtfilt(highpass_b, highpass_a, highpass_test)
-bandpass_filtered = signal.filtfilt(bandpass_b, bandpass_a, bandpass_test)
-notch_filtered = signal.filtfilt(notch_b, notch_a, notch_test)
+lowpass_filtered = signal.filtfilt(lowpass_b, lowpass_a, lowpass_test, padlen=FILTFILT_PADLEN)
+highpass_filtered = signal.filtfilt(highpass_b, highpass_a, highpass_test, padlen=FILTFILT_PADLEN)
+bandpass_filtered = signal.filtfilt(bandpass_b, bandpass_a, bandpass_test, padlen=FILTFILT_PADLEN)
+notch_filtered = signal.filtfilt(notch_b, notch_a, notch_test, padlen=FILTFILT_PADLEN)
 
 # Apply phase comparison filters
 phase_lfilter = signal.lfilter(phase_b, phase_a, phase_test_signal)

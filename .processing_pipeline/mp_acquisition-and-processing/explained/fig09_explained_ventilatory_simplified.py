@@ -45,10 +45,7 @@ dotenv.load_dotenv()
 
 # %%
 base_path = Path(os.getenv("DATA_DIR"))
-data_path = base_path.joinpath(
-    r"2025_mp_emg diaphragm acquisition and processing/Sample Ventilator Trace"
-)
-#     r"../data/24-12-16_5503-1_testSubject_emgContusion/drv_01_baseline-contusion"
+data_path = base_path.joinpath(r"sample_ventilator_trace")
 
 emg_right_path = data_path.joinpath(r"emg_r.ant")
 emg_left_path = data_path.joinpath(r"emg_l.ant")
@@ -83,8 +80,8 @@ stream_insp.summarize()
 fs = stream_emg_l.fs  # Get sampling rate from the stream node
 
 # Create filters with improved visualization
-bandpass_filter = create_bandpass_filter(10, 4000, fs=fs, order=5)
-notch_filter = create_notch_filter(60, q=60, fs=fs)
+bandpass_filter = create_bandpass_filter(20, 2000, fs=fs, order=5)
+notch_filter = create_notch_filter(60, q=30, fs=fs)
 lowpass_filter = create_lowpass_filter(50, fs)
 # %%
 # bandpass_plot = bandpass_filter.plot_frequency_response()
@@ -157,12 +154,8 @@ from matplotlib.patches import Rectangle
 sns.set_palette("colorblind")
 palette = sns.color_palette("colorblind")
 
-# Add Montserrat font
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Montserrat"]
-
-# Set the style
-sns.set_theme(style="darkgrid")
+# Set the style with Montserrat font (set_theme resets fonts, so the font is passed to it)
+sns.set_theme(style="darkgrid", font="Montserrat")
 
 # Define font sizes with appropriate scaling
 TITLE_SIZE = 1
