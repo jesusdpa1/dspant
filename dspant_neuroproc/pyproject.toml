@@ -26,3 +26,5 @@ build-backend = "maturin"
 
 [tool.uv]
 cache-keys = [{file = "pyproject.toml"}, {file = "./rust/Cargo.toml"}, {file = "**/*.rs"}]
+[tool.uv.sources]
+dspant = { workspace = true }
