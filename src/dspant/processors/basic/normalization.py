@@ -140,9 +140,9 @@ class NormalizationProcessor(BaseProcessor):
 
             # Convert to scalars if they're arrays with single values
             if hasattr(mean, "compute") and mean.size == 1:
-                mean = float(mean.compute())
+                mean = mean.compute().item()
             if hasattr(std, "compute") and std.size == 1:
-                std = float(std.compute())
+                std = std.compute().item()
                 std = std if std != 0 else 1.0
 
             # Define processing function
@@ -174,9 +174,9 @@ class NormalizationProcessor(BaseProcessor):
 
             # Convert to scalars if they're arrays with single values
             if hasattr(min_val, "compute") and min_val.size == 1:
-                min_val = float(min_val.compute())
+                min_val = min_val.compute().item()
             if hasattr(max_val, "compute") and max_val.size == 1:
-                max_val = float(max_val.compute())
+                max_val = max_val.compute().item()
                 # Avoid division by zero
                 if min_val == max_val:
                     max_val = min_val + 1
@@ -214,9 +214,9 @@ class NormalizationProcessor(BaseProcessor):
 
             # Convert to scalars if they're arrays with single values
             if hasattr(median, "compute") and median.size == 1:
-                median = float(median.compute())
+                median = median.compute().item()
             if hasattr(iqr, "compute") and iqr.size == 1:
-                iqr = float(iqr.compute())
+                iqr = iqr.compute().item()
                 iqr = iqr if iqr != 0 else 1.0
 
             # Define processing function
@@ -254,9 +254,9 @@ class NormalizationProcessor(BaseProcessor):
 
             # Convert to scalars if they're arrays with single values
             if hasattr(median, "compute") and median.size == 1:
-                median = float(median.compute())
+                median = median.compute().item()
             if hasattr(mad_value, "compute") and mad_value.size == 1:
-                mad_value = float(mad_value.compute())
+                mad_value = mad_value.compute().item()
                 mad_value = mad_value if mad_value != 0 else 1.0
 
             # Define processing function
