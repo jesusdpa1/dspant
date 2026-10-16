@@ -263,7 +263,7 @@ class BaseTrajectoryAnalyzer(ABC):
             z = traj[:, dim3]
 
             # Create colormap based on timepoints
-            colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, n_timepoints))
+            colors = plt.get_cmap(colormap)(np.linspace(0, 1, n_timepoints))
 
             # Plot line
             ax.plot(x, y, z, **kwargs)

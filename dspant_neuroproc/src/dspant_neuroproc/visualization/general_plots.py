@@ -171,7 +171,7 @@ def plot_spikes(
     # Color options - use the specified colormap
     import matplotlib.cm as cm
 
-    cmap = cm.get_cmap(colormap)
+    cmap = plt.get_cmap(colormap)
 
     # If using single color, override color_mode
     if use_single_color:
@@ -497,7 +497,7 @@ def plot_spike_raster(
     # Color options setup
     import matplotlib.cm as cm
 
-    cmap = cm.get_cmap(colormap)
+    cmap = plt.get_cmap(colormap)
 
     # If using single color, override color_mode
     if use_single_color:
@@ -921,7 +921,7 @@ def plot_multi_channel_data(
     import matplotlib.cm as cm
 
     if color_mode == "colormap":
-        cmap = cm.get_cmap(colormap)
+        cmap = plt.get_cmap(colormap)
     else:  # "single" color mode
         # No need for colormap, will use the single color provided
         pass
