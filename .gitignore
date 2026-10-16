@@ -3,6 +3,7 @@
 *.out
 *.parquet
 *.json
+*.typ
 poetry.lock
 Cargo.lock
 *uv.lock
