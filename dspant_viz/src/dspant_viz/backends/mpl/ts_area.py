@@ -61,7 +61,7 @@ def render_ts_area(
 
     # Color setup
     if color_mode == "colormap":
-        cmap = cm.get_cmap(colormap_name)
+        cmap = plt.get_cmap(colormap_name)
         n_channels = len(channels)
         colors = [cmap(i / max(1, n_channels - 1)) for i in range(n_channels)]
     else:

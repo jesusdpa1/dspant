@@ -60,7 +60,7 @@ def render_ts_raster(
 
     # Set up colormap if using it
     if use_colormap:
-        cmap = cm.get_cmap(colormap_name)
+        cmap = plt.get_cmap(colormap_name)
         colors = [cmap(i / max(1, len(unit_ids) - 1)) for i in range(len(unit_ids))]
     else:
         # Use default color cycle

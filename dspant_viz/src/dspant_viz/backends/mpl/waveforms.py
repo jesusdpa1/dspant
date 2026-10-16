@@ -60,7 +60,7 @@ def render_waveform(
             colors = sns.color_palette("colorblind")
         else:
             # Allow custom colormap
-            colors = plt.cm.get_cmap(colormap)(np.linspace(0, 1, waveforms.shape[1]))
+            colors = plt.get_cmap(colormap)(np.linspace(0, 1, waveforms.shape[1]))
     else:
         # Single color
         colors = [colormap] * waveforms.shape[1]
